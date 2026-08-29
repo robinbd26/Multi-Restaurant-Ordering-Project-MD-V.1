@@ -1,0 +1,33 @@
+# Normalise line endings so the repo is identical on Windows, macOS and Linux.
+# Without this, files committed from Windows carry CRLF and every checkout on a
+# CI runner or a Linux server shows the whole file as modified.
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF — cmd.exe mis-parses LF-only batch files
+# (a trailing LF can silently truncate the last command).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell scripts must keep LF even when checked out on Windows.
+*.sh text eol=lf
+
+# Binary assets: never diff, never convert.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+*.db binary
+*.bak binary
+
+# Generated / vendored files: collapse in PR diffs and exclude from language stats.
+package-lock.json linguist-generated=true
+yarn.lock        linguist-generated=true
+messages/*.json  linguist-detectable=false
