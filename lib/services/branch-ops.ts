@@ -6,7 +6,7 @@ import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/e
 import { branchForManager } from "@/lib/selectors";
 import { midnight } from "@/lib/utils/dates";
 import { resolveConfigurableBranch } from "@/lib/services/branches";
-import { createNotification, notifyUsers, notifyBranchManagers } from "@/lib/services/notifications";
+import { createNotification, notifyRole, notifyUsers, notifyBranchManagers } from "@/lib/services/notifications";
 import { LIMITS } from "@/lib/validation/limits";
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -240,6 +240,17 @@ export async function holdBranchOrders(user: User, submittedBranchId?: number): 
         description: `Held new orders for branch "${branch.name}"`,
       },
     });
+    // WS-6.3 — Management oversees branch operations, so a branch pausing its
+    // own order intake must reach them, not just the branch's audit log. Inside
+    // the `started.count > 0` guard, so a double-tapped confirmation (or two
+    // racing requests) produces exactly ONE notification per real transition.
+    await notifyRole("management", {
+      type: "system",
+      titleKey: "notifications.branchHold.started.title",
+      bodyKey: "notifications.branchHold.started.body",
+      params: { branch: branch.name },
+      link: "/management/branches",
+    });
   }
   const row = await prisma.branch.findUniqueOrThrow({ where: { id: branch.id }, select: HOLD_SELECT });
   return serializeHold(row);
@@ -286,6 +297,16 @@ export async function releaseBranchHold(
       activityType: "action",
       description: `Resumed orders for branch "${branch.name}" — reason: ${reason}`,
     },
+  });
+  // WS-6.3 — the release carries the mandatory reason, so Management learns not
+  // only THAT the branch resumed but WHY it was held. Reached only when
+  // `released.count === 1`, i.e. exactly once per real release.
+  await notifyRole("management", {
+    type: "system",
+    titleKey: "notifications.branchHold.released.title",
+    bodyKey: "notifications.branchHold.released.body",
+    params: { branch: branch.name, reason },
+    link: "/management/branches",
   });
   const row = await prisma.branch.findUniqueOrThrow({ where: { id: branch.id }, select: HOLD_SELECT });
   return serializeHold(row);

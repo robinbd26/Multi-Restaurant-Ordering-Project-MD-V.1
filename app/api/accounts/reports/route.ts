@@ -1,8 +1,8 @@
 import { requireApiRole } from "@/lib/auth/current-user";
 import { handle } from "@/lib/http/errors";
 import { json } from "@/lib/http/respond";
-import { periodFinancials } from "@/lib/services/financials";
-import { isoDate } from "@/lib/utils/dates";
+import { branchSales, periodFinancials } from "@/lib/services/financials";
+import { dhakaAddDays, isoDate, startOfDhakaToday } from "@/lib/utils/dates";
 
 type PeriodKind = "daily" | "weekly" | "monthly" | "yearly";
 
@@ -42,12 +42,19 @@ export const GET = handle(async (req: Request) => {
   const kind: PeriodKind = ["daily", "weekly", "monthly", "yearly"].includes(period) ? period : "daily";
   const defaultDays = kind === "daily" ? 30 : kind === "weekly" ? 84 : kind === "monthly" ? 365 : 1095;
   const days = Math.min(Math.max(Number(url.searchParams.get("days")) || defaultDays, 1), 1825);
-  const since = new Date(Date.now() - days * 86400000);
+  // WS-2.11 — the window opens at a DHAKA midnight, covering the last `days`
+  // whole Dhaka business days INCLUDING today. `Date.now() − n·86400000` started
+  // the window mid-day, so the oldest bucket was always a partial day quietly
+  // under-reporting against its settlement.
+  const since = dhakaAddDays(startOfDhakaToday(), -(days - 1));
 
-  const { totals, reconciliation, byMethod, buckets } = await periodFinancials(
-    { from: since },
-    (d) => periodKey(d, kind),
-  );
+  // WS-2.11 — the branch table shares the report window. It used to come from
+  // the dashboard's ALL-TIME figures, silently masquerading as a period figure
+  // beside genuinely period-scoped cards.
+  const [{ totals, reconciliation, byMethod, buckets }, byBranch] = await Promise.all([
+    periodFinancials({ from: since }, (d) => periodKey(d, kind)),
+    branchSales({ from: since }),
+  ]);
 
   return json({
     period: kind,
@@ -84,6 +91,16 @@ export const GET = handle(async (req: Request) => {
       refunded: reconciliation.refunded.toFixed(2),
       expected_in_hand: reconciliation.expectedInHand.toFixed(2),
     },
+    // WS-2.11 — delivered sales per branch over the SAME window as everything
+    // else in this payload.
+    by_branch: byBranch.map((b) => ({
+      branch_id: b.branchId,
+      branch_name: b.branchName,
+      orders: b.orders,
+      sales: b.sales.toFixed(2),
+      food_revenue: b.foodRevenue.toFixed(2),
+      delivery_revenue: b.deliveryRevenue.toFixed(2),
+    })),
     by_method: byMethod.map((m) => ({
       payment_method: m.method,
       orders: m.orders,

@@ -61,6 +61,12 @@ export default async function CustomerBranchesPage({
   // not opening hours — defines this: a covered-but-closed area is not out of zone
   // (that is the separate all-closed banner, owned by the gate below).
   const outOfZone = Boolean(nearest.point) && !hasCoveredBranches;
+  // WS-8.14 — no usable location is NOT out of zone: a guest on the public
+  // homepage can browse every branch, so a signed-in customer must not see
+  // less. Cards stay browseable (menu links work); the location card above and
+  // the neutral "set location" note on each card are the invitation. Ordering
+  // still enforces coverage server-side at checkout.
+  const noLocation = !nearest.point;
 
   return (
     <>
@@ -142,7 +148,9 @@ export default async function CustomerBranchesPage({
             // covered branch that is closed right now stays visible but disabled,
             // with an "Opens at …" note instead of the generic not-nearest one.
             const open = openById.get(branch.id) ?? true;
-            const enabled = covered && open;
+            // Browseable when orderable — or when the customer simply has no
+            // location yet (WS-8.14): browsing must not be gated on a GPS fix.
+            const enabled = (covered && open) || noLocation;
             const isNearest = branch.id === nearestId && enabled;
             return enabled ? (
               <div
@@ -185,12 +193,20 @@ export default async function CustomerBranchesPage({
                         ? t("outOfZone.distanceKm", { km: fmt.num(distanceById.get(branch.id)!) })
                         : t("outOfZone.distanceUnknown")}
                     </span>
-                    <span
-                      className="font-semibold text-emerald-600 dark:text-emerald-400"
-                      data-testid="branch-delivery-availability"
-                    >
-                      {t("outOfZone.deliveryAvailable")}
-                    </span>
+                    {covered ? (
+                      <span
+                        className="font-semibold text-emerald-600 dark:text-emerald-400"
+                        data-testid="branch-delivery-availability"
+                      >
+                        {t("outOfZone.deliveryAvailable")}
+                      </span>
+                    ) : (
+                      // Browsing without a location: coverage is UNKNOWN, not
+                      // refused — a neutral nudge, never the amber "unavailable".
+                      <span className="font-medium text-fg-subtle" data-testid="branch-delivery-availability">
+                        {t("outOfZone.deliveryUnknown")}
+                      </span>
+                    )}
                   </div>
 
                   <BranchLocationPanel
@@ -198,6 +214,7 @@ export default async function CustomerBranchesPage({
                     address={branch.address}
                     distanceKm={distanceById.get(branch.id) ?? null}
                     covered={covered}
+                    locationKnown={!noLocation}
                     mapsKey={mapsKey}
                   />
 
@@ -265,6 +282,7 @@ export default async function CustomerBranchesPage({
                     address={branch.address}
                     distanceKm={distanceById.get(branch.id) ?? null}
                     covered={covered}
+                    locationKnown={!noLocation}
                     mapsKey={mapsKey}
                   />
                 </div>

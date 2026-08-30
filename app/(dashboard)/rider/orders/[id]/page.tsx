@@ -3,6 +3,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 
 import { DeliveryTimeline } from "@/components/rider/delivery-timeline";
+import { Icon } from "@/components/layout/icons";
 import { RiderOrderPanel } from "@/components/rider/rider-order-panel";
 import { OrderStepTracker } from "@/components/rider/order-step-tracker";
 import { RoutePanel } from "@/components/rider/route-panel";
@@ -14,6 +15,7 @@ import { ApiError, getJSON } from "@/lib/api/client";
 import { requireRole } from "@/lib/auth/session";
 import { RIDER_NEXT_STATUS } from "@/lib/constants";
 import { getT } from "@/lib/i18n/server";
+import { directionsUrl } from "@/lib/services/geo";
 import { mediaUrl } from "@/lib/utils";
 import type { Order } from "@/types";
 
@@ -36,6 +38,12 @@ export default async function RiderOrderDetailPage({ params }: { params: Promise
   }
 
   const next = RIDER_NEXT_STATUS[order.status] ?? [];
+  // WS-4.7 — navigate with the stored delivery coordinate (turn-by-turn);
+  // free-text address search is only the fallback for never-geocoded orders.
+  const mapsHref =
+    order.delivery_lat != null && order.delivery_lng != null
+      ? directionsUrl({ lat: order.delivery_lat, lng: order.delivery_lng })
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.delivery_address)}`;
 
   return (
     <>
@@ -138,6 +146,14 @@ export default async function RiderOrderDetailPage({ params }: { params: Promise
                 <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{t("common.address")}</p>
                 <p className="mt-1 text-fg-base">{order.delivery_address}</p>
               </div>
+              <a
+                href={mapsHref}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-border-strong px-4 py-2 text-sm font-semibold text-fg-base hover:bg-surface-hover"
+              >
+                <Icon name="pin" className="size-4" /> {t("rider.navigate")}
+              </a>
               <div className="flex justify-between rounded-xl bg-surface-muted px-3 py-2.5">
                 <span className="text-fg-muted">{t("rider.payment")}</span>
                 <span className="font-bold text-fg-base">{t(`payment.${order.payment_method}`)}</span>

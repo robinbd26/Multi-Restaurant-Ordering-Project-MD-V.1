@@ -19,7 +19,7 @@ import { getT } from "@/lib/i18n/server";
 import type { Brand } from "@/lib/home/types";
 import { getCompanyLogoUrl } from "@/lib/services/settings";
 import { BranchBar, type BranchBarContext } from "@/components/home/BranchBar";
-import { resolveCustomerBranch } from "@/lib/services/customer-branch";
+import { browsesWithoutLocation, resolveCustomerBranch } from "@/lib/services/customer-branch";
 import { branchMenu, publicMenu } from "@/lib/services/public-catalog";
 import { publicHomeBranches } from "@/lib/selectors";
 import { siteOrigin } from "@/lib/seo/site";
@@ -73,15 +73,19 @@ export default async function HomePage() {
   // section can show a product the customer cannot buy. Resolution is per request
   // and never cached: it depends on one customer's private coordinates.
   //
-  // Guests keep the existing all-branches showcase. No eligible branch (or no
-  // location) → an EMPTY catalogue plus an explanatory state, never a fallback
-  // branch and never every branch's products.
+  // Guests keep the existing all-branches showcase. WS-8.14 — a customer with
+  // NO usable location at all browses that SAME showcase (a signed-in customer
+  // must never see less than a guest); the branch bar's location strip stays as
+  // the invitation to unlock ordering. Only "we know where you are and nothing
+  // covers it" (out-of-zone) keeps the empty catalogue with its truthful
+  // explanation — there the scoping is the answer, not a missing fix.
   // ROLE-AWARE CATALOGUE MODE, resolved from the SERVER session — never from
   // anything the browser sends.
   //
   //   customer_nearest_branch — one branch, resolved from the customer's own
-  //     trusted coordinates. No location or no covering branch → an empty
-  //     catalogue plus an explanatory state, never a fallback branch.
+  //     trusted coordinates. No covering branch → an empty catalogue plus an
+  //     explanatory state, never a fallback branch; no location at all → the
+  //     guest showcase (browse-only until a location is set).
   //   all_branches — every customer-orderable product across every live branch.
   //     Used by a super admin (who may browse and order like a customer without
   //     first having a GPS fix) and by guests, whose showcase is unchanged.
@@ -97,7 +101,9 @@ export default async function HomePage() {
     catalogueMode === "customer_nearest_branch"
       ? branchContext?.branchId != null
         ? await branchMenu(branchContext.branchId)
-        : { categories: [], items: [], search: [] }
+        : branchContext != null && browsesWithoutLocation(branchContext)
+          ? await publicMenu() // WS-8.14 — no location: browse like a guest
+          : { categories: [], items: [], search: [] }
       : await publicMenu();
 
   // Which brand tab opens. Hardcoding "cheez" meant a catalogue holding only
@@ -112,13 +118,15 @@ export default async function HomePage() {
       : "cheez";
 
   // Why the grid is empty, in the customer's terms — never a hint that another
-  // branch's products exist somewhere.
+  // branch's products exist somewhere. The no-location customer now sees the
+  // guest showcase (WS-8.14), so an empty grid there means the same thing it
+  // means for a guest and gets the same default message.
   const emptyMenuMessage = branchContext
     ? branchContext.state === "ok"
       ? t("nearestHome.noProductsForBranch")
       : branchContext.state === "out-of-zone"
         ? t("nearestHome.outOfZoneBody")
-        : t("nearestHome.locationRequiredBody")
+        : undefined
     : undefined;
 
   const branchBar: BranchBarContext | null = branchContext

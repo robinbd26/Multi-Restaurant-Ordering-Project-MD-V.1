@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { pushRiderLocationAction } from "@/lib/api/actions";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -16,8 +15,13 @@ interface Branch { id: number; name: string; brand_type?: string }
 /**
  * Rider duty control (C1/C2): a rider must SELECT an eligible active branch to go
  * online, which opens a branch-scoped duty session. Going offline ends the
- * session (blocked while a delivery is active). While online, geolocation is
- * pushed to the server. Retains the design's offline/online styling + testids.
+ * session (blocked while a delivery is active). Retains the design's
+ * offline/online styling + testids.
+ *
+ * WS-9.4 — this panel does NOT watch geolocation itself. The layout-level
+ * `RiderLocationTracker` is the single writer of location pings (throttled +
+ * distance-filtered); a second unthrottled `watchPosition` here doubled the
+ * network and battery cost on a rider's prepaid phone for no extra data.
  */
 export function RiderOnlinePanel({ initialOnline }: { initialOnline: boolean }) {
   const { t } = useTranslation();
@@ -30,8 +34,6 @@ export function RiderOnlinePanel({ initialOnline }: { initialOnline: boolean }) 
   const [error, setError] = useState<string | null>(null);
   /** Branch-selection error, shown under the dropdown it belongs to. */
   const [branchError, setBranchError] = useState<string | null>(null);
-  const [geoError, setGeoError] = useState<string | null>(null);
-  const watchId = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     const d = await (await fetch("/api/rider/duty")).json();
@@ -43,23 +45,6 @@ export function RiderOnlinePanel({ initialOnline }: { initialOnline: boolean }) 
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
-
-  function startWatch() {
-    if (!("geolocation" in navigator)) return;
-    watchId.current = navigator.geolocation.watchPosition(
-      (pos) => { setGeoError(null); void pushRiderLocationAction(pos.coords.latitude, pos.coords.longitude); },
-      () => setGeoError(t("riderLoc.geoDenied")),
-      { enableHighAccuracy: true, maximumAge: 20_000, timeout: 15_000 },
-    );
-  }
-  function stopWatch() {
-    if (watchId.current !== null) { navigator.geolocation.clearWatch(watchId.current); watchId.current = null; }
-  }
-  useEffect(() => {
-    if (online) startWatch();
-    return stopWatch;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [online]);
 
   async function goOnline() {
     if (pending) return;
@@ -89,7 +74,7 @@ export function RiderOnlinePanel({ initialOnline }: { initialOnline: boolean }) 
       setError(parseFieldErrors(data, t("errors.generic")).formError);
       return;
     }
-    stopWatch(); await load(); router.refresh();
+    await load(); router.refresh();
   }
   function toggle() { if (online) void goOffline(); else void goOnline(); }
 
@@ -110,7 +95,6 @@ export function RiderOnlinePanel({ initialOnline }: { initialOnline: boolean }) 
         <p className="text-xs text-fg-muted">
           {online ? (activeBranchName ? t("rider.onDutyAt", { branch: activeBranchName }) : t("rider.readyToReceive")) : t("rider.notAcceptingOrders")}
         </p>
-        {geoError ? <p className="mt-0.5 text-xs text-amber-600">{geoError}</p> : null}
         {error ? <p className="mt-0.5 text-xs text-red-600" data-testid="rider-duty-error">{error}</p> : null}
       </div>
 

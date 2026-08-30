@@ -778,6 +778,7 @@
     "totalMoneyOut": "Total money out",
     "totalMoneyOutHint": "Withdrawals + refunds",
     "outflowWindowNote": "Withdrawal requests in the selected date range",
+    "windowDaysNote": "Last {days} days (Dhaka time)",
     "paidOn": "Paid: {date}"
   },
   "customer": {
@@ -785,6 +786,7 @@
     "welcome": "Welcome, {name}! 👋",
     "welcomeSubtitle": "What would you like to eat today?",
     "browseMenu": "Browse menu →",
+    "browseNoLocation": "You're browsing without a delivery location. Set your location to see delivery availability and place an order.",
     "activeOrders": "Active Orders",
     "totalOrders": "Total Orders",
     "openRestaurants": "Open Restaurants",
@@ -1190,10 +1192,15 @@
     "completed": "Completed",
     "activityLog": "Activity Log",
     "activityLogSub": "Recent logins/logouts and activity",
+    "activityLogSubActions": "Actions you performed on your branches",
     "colTime": "Time",
     "colType": "Type",
     "colDescription": "Description",
     "noLogs": "No logs.",
+    "signInHistory": "Sign-in History",
+    "signInHistorySub": "Your account sign-ins — time, IP and device",
+    "colDevice": "Device",
+    "noSignIns": "No sign-ins recorded yet.",
     "ordersTitle": "Branch Orders",
     "ordersSubtitle": "Filter and manage orders by status",
     "searchPlaceholder": "Search order number, customer or address…",
@@ -2120,6 +2127,16 @@
         "body": "Your ৳{amount} withdrawal has been paid and deducted from your balance."
       }
     },
+    "finance": {
+      "largeRefund": {
+        "title": "Large refund alert",
+        "body": "Order #{id} — a large refund of ৳{amount} was recorded."
+      },
+      "settlementReady": {
+        "title": "Daily settlement generated",
+        "body": "{branch} — settlement for {date} is ready. Net ৳{net}."
+      }
+    },
     "reward": {
       "earned": {
         "title": "Reward coins received",
@@ -2209,6 +2226,16 @@
       "assigned": {
         "title": "Branch assigned",
         "body": "You are now managing {branch}."
+      }
+    },
+    "branchHold": {
+      "started": {
+        "title": "Branch order intake paused",
+        "body": "{branch} has stopped taking new orders (manager hold)."
+      },
+      "released": {
+        "title": "Branch order intake resumed",
+        "body": "{branch} is taking orders again. Reason for the hold: {reason}"
       }
     },
     "catalog": {
@@ -2558,6 +2585,8 @@
     "preferences": "Preferences",
     "notifications": "Notifications",
     "notificationsDesc": "Order updates, offers and announcements",
+    "notificationsPushDesc": "Turning this off silences phone alerts for order updates and stops offers and announcements entirely. Order updates still appear in your in-app inbox.",
+    "notificationsAlwaysOn": "Payment, security and account notices are always delivered.",
     "notifsOn": "Notifications enabled",
     "notifsOff": "Notifications disabled",
     "helpline": "Helpline",
@@ -2711,6 +2740,8 @@
     "expenseRecorded": "Expense recorded",
     "expenseHistory": "Expense history",
     "noExpenses": "No expenses",
+    "expenseBreakdownTitle": "Branch × category breakdown",
+    "expenseBreakdownSub": "Filtered expense totals for every branch and category",
     "category": "Category",
     "cat_rent": "Rent",
     "cat_utilities": "Utilities",
@@ -2816,7 +2847,9 @@
     "couponCostTitle": "What each coupon cost",
     "couponCostSub": "The total alone never says which coupon spent the money",
     "noCouponCost": "No coupon was used",
-    "couponCode": "Coupon code"
+    "couponCode": "Coupon code",
+    "filterCustomer": "Customer",
+    "filterCustomerHint": "Name, username or phone"
   },
   "marketingX": {
     "campaignsSub": "Create and schedule discounts, offers and promotions",
@@ -2904,6 +2937,9 @@
     "riderReviews": "Rider reviews",
     "foodFeedback": "Food feedback",
     "riderFeedback": "Rider feedback",
+    "riderRatingsFromCustomers": "Rider ratings from customers",
+    "riderComplaints": "Complaints from riders",
+    "riderComplaintsSub": "Complaints riders filed to the marketing team",
     "noFeedback": "No feedback",
     "rating": "Rating",
     "comment": "Comment",
@@ -2927,6 +2963,11 @@
     "retention": "Retention",
     "weeklySales": "Weekly sales",
     "branchCompare": "Branch comparison",
+    "growthTitle": "Business growth trends",
+    "currentPeriod": "This period",
+    "previousPeriod": "Previous period",
+    "growthLabel": "Growth",
+    "repeatRate": "Repeat customer rate (this period)",
     "title": {
       "sales": "Sales Report",
       "orders": "Orders Report",
@@ -2979,7 +3020,19 @@
       "maxUses": "Max uses",
       "avgMinutes": "Avg. minutes",
       "dutyDays": "Duty days",
-      "periodRedemptions": "Redeemed (period)"
+      "periodRedemptions": "Redeemed (period)",
+      "item": "Item",
+      "kind": "Kind",
+      "sent": "Sent",
+      "opened": "Opened",
+      "clicked": "Clicked",
+      "conversions": "Conversions",
+      "discountCost": "Discount cost",
+      "category": "Category"
+    },
+    "kind": {
+      "campaign": "Campaign",
+      "coupon": "Coupon"
     },
     "metric": {
       "totalSales": "Total sales",
@@ -3147,6 +3200,7 @@
     "locationHistoryTitle": "Location History",
     "locationHistorySub": "Online status and visited locations",
     "dutyStatus": "Duty status",
+    "manageDutyHint": "Go online or offline from the dashboard duty panel.",
     "todayDistance": "Today's distance",
     "totalDistance": "Total distance",
     "visitedLocations": "Visited locations",
@@ -3795,6 +3849,7 @@
     "distanceUnknown": "Distance unknown",
     "deliveryAvailable": "Delivery available",
     "deliveryUnavailable": "Delivery unavailable here",
+    "deliveryUnknown": "Set location to check delivery",
     "hoursUnknown": "Hours not set",
     "allClosedTitle": "Your nearest branch is closed right now",
     "allClosedBody": "{branch} opens at {time}. You can browse the menu now and order once it reopens.",

@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Table, Td } from "@/components/ui/table";
 import { getJSON } from "@/lib/api/client";
 import { requireRole } from "@/lib/auth/session";
+import { prisma } from "@/lib/db";
 import { getT } from "@/lib/i18n/server";
 import type { ActivityLog, ManagerAssignment, Paginated } from "@/types";
 
@@ -15,18 +16,20 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("branchManager.dutyHistoryTitle") };
 }
 
-const TYPE_TONES: Record<ActivityLog["activity_type"], "green" | "slate" | "blue"> = {
-  login: "green",
-  logout: "slate",
-  action: "blue",
-};
-
 export default async function BMDutyHistoryPage() {
   const { t, fmt } = await getT();
-  await requireRole("branch_manager");
-  const [assignments, logs] = await Promise.all([
+  const me = await requireRole("branch_manager");
+  // WS-5.11 — sign-ins come from LoginHistory (written on every sign-in, with
+  // IP + user agent). ManagerActivityLog only ever records "action" rows, so
+  // the old login/logout badges here were backed by rows that never exist.
+  const [assignments, logs, signIns] = await Promise.all([
     getJSON<Paginated<ManagerAssignment>>("/manager-assignments/"),
     getJSON<Paginated<ActivityLog>>("/activity-logs/"),
+    prisma.loginHistory.findMany({
+      where: { userId: Number(me.id) },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
   ]);
 
   return (
@@ -70,18 +73,43 @@ export default async function BMDutyHistoryPage() {
         )}
       </Card>
 
+      {/* WS-5.11 — ManagerActivityLog only ever contains "action" rows, so the
+          former login/logout badges (and the Type column of identical "action"
+          chips) rendered states that are never written; the sign-in card below
+          is the truthful source for those. */}
       <Card className="mt-6">
-        <CardHeader title={t("branchManager.activityLog")} subtitle={t("branchManager.activityLogSub")} />
+        <CardHeader title={t("branchManager.activityLog")} subtitle={t("branchManager.activityLogSubActions")} />
         {logs.results.length === 0 ? (
           <EmptyState title={t("branchManager.noLogs")} />
         ) : (
-          <Table headers={[t("branchManager.colTime"), t("branchManager.colType"), t("branchManager.colDescription"), "IP"]}>
+          <Table headers={[t("branchManager.colTime"), t("branchManager.colDescription"), "IP"]}>
             {logs.results.map((log) => (
               <tr key={log.id} className="hover:bg-surface-hover/70">
                 <Td><span className="whitespace-nowrap text-xs text-fg-muted">{fmt.dateTime(log.timestamp)}</span></Td>
-                <Td><Badge tone={TYPE_TONES[log.activity_type]}>{t("activityType." + log.activity_type)}</Badge></Td>
                 <Td><span className="text-sm text-fg-base">{log.description}</span></Td>
                 <Td><span className="font-mono text-xs text-fg-subtle">{log.ip_address || "—"}</span></Td>
+              </tr>
+            ))}
+          </Table>
+        )}
+      </Card>
+
+      {/* WS-5.11 — real sign-ins from LoginHistory (time, IP, device). */}
+      <Card className="mt-6">
+        <CardHeader title={t("branchManager.signInHistory")} subtitle={t("branchManager.signInHistorySub")} />
+        {signIns.length === 0 ? (
+          <EmptyState title={t("branchManager.noSignIns")} />
+        ) : (
+          <Table headers={[t("branchManager.colTime"), "IP", t("branchManager.colDevice")]}>
+            {signIns.map((l) => (
+              <tr key={l.id} className="hover:bg-surface-hover/70">
+                <Td><span className="whitespace-nowrap text-xs text-fg-muted">{fmt.dateTime(l.createdAt.toISOString())}</span></Td>
+                <Td><span className="font-mono text-xs text-fg-subtle">{l.ipAddress || "—"}</span></Td>
+                <Td>
+                  <span className="block max-w-80 truncate text-xs text-fg-muted" title={l.userAgent || undefined}>
+                    {l.userAgent || "—"}
+                  </span>
+                </Td>
               </tr>
             ))}
           </Table>

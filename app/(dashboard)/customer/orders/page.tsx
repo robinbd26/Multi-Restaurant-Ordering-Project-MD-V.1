@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { LiveOrdersRefresher } from "@/components/customer/live-order-refresh";
 import { FilterBar } from "@/components/dashboard/filter-bar";
 import { SummaryCard, SummaryCardGrid } from "@/components/dashboard/summary-card";
 import { Icon } from "@/components/layout/icons";
@@ -68,6 +69,10 @@ export default async function CustomerOrdersPage({
 
   return (
     <>
+      {/* WS-5.8 — while anything is in flight, a gentle activity poll keeps the
+          chips and tiles honest without a manual reload. A purely historical
+          list (no active orders) stays static and costs nothing. */}
+      {activeOrders > 0 ? <LiveOrdersRefresher /> : null}
       <PageHeader
         title={t("customer.ordersTitle")}
         subtitle={t("customer.ordersSubtitle")}

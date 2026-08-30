@@ -6,7 +6,15 @@ import { toggleNotificationsAction } from "@/lib/api/actions";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
 
-/** On/off switch for in-app notifications (server-respected). */
+/**
+ * On/off switch for the customer's notification preference (server-respected).
+ *
+ * WS-6.2 — the copy states EXACTLY what the switch does: OFF silences phone
+ * (push) alerts for routine order updates and stops marketing entirely; the
+ * in-app inbox keeps every row, and payment/security/account notices are always
+ * delivered on every channel. The matching server rule lives in
+ * lib/services/notifications.ts (OPTIONAL_TYPES / PUSH_OPTIONAL_TYPES).
+ */
 export function NotificationsToggle({ initial }: { initial: boolean }) {
   const { t } = useTranslation();
   const [enabled, setEnabled] = useState(initial);
@@ -25,7 +33,8 @@ export function NotificationsToggle({ initial }: { initial: boolean }) {
     <div className="flex items-center justify-between gap-4">
       <div>
         <p className="text-sm font-semibold text-fg-base">{t("settings.notifications")}</p>
-        <p className="text-xs text-fg-muted">{t("settings.notificationsDesc")}</p>
+        <p className="text-xs text-fg-muted">{t("settings.notificationsPushDesc")}</p>
+        <p className="mt-0.5 text-xs text-fg-subtle">{t("settings.notificationsAlwaysOn")}</p>
       </div>
       <button
         type="button"

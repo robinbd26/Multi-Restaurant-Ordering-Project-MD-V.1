@@ -9,7 +9,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Table, Td } from "@/components/ui/table";
 import { getJSON } from "@/lib/api/client";
 import { requireRole } from "@/lib/auth/session";
-import { accountsDashboard } from "@/lib/services/dashboards";
 import { getT } from "@/lib/i18n/server";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +19,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 interface ReportPayload {
   period: string;
+  /** Whole Dhaka days the report window covers, today included. */
+  days: number;
   totals: {
     orders: number;
     sales: string;
@@ -50,6 +51,15 @@ interface ReportPayload {
     refunded: string;
     expected_in_hand: string;
   };
+  /** WS-2.11 — per-branch delivered sales over the SAME window, never all-time. */
+  by_branch: {
+    branch_id: number;
+    branch_name: string;
+    orders: number;
+    sales: string;
+    food_revenue: string;
+    delivery_revenue: string;
+  }[];
   by_method: {
     payment_method: string;
     orders: number;
@@ -86,10 +96,12 @@ export default async function AccountsReportsPage({ searchParams }: Params) {
   const sp = await searchParams;
   const period = PERIODS.includes(sp.period as (typeof PERIODS)[number]) ? sp.period : "daily";
 
-  const [report, dashboard] = await Promise.all([
-    getJSON<ReportPayload>(`/accounts/reports/?period=${period}`),
-    accountsDashboard(),
-  ]);
+  const report = await getJSON<ReportPayload>(`/accounts/reports/?period=${period}`);
+
+  // WS-2.11 — every card on this page is measured over this window (whole Dhaka
+  // days, today included); the note names it so no figure can silently read as
+  // all-time again.
+  const windowNote = t("accounts.windowDaysNote", { days: fmt.num(report.days) });
 
   const tab = "rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors";
 
@@ -112,7 +124,7 @@ export default async function AccountsReportsPage({ searchParams }: Params) {
 
   return (
     <>
-      <PageHeader title={t("pages.reportsTitle")} subtitle={t("pages.reportsSub")} />
+      <PageHeader title={t("pages.reportsTitle")} subtitle={`${t("pages.reportsSub")} · ${windowNote}`} />
 
       <SummaryCardGrid className="xl:grid-cols-4">
         <SummaryCard title={t("accounts.totalSalesDelivered")} value={fmt.money(report.totals.sales)} icon={<Icon name="money" />} accent="success" />
@@ -235,9 +247,11 @@ export default async function AccountsReportsPage({ searchParams }: Params) {
       </Card>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        {/* WS-2.11 — was the dashboard's ALL-TIME table wearing a period label;
+            now the same window as every other card on this page. */}
         <Card>
-          <CardHeader title={t("accounts.salesByBranch")} />
-          {dashboard.sales_by_branch.length === 0 ? (
+          <CardHeader title={t("accounts.salesByBranch")} subtitle={windowNote} />
+          {report.by_branch.length === 0 ? (
             <EmptyState title={t("accounts.noSalesYet")} />
           ) : (
             <Table
@@ -249,9 +263,9 @@ export default async function AccountsReportsPage({ searchParams }: Params) {
                 t("accounts.colDeliveryRevenue"),
               ]}
             >
-              {dashboard.sales_by_branch.map((row) => (
-                <tr key={row.branch__id} className="hover:bg-surface-hover/70">
-                  <Td><span className="font-medium text-fg-base">{row.branch__name}</span></Td>
+              {report.by_branch.map((row) => (
+                <tr key={row.branch_id} className="hover:bg-surface-hover/70">
+                  <Td><span className="font-medium text-fg-base">{row.branch_name}</span></Td>
                   <Td>{fmt.num(row.orders)}</Td>
                   <Td mono><span className="font-semibold">{fmt.money(row.sales)}</span></Td>
                   <Td mono>{fmt.money(row.food_revenue)}</Td>
@@ -265,7 +279,7 @@ export default async function AccountsReportsPage({ searchParams }: Params) {
         {/* WS-2.2 — cash / bKash / card, with the delivery slice split out so the
             branch settlement reconciles against the cash actually handed in. */}
         <Card>
-          <CardHeader title={t("accounts.salesByPayment")} subtitle={t("accounts.salesByPaymentSub")} />
+          <CardHeader title={t("accounts.salesByPayment")} subtitle={`${t("accounts.salesByPaymentSub")} ${windowNote}`} />
           {report.by_method.length === 0 ? (
             <EmptyState title={t("accounts.noSalesYet")} />
           ) : (

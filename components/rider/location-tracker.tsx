@@ -2,7 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { haversineKm } from "@/lib/services/geo";
 import { useTranslation } from "@/lib/i18n/use-translation";
+
+// WS-9.4 — persist budget for a prepaid 3G/4G Android phone. `watchPosition`
+// with high accuracy can fire every second; writing each fix would cost
+// hundreds of requests (and battery wakeups) per hour of duty. A delivery bike
+// at ~30 km/h moves ~125 m in 15 s, so one write per 15 s loses nothing a
+// dispatcher can act on, and a stationary rider (waiting at the branch) writes
+// nothing at all.
+const PERSIST_INTERVAL_MS = 15_000; // at most one network write per 15 s…
+const MIN_MOVE_M = 25; // …and only if the rider actually moved ≥ ~25 m (GPS jitter is below this)
+const JUMP_M = 250; // a significant jump (tunnel exit, GPS re-lock) is persisted immediately
 
 /**
  * Rider GPS tracker (req #12). While the rider is on duty, requests browser
@@ -10,6 +21,9 @@ import { useTranslation } from "@/lib/i18n/use-translation";
  * /api/riders/location (server validates + requires an active duty session).
  * Handles granted / denied / unavailable / timeout without re-prompting in a
  * loop. Stops when `onDuty` is false. Renders a tiny non-blocking status chip.
+ *
+ * Only the network WRITE is throttled — every raw callback still updates the
+ * status chip, so the rider sees GPS health live.
  */
 export function RiderLocationTracker({ onDuty }: { onDuty: boolean }) {
   const { t } = useTranslation();
@@ -27,11 +41,13 @@ export function RiderLocationTracker({ onDuty }: { onDuty: boolean }) {
     let watchId: number | null = null;
     const send = (lat: number, lng: number, accuracy?: number, capturedAt?: number) => {
       const now = Date.now();
-      const moved = !lastPoint.current
-        || Math.abs(lastPoint.current.lat - lat) > 0.0003
-        || Math.abs(lastPoint.current.lng - lng) > 0.0003;
-      // Throttle: at most every 15s, and only on meaningful movement or first fix.
-      if (now - lastSent.current < 15000 && !moved) return;
+      // Metres since the last PERSISTED point (client-side haversine).
+      const movedM = lastPoint.current
+        ? haversineKm(lastPoint.current, { lat, lng }) * 1000
+        : Infinity;
+      const firstFix = !lastPoint.current; // just went on duty — persist immediately
+      const due = now - lastSent.current >= PERSIST_INTERVAL_MS && movedM >= MIN_MOVE_M;
+      if (!firstFix && movedM < JUMP_M && !due) return;
       lastSent.current = now;
       lastPoint.current = { lat, lng };
       void fetch("/api/riders/location/", {
@@ -56,6 +72,10 @@ export function RiderLocationTracker({ onDuty }: { onDuty: boolean }) {
 
     return () => {
       if (watchId != null) navigator.geolocation.clearWatch(watchId);
+      // Forget the trail on going off duty, so the NEXT duty session starts
+      // with an immediate first-fix persist even from the same spot.
+      lastSent.current = 0;
+      lastPoint.current = null;
     };
   }, [onDuty]);
 

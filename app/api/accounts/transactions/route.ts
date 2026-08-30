@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 
 import { requireApiRole } from "@/lib/auth/current-user";
 import { handle } from "@/lib/http/errors";
-import { pageParams, paginated } from "@/lib/http/respond";
+import { json, pageParams } from "@/lib/http/respond";
 import { prisma } from "@/lib/db";
 import { ledgerStatusFor } from "@/lib/services/financials";
 import { PAYMENT_STATUSES } from "@/lib/services/payments";
@@ -14,8 +14,16 @@ const ZERO = new Prisma.Decimal(0);
 const REFUND_FILTERS = ["yes", "no"];
 
 // GET /api/accounts/transactions — the order money ledger.
-//   ?status= &payment_status= &method= &branch= &refunded=yes|no
+//   ?status= &payment_status= &method= &branch= &rider= &customer= &refunded=yes|no
 //   &from=YYYY-MM-DD &to=YYYY-MM-DD &q=<order id or order number>
+//   &page= &page_size=
+//
+// WS-2.9 — rider and customer are first-class ledger filters (a disputed COD
+// hand-in is traced by WHO delivered it, not by order number), and `totals`
+// covers the WHOLE filtered set as a database-side Decimal sum — a page total
+// tells an accountant nothing about what the filter is actually worth. The
+// envelope is hand-rolled rather than `paginated()` for exactly that reason,
+// mirroring /api/accounts/commissions; results/count/next/previous are identical.
 //
 // WS-2.4 — `Order.paymentStatus` was read by no accounts route at all, so the
 // ledger could show WHAT was ordered but never whether it had been paid for.
@@ -29,13 +37,15 @@ const REFUND_FILTERS = ["yes", "no"];
 export const GET = handle(async (req: Request) => {
   await requireApiRole("accounts", "super_admin", "management");
   const url = new URL(req.url);
-  const { skip, take, page, pageSize } = pageParams(url);
+  const { skip, take } = pageParams(url);
 
   const where: Prisma.OrderWhereInput = {};
   const status = url.searchParams.get("status");
   const paymentStatus = url.searchParams.get("payment_status");
   const method = url.searchParams.get("method");
   const branch = url.searchParams.get("branch");
+  const rider = url.searchParams.get("rider");
+  const customer = (url.searchParams.get("customer") ?? "").trim();
   const refunded = url.searchParams.get("refunded");
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
@@ -49,6 +59,20 @@ export const GET = handle(async (req: Request) => {
   }
   if (method) where.paymentMethod = method;
   if (branch && Number.isInteger(Number(branch))) where.branchId = Number(branch);
+  // WS-2.9 — the rider who carried the order; unassigned orders never match.
+  if (rider && Number.isInteger(Number(rider))) where.riderId = Number(rider);
+  // WS-2.9 — customer lookup by what an accountant actually has in hand: the
+  // name on the complaint, the @username, or the phone number on the order call.
+  if (customer) {
+    where.customer = {
+      OR: [
+        { firstName: { contains: customer } },
+        { lastName: { contains: customer } },
+        { username: { contains: customer } },
+        { phone: { contains: customer } },
+      ],
+    };
+  }
   if (refunded && REFUND_FILTERS.includes(refunded)) {
     where.refunds = refunded === "yes" ? { some: {} } : { none: {} };
   }
@@ -67,8 +91,13 @@ export const GET = handle(async (req: Request) => {
     where.createdAt = { ...(fromAt ? { gte: fromAt } : {}), ...(toAt ? { lte: toAt } : {}) };
   }
 
-  const [count, orders] = await Promise.all([
+  const [count, grossAgg, refundAgg, orders] = await Promise.all([
     prisma.order.count({ where }),
+    // Whole-filtered-set money, summed database-side as exact Decimals.
+    prisma.order.aggregate({ where, _sum: { totalAmount: true } }),
+    // Refunds ATTACHED to the matching orders — the same semantics as the
+    // per-row `refunded_amount` column, so the card always ties to the table.
+    prisma.refund.aggregate({ where: { order: where }, _sum: { amount: true } }),
     prisma.order.findMany({
       where,
       select: {
@@ -86,6 +115,7 @@ export const GET = handle(async (req: Request) => {
         paymentVerifiedAt: true,
         branch: { select: { id: true, name: true } },
         customer: { select: { firstName: true, lastName: true, username: true } },
+        rider: { select: { firstName: true, lastName: true, username: true } },
         refunds: { select: { amount: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -94,8 +124,19 @@ export const GET = handle(async (req: Request) => {
     }),
   ]);
 
-  return paginated(
-    orders.map((o) => {
+  const gross = grossAgg._sum.totalAmount ?? ZERO;
+  const refundedTotal = refundAgg._sum.amount ?? ZERO;
+
+  return json({
+    count,
+    next: null,
+    previous: null,
+    totals: {
+      gross: gross.toFixed(2),
+      refunded: refundedTotal.toFixed(2),
+      net: gross.minus(refundedTotal).toFixed(2),
+    },
+    results: orders.map((o) => {
       const refundedAmount = o.refunds.reduce((acc, r) => acc.plus(r.amount), ZERO);
       return {
         id: o.id,
@@ -104,6 +145,9 @@ export const GET = handle(async (req: Request) => {
         branch_name: o.branch.name,
         customer_name:
           `${o.customer.firstName} ${o.customer.lastName}`.trim() || o.customer.username,
+        rider_name: o.rider
+          ? `${o.rider.firstName} ${o.rider.lastName}`.trim() || o.rider.username
+          : null,
         status: o.status,
         payment_method: o.paymentMethod,
         payment_status: o.paymentStatus,
@@ -121,6 +165,5 @@ export const GET = handle(async (req: Request) => {
         created_at: o.createdAt.toISOString(),
       };
     }),
-    { page, pageSize, count },
-  );
+  });
 });

@@ -179,6 +179,9 @@ export interface Order {
   total_amount: string;
   food_notes: string;
   delivery_address: string;
+  /** WS-4.7 — resolved delivery coordinate; null when never geocoded. */
+  delivery_lat?: number | null;
+  delivery_lng?: number | null;
   fulfillment_type?: string;
   prep_time_snapshot?: number | null;
   delivery_area?: number | null;

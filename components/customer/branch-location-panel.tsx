@@ -27,6 +27,7 @@ export function BranchLocationPanel({
   address,
   distanceKm,
   covered,
+  locationKnown = true,
   mapsKey,
 }: {
   branchName: string;
@@ -35,6 +36,12 @@ export function BranchLocationPanel({
   distanceKm: number | null;
   /** Server's coverage verdict for this branch. */
   covered: boolean;
+  /**
+   * WS-8.14 — whether the server had a usable point to judge coverage AGAINST.
+   * With no location, "not covered" is unknown rather than refused, and the
+   * verdict line invites a location instead of asserting "unavailable".
+   */
+  locationKnown?: boolean;
   mapsKey: string | null;
 }) {
   const { t, fmt } = useTranslation();
@@ -52,10 +59,14 @@ export function BranchLocationPanel({
         {distanceKm != null ? t("outOfZone.distanceKm", { km: fmt.num(distanceKm) }) : t("outOfZone.distanceUnknown")}
       </p>
       <p
-        className={`mt-1 font-medium ${covered ? "text-emerald-600" : "text-amber-600 dark:text-amber-400"}`}
+        className={`mt-1 font-medium ${covered ? "text-emerald-600" : locationKnown ? "text-amber-600 dark:text-amber-400" : "text-fg-subtle"}`}
         data-testid="branch-location-coverage"
       >
-        {covered ? t("outOfZone.deliveryAvailable") : t("outOfZone.deliveryUnavailable")}
+        {covered
+          ? t("outOfZone.deliveryAvailable")
+          : locationKnown
+            ? t("outOfZone.deliveryUnavailable")
+            : t("outOfZone.deliveryUnknown")}
       </p>
 
       {/* PHASE A — these are real touch targets, not text links squeezed into

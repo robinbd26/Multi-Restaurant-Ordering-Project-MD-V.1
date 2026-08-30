@@ -92,6 +92,54 @@ export async function softDeleteProduct(user: User, productId: number): Promise<
   return deleted;
 }
 
+// ── WS-8.10: super-admin cross-branch product hold ──────────────────────
+/**
+ * Case/space-insensitive normal form of a product name. Category solves the
+ * same problem with a stored `normalizedName` column; Product has no such
+ * column and the schema is FROZEN, so the normalization lives in the query
+ * path instead (see setCrossBranchProductHold).
+ */
+export function normalizeProductName(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * Set the super-admin hold flag on EVERY branch's copy of a product.
+ *
+ * Copies of "the same product" are created per branch by different managers,
+ * so the only cross-branch identity is the name — and names drift: the old
+ * `updateMany({ where: { name } })` was exact, case- and whitespace-sensitive,
+ * so "beef burger " simply escaped a safety hold on "Beef Burger".
+ *
+ * TRADE-OFF (deliberate): candidate ids are resolved by normalizing (id, name)
+ * pairs in JS and the update runs by id, instead of matching in SQL. That
+ * loads one small projection of the product table per toggle — a rare,
+ * super-admin-only action over a catalog of at most a few thousand rows — and
+ * in exchange the comparison is Unicode-correct for Bangla product names,
+ * where SQLite's built-in lower() (ASCII-only) would silently miss matches.
+ * Soft-deleted copies are included on purpose: the flag stays consistent
+ * across every same-named row, so a later restore cannot resurrect a held
+ * product as sellable.
+ */
+export async function setCrossBranchProductHold(
+  productId: number,
+  hold: boolean,
+): Promise<{ product: Product; productIds: number[]; branchIds: number[] }> {
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product) throw notFound(sk("errors.catalog.productNotFound"));
+
+  const target = normalizeProductName(product.name);
+  const candidates = await prisma.product.findMany({ select: { id: true, name: true, branchId: true } });
+  const matches = candidates.filter((p) => normalizeProductName(p.name) === target);
+
+  const productIds = matches.map((p) => p.id);
+  await prisma.product.updateMany({
+    where: { id: { in: productIds } },
+    data: { heldByAdmin: hold },
+  });
+  return { product, productIds, branchIds: [...new Set(matches.map((p) => p.branchId))] };
+}
+
 /**
  * Resolve + validate the brand a product carries against its branch:
  * - single-brand branch → forced to that brand (submission ignored).

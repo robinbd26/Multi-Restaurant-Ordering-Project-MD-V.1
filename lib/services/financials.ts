@@ -4,7 +4,7 @@ import type { User } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { notFound, sk, validationError } from "@/lib/http/errors";
-import { createNotification, notifySuperAdmins } from "@/lib/services/notifications";
+import { createNotification, notifyRole, notifySuperAdmins } from "@/lib/services/notifications";
 import { chargeRates, type ChargeRates } from "@/lib/services/settings";
 import { dhakaAddDays, dhakaDayStartFromKey } from "@/lib/utils/dates";
 
@@ -20,6 +20,15 @@ export const EXPENSE_CATEGORIES = [
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
 const ZERO = new Prisma.Decimal(0);
+
+/**
+ * WS-6.3 — a refund at or above this amount raises a business alert to the
+ * management role. ৳1,000 is roughly twice a typical Dhaka order total, so a
+ * routine goodwill refund (a missing drink, a late-delivery discount) stays
+ * quiet while a whole-order or multi-item giveback reaches management the
+ * moment it books. Exact Decimal so the comparison is never a float guess.
+ */
+const MANAGEMENT_REFUND_ALERT_THRESHOLD = new Prisma.Decimal(1000);
 
 function audit(actorId: number, action: string, entity: string, entityId: number | string, detail: string) {
   return prisma.financialAuditLog.create({
@@ -69,6 +78,18 @@ export async function processRefund(actor: User, orderId: number, amountRaw: str
     params: { id: orderId, amount: amount.toFixed(2) },
     link: `/admin/orders/${orderId}`,
   });
+  // WS-6.3 — a business alert, not bookkeeping: management only hears about a
+  // refund large enough to need explaining. One notification per refund event
+  // (notifyRole fans it out to the role); ordinary refunds stay quiet.
+  if (refund.amount.greaterThanOrEqualTo(MANAGEMENT_REFUND_ALERT_THRESHOLD)) {
+    await notifyRole("management", {
+      type: "payment",
+      titleKey: "notifications.finance.largeRefund.title",
+      bodyKey: "notifications.finance.largeRefund.body",
+      params: { id: orderId, amount: refund.amount.toFixed(2) },
+      link: "/management/reports/finance",
+    });
+  }
   return refund;
 }
 
@@ -622,6 +643,55 @@ export async function periodFinancials(
   };
 }
 
+/** WS-2.11 — one branch's delivered-sales slice of a report window. */
+export interface BranchSalesRow {
+  branchId: number;
+  branchName: string;
+  orders: number;
+  sales: Prisma.Decimal;
+  deliveryRevenue: Prisma.Decimal;
+  /** sales − deliveryRevenue: the food slice, exact Decimal, never re-derived. */
+  foodRevenue: Prisma.Decimal;
+}
+
+/**
+ * WS-2.11 — delivered sales grouped by branch, over the SAME window as the rest
+ * of the report. The accounts report used to borrow the dashboard's all-time
+ * branch table, which silently masqueraded as a period figure next to genuinely
+ * period-scoped cards. Same window semantics as periodFinancials on the
+ * `created` basis (`to` exclusive); sums stay in Prisma.Decimal end to end.
+ */
+export async function branchSales(input: FinancialWindow): Promise<BranchSalesRow[]> {
+  const range: DateRange = input.to ? { gte: input.from, lt: input.to } : { gte: input.from };
+  const rows = await prisma.order.groupBy({
+    by: ["branchId"],
+    where: { status: "delivered", createdAt: range },
+    _count: { _all: true },
+    // totalAmount ALREADY contains deliveryCharge — delivery revenue is a slice
+    // of sales, never an addition (same rule as periodFinancials).
+    _sum: { totalAmount: true, deliveryCharge: true },
+  });
+  const branches = await prisma.branch.findMany({
+    where: { id: { in: rows.map((r) => r.branchId) } },
+    select: { id: true, name: true },
+  });
+  const nameOf = new Map(branches.map((b) => [b.id, b.name]));
+  return rows
+    .map((r) => {
+      const sales = r._sum.totalAmount ?? ZERO;
+      const delivery = r._sum.deliveryCharge ?? ZERO;
+      return {
+        branchId: r.branchId,
+        branchName: nameOf.get(r.branchId) ?? "",
+        orders: r._count._all,
+        sales,
+        deliveryRevenue: delivery,
+        foodRevenue: sales.minus(delivery),
+      };
+    })
+    .sort((a, b) => (a.sales.greaterThan(b.sales) ? -1 : 1));
+}
+
 /**
  * Generate (or regenerate) the end-of-day settlement for a branch + business day.
  *
@@ -686,6 +756,16 @@ export async function generateSettlement(actor: User, branchId: number, dateStr:
       + ` − expenses ৳${expenseSum.toFixed(2)} ${totals.adjustments.isNegative() ? "−" : "+"} adjustments ৳${totals.adjustments.abs().toFixed(2)}`
       + ` = net ৳${net.toFixed(2)}`,
   );
+  // WS-6.3 — tell management the day's numbers are on the books. Exactly one
+  // notification per settlement generated (a regeneration notifies again on
+  // purpose: the figures it replaced are no longer the ones management saw).
+  await notifyRole("management", {
+    type: "payment",
+    titleKey: "notifications.finance.settlementReady.title",
+    bodyKey: "notifications.finance.settlementReady.body",
+    params: { branch: branch.name, date: dateStr, net: net.toFixed(2) },
+    link: "/management/reports/finance",
+  });
   // `breakdown` and `reconciliation` travel with the snapshot so the caller can
   // show WHY net is not simply sales − commission − expenses, and what cash the
   // branch is expected to hand in. Nothing extra is queried for either.

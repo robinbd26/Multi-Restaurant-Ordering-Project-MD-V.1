@@ -15,7 +15,7 @@ export { isBranchCoveredForCustomer };
 export type CustomerBranchState =
   /** A single eligible branch was resolved. */
   | "ok"
-  /** No usable coordinates at all — the customer must set a location. */
+  /** No usable coordinates at all — browsing is open, ORDERING needs a location. */
   | "no-location"
   /** We know where they are; no branch covers it. */
   | "out-of-zone";
@@ -131,4 +131,23 @@ export async function resolveCustomerBranch(userId: number, preferredBranchId?: 
 export async function resolvedBranchIdFor(userId: number, preferredBranchId?: number | null): Promise<number | null> {
   const context = await resolveCustomerBranch(userId, preferredBranchId);
   return context.branchId;
+}
+
+/**
+ * WS-8.14 — the browse policy, in ONE place so the homepage, the branches list
+ * and the menu pages cannot drift apart.
+ *
+ * A signed-in customer with NO usable location used to be hard-scoped to their
+ * covered branches — which is an empty set — while a logged-OUT visitor could
+ * browse every branch's showcase. Backwards. With no location the customer
+ * browses everything, exactly like the public homepage, and the location gate
+ * is an invitation, not a wall. Ordering is unaffected: coverage, branch
+ * resolution and the delivery fee are all still enforced server-side at
+ * checkout from the customer's trusted point, never from what they browsed.
+ *
+ * Deliberately NOT true for "out-of-zone": there we DO know where they are and
+ * the truthful banner (with the nearest-pickup callout) is the right answer.
+ */
+export function browsesWithoutLocation(context: Pick<CustomerBranchContext, "state">): boolean {
+  return context.state === "no-location";
 }

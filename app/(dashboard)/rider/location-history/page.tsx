@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { Icon } from "@/components/layout/icons";
 import { PageHeader } from "@/components/layout/page-header";
-import { OnlineTracker } from "@/components/rider/online-tracker";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatCard } from "@/components/ui/stat-card";
@@ -10,6 +11,7 @@ import { Table, Td } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth/session";
 import { midnight } from "@/lib/utils/dates";
+import { activeDutySession } from "@/lib/services/rider-duty";
 import { riderTravelDistanceKm } from "@/lib/services/rider-location";
 import { getT } from "@/lib/i18n/server";
 
@@ -24,12 +26,15 @@ export default async function RiderLocationHistoryPage() {
   const me = await requireRole("rider");
   const userId = Number(me.id);
 
-  const [profile, points, totalKm, todayKm] = await Promise.all([
-    prisma.riderProfile.findUnique({ where: { userId } }),
+  // WS-5.7 — duty status comes from the active duty session (authoritative),
+  // never the RiderProfile.isOnline flag, which can go stale after a crash.
+  const [session, points, totalKm, todayKm] = await Promise.all([
+    activeDutySession(userId),
     prisma.riderRoutePoint.findMany({ where: { riderId: userId }, orderBy: { recordedAt: "desc" }, take: 100 }),
     riderTravelDistanceKm(userId),
     riderTravelDistanceKm(userId, midnight()),
   ]);
+  const online = session !== null;
 
   return (
     <>
@@ -39,7 +44,19 @@ export default async function RiderLocationHistoryPage() {
         <Card className="h-fit">
           <CardHeader title={t("riderLoc.dutyStatus")} />
           <CardContent className="space-y-4">
-            <OnlineTracker initialOnline={profile?.isOnline ?? false} />
+            {/* WS-5.7 — read-only status. The old second online/offline toggle
+                here called an endpoint that rejects going online without a duty
+                session and swallowed the error, so the button just looked dead.
+                Going online requires picking a branch — that flow lives in the
+                dashboard duty panel, and is linked rather than duplicated. */}
+            <div className="flex flex-col items-start gap-2">
+              <Badge tone={online ? "green" : "slate"}>
+                {online ? t("riderLoc.online") : t("riderLoc.offline")}
+              </Badge>
+              <Link href="/rider/dashboard" className="text-xs text-fg-subtle underline-offset-2 hover:underline">
+                {t("riderLoc.manageDutyHint")}
+              </Link>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <StatCard label={t("riderLoc.todayDistance")} value={`${fmt.num(todayKm)} km`} icon={<Icon name="pin" />} accent="brand" />
               <StatCard label={t("riderLoc.totalDistance")} value={`${fmt.num(totalKm)} km`} icon={<Icon name="bike" />} accent="green" />

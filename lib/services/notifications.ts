@@ -25,22 +25,60 @@ interface NotifyInput {
   noticeId?: number | null;
 }
 
-// Only these categories honour the user's notification toggle. Everything else
-// is transactional/security and is ALWAYS delivered — a disabled toggle must
-// never drop an order, payment, withdrawal, complaint or account notice.
+// Only these categories honour the user's notification toggle IN FULL — no
+// in-app row, no push. Everything else is transactional/security and its in-app
+// row is ALWAYS written — a disabled toggle must never drop an order, payment,
+// withdrawal, complaint or account notice from the inbox.
 const OPTIONAL_TYPES = new Set<NotificationType>(["marketing"]);
+
+// WS-6.2 — routine order-progress categories. Their in-app rows are still
+// always written (the inbox and the order trail must stay complete), but the
+// PUSH mirror honours the recipient's toggle: switching notifications off now
+// actually silences the phone for the updates a customer receives most, instead
+// of only suppressing rare marketing. Payment, withdrawal, security and account
+// notices are deliberately NOT here — those reach every channel regardless.
+// The toggle is only settable by customers (PATCH /api/customer/settings is
+// customer-only), and pushRecipients() additionally scopes suppression to the
+// customer role, so staff and rider dispatch pushes are never muted by it.
+const PUSH_OPTIONAL_TYPES = new Set<NotificationType>(["order", "delivery"]);
 
 function isOptional(type: NotificationType | undefined): boolean {
   return OPTIONAL_TYPES.has(type ?? "system");
+}
+
+function isPushOptional(type: NotificationType | undefined): boolean {
+  return PUSH_OPTIONAL_TYPES.has(type ?? "system");
+}
+
+/**
+ * WS-6.2 — the subset of `ids` whose PHONES may be pinged for this input.
+ * OPTIONAL categories were already filtered wholesale by the callers below;
+ * this second seam applies the routine-update rule: the in-app row goes to
+ * everyone, the push mirror only to users who kept their toggle on.
+ */
+async function pushRecipients(ids: number[], input: NotifyInput): Promise<number[]> {
+  if (ids.length === 0 || !isPushOptional(input.type)) return ids;
+  // Only CUSTOMERS may mute routine-update push. A rider's new-delivery ping or
+  // a manager's order alert is operational — it must reach the phone even if
+  // their notificationsEnabled were ever flipped off (e.g. old data), so the
+  // suppression query is scoped to role rather than trusting the flag alone.
+  const muted = await prisma.user.findMany({
+    where: { id: { in: ids }, role: "customer", notificationsEnabled: false },
+    select: { id: true },
+  });
+  if (muted.length === 0) return ids;
+  const mutedIds = new Set(muted.map((u) => u.id));
+  return ids.filter((id) => !mutedIds.has(id));
 }
 
 /**
  * WS-6.1 — mirror a notification that was just written to the recipients' phones.
  *
  * Deliberately placed AFTER the toggle filtering in every caller below: by the
- * time these ids exist, `isOptional()` + `notificationsEnabled` have already
- * decided who is allowed to hear about this, so push inherits that rule instead
- * of re-implementing (and eventually contradicting) it.
+ * time these ids exist, `isOptional()` + `notificationsEnabled` (and, for
+ * routine order updates, `pushRecipients()`) have already decided who is
+ * allowed to hear about this, so push inherits that rule instead of
+ * re-implementing (and eventually contradicting) it.
  *
  * Push is a best-effort mirror of the in-app row, never a precondition for it:
  * `pushToUsers` returns immediately, never throws, and does nothing at all when
@@ -75,7 +113,8 @@ function notificationData(userId: number, input: NotifyInput) {
 /**
  * Create a single in-app notification for one user. Transactional/security
  * notifications are always delivered; only OPTIONAL (marketing) categories
- * honour the recipient's notification toggle.
+ * honour the recipient's notification toggle in full, and routine order/delivery
+ * updates honour it for the push mirror only (WS-6.2).
  */
 export async function createNotification(userId: number, input: NotifyInput) {
   if (isOptional(input.type)) {
@@ -86,7 +125,7 @@ export async function createNotification(userId: number, input: NotifyInput) {
     if (!user?.notificationsEnabled) return null;
   }
   const created = await prisma.notification.create({ data: notificationData(userId, input) });
-  mirrorToPush([userId], input);
+  mirrorToPush(await pushRecipients([userId], input), input);
   return created;
 }
 
@@ -109,7 +148,7 @@ export async function notifyUsers(userIds: number[], input: NotifyInput): Promis
   await prisma.notification.createMany({
     data: ids.map((userId) => notificationData(userId, input)),
   });
-  mirrorToPush(ids, input);
+  mirrorToPush(await pushRecipients(ids, input), input);
   return ids.length;
 }
 
@@ -250,7 +289,7 @@ export async function notifyCampaignAudience(
   // Campaigns write notifications directly rather than through notifyUsers(),
   // so the push mirror has to be repeated here — otherwise a campaign would be
   // the one notification in the app that never reaches a locked phone.
-  mirrorToPush(recipients, input);
+  mirrorToPush(await pushRecipients(recipients, input), input);
   return recipients;
 }
 

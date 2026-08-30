@@ -1,7 +1,10 @@
 "use client";
 
+import { memo } from "react";
+
 import { useLiveData } from "@/lib/hooks/use-live-data";
 import { useTranslation } from "@/lib/i18n/use-translation";
+import { haversineKm } from "@/lib/services/geo";
 
 interface Loc {
   is_online: boolean;
@@ -12,6 +15,30 @@ interface Loc {
 }
 
 const REFRESH_MS = 20_000;
+
+// WS-4.6 — changing the Embed iframe `src` reloads the WHOLE map (tiles and
+// all) on the customer's mobile data. Ignore sub-30 m coordinate changes: GPS
+// jitter sits below this, and a 30 m pin move is invisible at zoom 15 anyway.
+const MATERIAL_MOVE_KM = 0.03;
+
+/**
+ * The embedded map, memoised so the iframe `src` only changes — and the map
+ * only reloads — when the rider has materially moved. Re-renders with a
+ * jittering coordinate are swallowed by the comparator.
+ */
+const MapFrame = memo(
+  function MapFrame({ lat, lng, mapsKey }: { lat: number; lng: number; mapsKey: string }) {
+    const src = `https://www.google.com/maps/embed/v1/place?key=${mapsKey}&q=${lat},${lng}&zoom=15`;
+    return (
+      <div className="overflow-hidden rounded-xl">
+        <iframe title="rider-map" src={src} className="aspect-video w-full border-0" loading="lazy" />
+      </div>
+    );
+  },
+  (prev, next) =>
+    prev.mapsKey === next.mapsKey &&
+    haversineKm({ lat: prev.lat, lng: prev.lng }, { lat: next.lat, lng: next.lng }) < MATERIAL_MOVE_KM,
+);
 
 /**
  * Live rider-location panel. Renders an embedded Google Map only when
@@ -35,12 +62,7 @@ export function LiveMap({ riderId, mapsKey }: { riderId: number; mapsKey: string
   const hasCoords = loc?.latitude && loc?.longitude;
 
   if (mapsKey && hasCoords) {
-    const src = `https://www.google.com/maps/embed/v1/place?key=${mapsKey}&q=${loc!.latitude},${loc!.longitude}&zoom=15`;
-    return (
-      <div className="overflow-hidden rounded-xl">
-        <iframe title="rider-map" src={src} className="aspect-video w-full border-0" loading="lazy" />
-      </div>
-    );
+    return <MapFrame lat={Number(loc!.latitude)} lng={Number(loc!.longitude)} mapsKey={mapsKey} />;
   }
 
   return (

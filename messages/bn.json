@@ -778,6 +778,7 @@
     "totalMoneyOut": "মোট টাকা বেরিয়েছে",
     "totalMoneyOutHint": "উত্তোলন + রিফান্ড",
     "outflowWindowNote": "নির্বাচিত সময়ের উত্তোলনের অনুরোধ",
+    "windowDaysNote": "গত {days} দিন (ঢাকা সময়)",
     "paidOn": "পরিশোধ: {date}"
   },
   "customer": {
@@ -785,6 +786,7 @@
     "welcome": "স্বাগতম, {name}! 👋",
     "welcomeSubtitle": "আজ কী খেতে ইচ্ছে করছে?",
     "browseMenu": "মেনু ব্রাউজ করুন →",
+    "browseNoLocation": "আপনি ডেলিভারি অবস্থান ছাড়া ব্রাউজ করছেন। ডেলিভারি পাওয়া যাবে কি না দেখতে ও অর্ডার করতে আপনার অবস্থান সেট করুন।",
     "activeOrders": "চলমান অর্ডার",
     "totalOrders": "মোট অর্ডার",
     "openRestaurants": "খোলা রেস্টুরেন্ট",
@@ -1190,10 +1192,15 @@
     "completed": "সমাপ্ত",
     "activityLog": "অ্যাক্টিভিটি লগ",
     "activityLogSub": "সাম্প্রতিক লগইন/লগআউট ও কার্যক্রম",
+    "activityLogSubActions": "আপনার শাখায় আপনার করা কার্যক্রম",
     "colTime": "সময়",
     "colType": "ধরন",
     "colDescription": "বিবরণ",
     "noLogs": "কোনো লগ নেই।",
+    "signInHistory": "সাইন-ইন হিস্ট্রি",
+    "signInHistorySub": "আপনার অ্যাকাউন্টের সাইন-ইন — সময়, আইপি ও ডিভাইস",
+    "colDevice": "ডিভাইস",
+    "noSignIns": "এখনও কোনো সাইন-ইন রেকর্ড হয়নি।",
     "ordersTitle": "শাখার অর্ডারসমূহ",
     "ordersSubtitle": "স্ট্যাটাস অনুযায়ী ফিল্টার করে অর্ডার পরিচালনা করুন",
     "searchPlaceholder": "অর্ডার নম্বর, কাস্টমার বা ঠিকানা খুঁজুন…",
@@ -2120,6 +2127,16 @@
         "body": "আপনার ৳{amount} উত্তোলন পরিশোধ করা হয়েছে এবং ব্যালেন্স থেকে কেটে নেওয়া হয়েছে।"
       }
     },
+    "finance": {
+      "largeRefund": {
+        "title": "বড় অঙ্কের রিফান্ড সতর্কতা",
+        "body": "অর্ডার #{id} — ৳{amount} এর একটি বড় অঙ্কের রিফান্ড রেকর্ড করা হয়েছে।"
+      },
+      "settlementReady": {
+        "title": "দৈনিক সেটেলমেন্ট তৈরি হয়েছে",
+        "body": "{branch} — {date} তারিখের সেটেলমেন্ট প্রস্তুত হয়েছে। নিট ৳{net}।"
+      }
+    },
     "reward": {
       "earned": {
         "title": "রিওয়ার্ড কয়েন পেয়েছেন",
@@ -2209,6 +2226,16 @@
       "assigned": {
         "title": "শাখা নিযুক্ত",
         "body": "আপনি এখন {branch} পরিচালনা করছেন।"
+      }
+    },
+    "branchHold": {
+      "started": {
+        "title": "শাখায় অর্ডার নেওয়া বন্ধ",
+        "body": "{branch} নতুন অর্ডার নেওয়া সাময়িকভাবে বন্ধ করেছে (ম্যানেজার হোল্ড)।"
+      },
+      "released": {
+        "title": "শাখায় অর্ডার নেওয়া আবার চালু",
+        "body": "{branch} আবার অর্ডার নিচ্ছে। হোল্ডের কারণ: {reason}"
       }
     },
     "catalog": {
@@ -2558,6 +2585,8 @@
     "preferences": "পছন্দসমূহ",
     "notifications": "নোটিফিকেশন",
     "notificationsDesc": "অর্ডার আপডেট, অফার ও ঘোষণার নোটিফিকেশন",
+    "notificationsPushDesc": "এটি বন্ধ করলে অর্ডার আপডেটের ফোন অ্যালার্ট বন্ধ হবে এবং অফার ও ঘোষণা সম্পূর্ণ বন্ধ থাকবে। অর্ডার আপডেট অ্যাপের ইনবক্সে আগের মতোই দেখা যাবে।",
+    "notificationsAlwaysOn": "পেমেন্ট, নিরাপত্তা ও অ্যাকাউন্ট সংক্রান্ত নোটিশ সবসময় পাঠানো হয়।",
     "notifsOn": "নোটিফিকেশন চালু হয়েছে",
     "notifsOff": "নোটিফিকেশন বন্ধ হয়েছে",
     "helpline": "হেল্পলাইন",
@@ -2711,6 +2740,8 @@
     "expenseRecorded": "খরচ রেকর্ড হয়েছে",
     "expenseHistory": "খরচের ইতিহাস",
     "noExpenses": "কোনো খরচ নেই",
+    "expenseBreakdownTitle": "শাখা × ক্যাটাগরি বিভাজন",
+    "expenseBreakdownSub": "ফিল্টার অনুযায়ী প্রতিটি শাখা ও ক্যাটাগরির মোট খরচ",
     "category": "ধরন",
     "cat_rent": "ভাড়া",
     "cat_utilities": "ইউটিলিটি",
@@ -2816,7 +2847,9 @@
     "couponCostTitle": "কোন কুপনে কত খরচ",
     "couponCostSub": "শুধু মোট দেখে বোঝা যায় না কোন কুপনে টাকা গেছে",
     "noCouponCost": "কোনো কুপন ব্যবহার হয়নি",
-    "couponCode": "কুপন কোড"
+    "couponCode": "কুপন কোড",
+    "filterCustomer": "কাস্টমার",
+    "filterCustomerHint": "নাম, ইউজারনেম বা ফোন"
   },
   "marketingX": {
     "campaignsSub": "ডিসকাউন্ট, অফার ও প্রোমোশন তৈরি ও সময়সূচি করুন",
@@ -2904,6 +2937,9 @@
     "riderReviews": "রাইডার রিভিউ",
     "foodFeedback": "খাবারের ফিডব্যাক",
     "riderFeedback": "রাইডারের ফিডব্যাক",
+    "riderRatingsFromCustomers": "কাস্টমারদের দেওয়া রাইডার রেটিং",
+    "riderComplaints": "রাইডারদের করা অভিযোগ",
+    "riderComplaintsSub": "মার্কেটিং টিমের কাছে রাইডারদের পাঠানো অভিযোগ",
     "noFeedback": "কোনো ফিডব্যাক নেই",
     "rating": "রেটিং",
     "comment": "মন্তব্য",
@@ -2927,6 +2963,11 @@
     "retention": "রিটেনশন",
     "weeklySales": "সাপ্তাহিক বিক্রয়",
     "branchCompare": "শাখা তুলনা",
+    "growthTitle": "ব্যবসার প্রবৃদ্ধির ধারা",
+    "currentPeriod": "চলতি সময়কাল",
+    "previousPeriod": "আগের সময়কাল",
+    "growthLabel": "প্রবৃদ্ধি",
+    "repeatRate": "রিপিট কাস্টমার হার (এই সময়কালে)",
     "title": {
       "sales": "বিক্রয় রিপোর্ট",
       "orders": "অর্ডার রিপোর্ট",
@@ -2979,7 +3020,19 @@
       "maxUses": "সর্বোচ্চ",
       "avgMinutes": "গড় মিনিট",
       "dutyDays": "ডিউটি দিন",
-      "periodRedemptions": "রিডিম (এই সময়ে)"
+      "periodRedemptions": "রিডিম (এই সময়ে)",
+      "item": "আইটেম",
+      "kind": "শ্রেণি",
+      "sent": "পাঠানো হয়েছে",
+      "opened": "খোলা হয়েছে",
+      "clicked": "ক্লিক হয়েছে",
+      "conversions": "কনভার্সন",
+      "discountCost": "ডিসকাউন্ট খরচ",
+      "category": "ক্যাটাগরি"
+    },
+    "kind": {
+      "campaign": "ক্যাম্পেইন",
+      "coupon": "কুপন"
     },
     "metric": {
       "totalSales": "মোট বিক্রয়",
@@ -3147,6 +3200,7 @@
     "locationHistoryTitle": "লোকেশন হিস্ট্রি",
     "locationHistorySub": "অনলাইন স্ট্যাটাস ও ভিজিটকৃত লোকেশন",
     "dutyStatus": "ডিউটি স্ট্যাটাস",
+    "manageDutyHint": "ড্যাশবোর্ডের ডিউটি প্যানেল থেকে অনলাইন বা অফলাইন হোন।",
     "todayDistance": "আজকের দূরত্ব",
     "totalDistance": "মোট দূরত্ব",
     "visitedLocations": "ভিজিটকৃত লোকেশন",
@@ -3795,6 +3849,7 @@
     "distanceUnknown": "দূরত্ব জানা নেই",
     "deliveryAvailable": "ডেলিভারি সম্ভব",
     "deliveryUnavailable": "এখানে ডেলিভারি সম্ভব নয়",
+    "deliveryUnknown": "ডেলিভারি যাচাই করতে অবস্থান সেট করুন",
     "hoursUnknown": "সময় নির্ধারিত নেই",
     "allClosedTitle": "আপনার নিকটতম শাখা এখন বন্ধ",
     "allClosedBody": "{branch} খুলবে {time}। আপনি এখন মেনু দেখতে পারেন এবং খোলার পর অর্ডার করতে পারবেন।",

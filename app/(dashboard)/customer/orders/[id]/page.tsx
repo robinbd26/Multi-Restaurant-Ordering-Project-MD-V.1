@@ -6,6 +6,7 @@ import { OrderDetailCard } from "@/components/orders/order-detail-card";
 import { DeliveryChatPanel } from "@/components/orders/delivery-chat-panel";
 import { OrderStatusActions } from "@/components/orders/order-status-actions";
 import { PaymentStatusCard, type OrderWithPayment } from "@/components/orders/payment-status-card";
+import { LiveOrderRefresher } from "@/components/customer/live-order-refresh";
 import { ReorderButton } from "@/components/customer/reorder-button";
 import { LiveMap } from "@/components/rider/live-map";
 import { Alert } from "@/components/ui/alert";
@@ -48,8 +49,28 @@ export default async function CustomerOrderDetailPage({
     order.payment_method === "bkash" &&
     (order.payment_status === "unpaid" || order.payment_status === "rejected");
 
+  // WS-5.8 — "track order status in real time" must not mean "reload the page".
+  // While the order can still change (in flight, or a bKash submission waiting
+  // on the branch), a lean status poll re-renders this server page the moment
+  // the timeline, rider, delay notice or payment verdict moves. A settled order
+  // (delivered/cancelled with nothing pending) is history — no poll at all.
+  const settled =
+    (order.status === "delivered" || order.status === "cancelled") &&
+    order.payment_status !== "pending_verification";
+
   return (
     <>
+      {!settled ? (
+        <LiveOrderRefresher
+          orderId={order.id}
+          initial={{
+            status: order.status,
+            payment_status: order.payment_status,
+            rider: order.rider,
+            updated_at: order.updated_at,
+          }}
+        />
+      ) : null}
       <PageHeader
         title={t("customer.orderNumber", { id: fmt.num(order.id) })}
         subtitle={t("customer.trackOrder")}

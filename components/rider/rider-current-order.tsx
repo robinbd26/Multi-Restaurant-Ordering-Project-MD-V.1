@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { RIDER_NEXT_STATUS } from "@/lib/constants";
 import { getT } from "@/lib/i18n/server";
+import { directionsUrl } from "@/lib/services/geo";
 import type { Order } from "@/types";
 
 function Row({ icon, label, value }: { icon: string; label: string; value: React.ReactNode }) {
@@ -43,7 +44,13 @@ export async function RiderCurrentOrder({ orders }: { orders: Order[] }) {
     );
   }
 
-  const mapsHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(current.delivery_address)}`;
+  // WS-4.7 — navigate to the exact stored coordinate (turn-by-turn directions);
+  // a free-text search on the address is only the fallback for legacy orders
+  // that were never geocoded.
+  const mapsHref =
+    current.delivery_lat != null && current.delivery_lng != null
+      ? directionsUrl({ lat: current.delivery_lat, lng: current.delivery_lng })
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(current.delivery_address)}`;
   const next = RIDER_NEXT_STATUS[current.status] ?? [];
 
   return (

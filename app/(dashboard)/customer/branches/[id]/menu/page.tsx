@@ -5,9 +5,10 @@ import { notFound } from "next/navigation";
 import { MenuProductCard } from "@/components/catalog/menu-product-card";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ButtonLink } from "@/components/ui/button";
 import { ApiError, getJSON } from "@/lib/api/client";
 import { requireRole } from "@/lib/auth/session";
-import { resolvedBranchIdFor } from "@/lib/services/customer-branch";
+import { browsesWithoutLocation, resolveCustomerBranch } from "@/lib/services/customer-branch";
 import { getT } from "@/lib/i18n/server";
 import { cn } from "@/lib/utils";
 import type { Branch, Category, Paginated, Product } from "@/types";
@@ -29,10 +30,16 @@ export default async function BranchMenuPage({
   const { id } = await params;
   const { cat, search } = await searchParams;
 
-  // A customer may browse any branch that covers their trusted location (Foodpanda model).
+  // A customer may browse any branch that covers their trusted location
+  // (Foodpanda model). WS-8.14 — with NO usable location at all, browsing is
+  // open like the public homepage (any active branch's menu), and the location
+  // gate below is an invitation rather than a wall; coverage is still enforced
+  // server-side at checkout. An out-of-zone or wrong-branch request keeps the
+  // existing 404, because there the scoping is the truth, not a missing fix.
   const branchIdNum = Number(id);
-  const allowedBranchId = await resolvedBranchIdFor(me.id, branchIdNum);
-  if (allowedBranchId == null || allowedBranchId !== branchIdNum) notFound();
+  const context = await resolveCustomerBranch(me.id, branchIdNum);
+  const browsing = browsesWithoutLocation(context);
+  if (!browsing && context.branchId !== branchIdNum) notFound();
 
   let branch: Branch;
   try {
@@ -72,6 +79,23 @@ export default async function BranchMenuPage({
           </Link>
         }
       />
+
+      {/* WS-8.14 — browsing without a location: say so, and invite the fix.
+          The full location card + map picker live on the branches/addresses
+          pages; this strip mirrors the explainer there. */}
+      {browsing ? (
+        <div
+          className="mb-4 rounded-xl bg-brand-50 px-4 py-2.5 text-sm text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
+          data-testid="menu-browse-no-location"
+        >
+          {t("customer.browseNoLocation")}
+          <span className="ml-2 inline-block">
+            <ButtonLink href="/customer/addresses" size="sm" variant="outline">
+              {t("nearestBranch.setLocation")}
+            </ButtonLink>
+          </span>
+        </div>
+      ) : null}
 
       <div className="mb-4 flex flex-wrap gap-2">
         <Link href={`/customer/branches/${id}/menu`} className={chip(!cat)}>

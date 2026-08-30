@@ -4,8 +4,8 @@ import { requireApiRole } from "@/lib/auth/current-user";
 import { handle } from "@/lib/http/errors";
 import { created, pageParams, paginated } from "@/lib/http/respond";
 import { prisma } from "@/lib/db";
-import { recordExpense } from "@/lib/services/financials";
-import { dhakaDayKey } from "@/lib/utils/dates";
+import { EXPENSE_CATEGORIES, recordExpense, type ExpenseCategory } from "@/lib/services/financials";
+import { dhakaDayEndFromKey, dhakaDayKey, dhakaDayStartFromKey } from "@/lib/utils/dates";
 
 function serialize(e: {
   id: number;
@@ -36,7 +36,11 @@ function serialize(e: {
   };
 }
 
-// GET /api/accounts/expenses?branch=&category=
+// GET /api/accounts/expenses?branch=&category=&from=YYYY-MM-DD&to=YYYY-MM-DD
+//
+// WS-2.10 — the date window filters on the DHAKA business day the expense was
+// filed against (expenseDate), matching how recordExpense stores it. A category
+// outside the known list is ignored rather than silently matching nothing.
 export const GET = handle(async (req: Request) => {
   await requireApiRole("accounts", "super_admin", "management");
   const url = new URL(req.url);
@@ -44,8 +48,15 @@ export const GET = handle(async (req: Request) => {
   const where: Prisma.BranchExpenseWhereInput = {};
   const branch = url.searchParams.get("branch");
   const category = url.searchParams.get("category");
-  if (branch) where.branchId = Number(branch);
-  if (category) where.category = category;
+  if (branch && Number.isInteger(Number(branch))) where.branchId = Number(branch);
+  if (category && EXPENSE_CATEGORIES.includes(category as ExpenseCategory)) {
+    where.category = category;
+  }
+  const fromAt = dhakaDayStartFromKey(url.searchParams.get("from") ?? "");
+  const toAt = dhakaDayEndFromKey(url.searchParams.get("to") ?? "");
+  if (fromAt || toAt) {
+    where.expenseDate = { ...(fromAt ? { gte: fromAt } : {}), ...(toAt ? { lte: toAt } : {}) };
+  }
 
   const [count, items] = await Promise.all([
     prisma.branchExpense.count({ where }),

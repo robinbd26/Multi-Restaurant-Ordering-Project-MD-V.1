@@ -4,6 +4,7 @@ import { json } from "@/lib/http/respond";
 import { revalidateCatalog } from "@/lib/cache/catalog";
 import { prisma } from "@/lib/db";
 import { serializeProduct } from "@/lib/serializers";
+import { setCrossBranchProductHold } from "@/lib/services/catalog";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -15,21 +16,15 @@ export const POST = handle(async (_req: Request, ctx: Ctx) => {
   if (!Number.isSafeInteger(id) || id <= 0) {
     throw notFound(sk("errors.catalog.productNotFound"));
   }
-  const product = await prisma.product.findUnique({ where: { id } });
-  if (!product) throw notFound(sk("errors.catalog.productNotFound"));
-  await prisma.product.updateMany({ where: { name: product.name }, data: { heldByAdmin: false } });
+  // WS-8.10 — same normalized match as the hold, so releasing frees every copy
+  // the hold caught (including the case/whitespace variants).
+  const { product, branchIds } = await setCrossBranchProductHold(id, false);
   const updated = await prisma.product.findUniqueOrThrow({
     where: { id: product.id },
     include: { branch: true, category: true },
   });
   // Resuming restores ordering across every branch the hold covered.
-  const affected = await prisma.product.findMany({
-    where: { name: product.name },
-    select: { branchId: true },
-  });
-  for (const branchId of [...new Set(affected.map((p) => p.branchId))]) {
-    revalidateCatalog({ branchId });
-  }
+  for (const branchId of branchIds) revalidateCatalog({ branchId });
   revalidateCatalog({ productId: updated.id });
   return json(serializeProduct(updated));
 });

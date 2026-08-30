@@ -324,6 +324,11 @@ export function serializeOrder(o: OrderRel) {
     total_amount: decOr0(o.totalAmount, 2),
     food_notes: o.foodNotes,
     delivery_address: o.deliveryAddress,
+    // WS-4.7 — the resolved delivery coordinate (null for legacy/unresolved
+    // orders). Lets the rider navigate to the exact point instead of a
+    // free-text Maps search on the address.
+    delivery_lat: o.deliveryLat != null ? Number(o.deliveryLat) : null,
+    delivery_lng: o.deliveryLng != null ? Number(o.deliveryLng) : null,
     fulfillment_type: o.fulfillmentType,
     prep_time_snapshot: o.prepTimeSnapshot ?? null,
     // #1/#13 — immutable delivery snapshots.

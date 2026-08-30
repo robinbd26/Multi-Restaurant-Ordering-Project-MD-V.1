@@ -336,6 +336,113 @@ export async function listInventory(q: InventoryQuery, skip: number, take: numbe
   };
 }
 
+// ── WS-8.13: business growth trends ──────────────────────────────────────
+// "Business growth" did not exist as data: the analytics page had a 7-day
+// sales chart and a lifetime retention number, with no period-over-period
+// comparison, no growth percentage and no per-period repeat rate. This
+// compares the report window against the SAME number of Dhaka days
+// immediately before it — for the default monthly window that is the ~31 days
+// ending the instant the month opened (i.e. the previous month, give or take
+// the calendar's unequal month lengths), and for a custom range it is always
+// an equal-length range, so a growth % never compares 7 days against 30.
+
+/** One metric measured in this window and the equal-length window before it. */
+export interface GrowthMetric {
+  current: number;
+  previous: number;
+  /** % change vs the previous window, one decimal; null when it has no base. */
+  growth_pct: number | null;
+}
+
+export interface BusinessGrowth {
+  filter: ReportFilter;
+  /** The comparison window, as Dhaka day keys (for labelling). */
+  previousFromKey: string;
+  previousToKey: string;
+  /** Delivered-order revenue; amounts are plain decimal strings, never floats. */
+  revenue: { current: string; previous: string; growth_pct: number | null };
+  orders: GrowthMetric;
+  newCustomers: GrowthMetric;
+  /** Repeat rate INSIDE the window: customers with ≥2 orders / customers with ≥1. */
+  repeat: { ordering: number; repeat: number; rate_pct: number };
+}
+
+/** % change to one decimal. Null (not 0, not ∞) when the base window is empty. */
+const growthPct = (current: number, previous: number): number | null =>
+  previous > 0 ? Math.round(((current - previous) / previous) * 1000) / 10 : null;
+
+export async function businessGrowth(
+  filter: ReportFilter = resolveReportFilter(),
+): Promise<BusinessGrowth> {
+  // Both boundaries of `filter` are Dhaka midnights and Bangladesh runs a fixed
+  // UTC+6 with no DST, so plain millisecond arithmetic lands the previous
+  // window exactly on Dhaka day boundaries too.
+  const spanMs = filter.to.getTime() - filter.from.getTime() + 1;
+  const prevTo = new Date(filter.from.getTime() - 1);
+  const prevFrom = new Date(filter.from.getTime() - spanMs);
+  const branchOnly = filter.branchId ? { branchId: filter.branchId } : {};
+
+  const windowStats = async (gte: Date, lte: Date) => {
+    const [sales, newCustomers] = await Promise.all([
+      prisma.order.aggregate({
+        where: { status: "delivered", createdAt: { gte, lte }, ...branchOnly },
+        _count: { _all: true },
+        _sum: { totalAmount: true },
+      }),
+      // Registrations are account-level, not branch-level — same rule as the
+      // customers report, which ignores the branch filter for the same reason.
+      prisma.user.count({ where: { role: "customer", dateJoined: { gte, lte } } }),
+    ]);
+    return {
+      orders: sales._count._all,
+      revenue: sales._sum.totalAmount ?? ZERO,
+      newCustomers,
+    };
+  };
+
+  const [current, previous, perCustomer] = await Promise.all([
+    windowStats(filter.from, filter.to),
+    windowStats(prevFrom, prevTo),
+    // A cancelled order proves nothing about a customer's loyalty.
+    prisma.order.groupBy({
+      by: ["customerId"],
+      where: { status: { not: "cancelled" }, createdAt: { gte: filter.from, lte: filter.to }, ...branchOnly },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const ordering = perCustomer.length;
+  const repeat = perCustomer.filter((c) => c._count._all > 1).length;
+
+  return {
+    filter,
+    previousFromKey: dhakaDayKey(prevFrom),
+    previousToKey: dhakaDayKey(prevTo),
+    revenue: {
+      current: money(current.revenue),
+      previous: money(previous.revenue),
+      // The percentage is display-only, so a float comparison is fine here;
+      // the amounts themselves stay Decimal-derived strings.
+      growth_pct: growthPct(Number(current.revenue), Number(previous.revenue)),
+    },
+    orders: {
+      current: current.orders,
+      previous: previous.orders,
+      growth_pct: growthPct(current.orders, previous.orders),
+    },
+    newCustomers: {
+      current: current.newCustomers,
+      previous: previous.newCustomers,
+      growth_pct: growthPct(current.newCustomers, previous.newCustomers),
+    },
+    repeat: {
+      ordering,
+      repeat,
+      rate_pct: ordering ? Math.round((repeat / ordering) * 1000) / 10 : 0,
+    },
+  };
+}
+
 /** Build a management report of the given type for the given window + branch. */
 export async function buildReport(
   type: ManagementReportType,
@@ -514,25 +621,49 @@ export async function buildReport(
       };
     }
     case "products": {
+      // WS-8.12 — "most and least selling" used to iterate OrderItem only, so a
+      // product that sold NOTHING in the window — the genuinely least-selling —
+      // was simply absent, and the category dimension the requirement names was
+      // not reported at all. The catalog is now the LEFT side of the join:
+      // every live product appears (zero-sellers included, qty 0), keyed by id
+      // rather than by name so two same-named products in different branches
+      // stay distinct rows.
       const items = await prisma.orderItem.findMany({
         where: { order: { status: "delivered", createdAt: window, ...branchOnly } },
-        include: { product: true },
+        select: { productId: true, quantity: true, unitPrice: true },
       });
-      const byProduct = new Map<string, { qty: number; revenue: Prisma.Decimal }>();
+      const sold = new Map<number, { qty: number; revenue: Prisma.Decimal }>();
       for (const i of items) {
-        const name = i.product?.name ?? `#${i.productId}`;
-        const b = byProduct.get(name) ?? { qty: 0, revenue: ZERO };
+        const b = sold.get(i.productId) ?? { qty: 0, revenue: ZERO };
         b.qty += i.quantity;
         b.revenue = b.revenue.plus(i.unitPrice.mul(i.quantity));
-        byProduct.set(name, b);
+        sold.set(i.productId, b);
       }
+      // A product soft-deleted AFTER selling in the window still earned this
+      // period's revenue, so it is kept; deleted products that sold nothing are
+      // not inventory and are left out.
+      const products = await prisma.product.findMany({
+        where: {
+          ...branchOnly,
+          OR: [{ deletedAt: null }, { id: { in: [...sold.keys()] } }],
+        },
+        select: { id: true, name: true, category: { select: { name: true } } },
+      });
       return {
         key: "products",
-        columns: ["product", "qtySold", "revenue"],
-        rows: [...byProduct.entries()]
-          .sort((a, b) => b[1].qty - a[1].qty)
-          .map(([name, v]) => [name, v.qty, money(v.revenue)]),
-        moneyColumns: [2],
+        columns: ["product", "category", "qtySold", "revenue"],
+        rows: products
+          .map((p) => {
+            const s = sold.get(p.id) ?? { qty: 0, revenue: ZERO };
+            return { name: p.name, category: p.category?.name ?? "—", ...s };
+          })
+          // Best sellers first; the never-sold tail IS the least-selling list.
+          .sort(
+            (a, b) =>
+              b.qty - a.qty || Number(b.revenue.minus(a.revenue)) || a.name.localeCompare(b.name),
+          )
+          .map((r) => [r.name, r.category, r.qty, money(r.revenue)]),
+        moneyColumns: [3],
         filter,
       };
     }
@@ -701,25 +832,94 @@ export async function buildReport(
       };
     }
     case "marketing": {
-      // usedCount is the lifetime counter; the period column counts the real
-      // CouponRedemption rows inside the window, so "this month's redemptions"
-      // is answerable without rewriting history.
-      const [coupons, redeemed] = await Promise.all([
+      // WS-8.11 — this report used to list coupon counters only: Campaign was
+      // never read and the money side of marketing (Order.discountAmount) was
+      // never aggregated, so "what did campaigns achieve this period and what
+      // did the discounts cost" was unanswerable. CampaignEvent (append-only,
+      // landed with WS-7.5) is the PERIOD source of truth for engagement — the
+      // Campaign.*Count columns are lifetime counters and cannot answer a
+      // windowed report — and the coupon cost comes from the orders that
+      // actually redeemed a coupon inside the window.
+      const [campaigns, events, converted, coupons, couponOrders] = await Promise.all([
+        prisma.campaign.findMany({ orderBy: { createdAt: "desc" } }),
+        prisma.campaignEvent.groupBy({
+          by: ["campaignId", "type"],
+          where: { createdAt: window },
+          _count: { _all: true },
+        }),
+        // Conversions carry the credited order, which is where the revenue is.
+        prisma.campaignEvent.findMany({
+          where: { type: "converted", createdAt: window, orderId: { not: null } },
+          select: { campaignId: true, orderId: true },
+        }),
         prisma.coupon.findMany({ orderBy: { usedCount: "desc" } }),
-        prisma.couponRedemption.groupBy({ by: ["couponId"], where: { createdAt: window }, _count: true }),
+        // A cancelled order releases its coupon use (WS-7.2), so its discount
+        // never became a real cost and is deliberately left out.
+        prisma.order.groupBy({
+          by: ["couponId"],
+          where: { couponId: { not: null }, status: { not: "cancelled" }, createdAt: window },
+          _count: { _all: true },
+          _sum: { discountAmount: true, totalAmount: true },
+        }),
       ]);
-      const inPeriod = new Map(redeemed.map((r) => [r.couponId, r._count]));
+
+      const eventCount = new Map<string, number>();
+      for (const g of events) eventCount.set(`${g.campaignId}:${g.type}`, g._count._all);
+      const count = (campaignId: number, type: string) => eventCount.get(`${campaignId}:${type}`) ?? 0;
+
+      const orderIds = [...new Set(converted.map((e) => e.orderId as number))];
+      const orders = orderIds.length
+        ? await prisma.order.findMany({
+            where: { id: { in: orderIds } },
+            select: { id: true, totalAmount: true },
+          })
+        : [];
+      const amountByOrder = new Map(orders.map((o) => [o.id, o.totalAmount]));
+      const revenueByCampaign = new Map<number, Prisma.Decimal>();
+      for (const e of converted) {
+        const amount = e.orderId === null ? undefined : amountByOrder.get(e.orderId);
+        if (!amount) continue;
+        revenueByCampaign.set(
+          e.campaignId,
+          (revenueByCampaign.get(e.campaignId) ?? ZERO).plus(amount),
+        );
+      }
+
+      const couponStat = new Map(couponOrders.map((g) => [g.couponId, g]));
       return {
         key: "marketing",
-        columns: ["coupon", "type", "periodRedemptions", "redemptions", "maxUses"],
-        rows: coupons.map((c) => [
-          c.code,
-          c.discountType,
-          inPeriod.get(c.id) ?? 0,
-          c.usedCount,
-          c.maxUses === 0 ? "∞" : c.maxUses,
-        ]),
-        moneyColumns: [],
+        columns: ["item", "kind", "sent", "opened", "clicked", "conversions", "revenue", "discountCost"],
+        rows: [
+          ...campaigns.map((c): (string | number)[] => [
+            c.title,
+            reportKeyCell("mgmtReports.kind.campaign"),
+            count(c.id, "sent"),
+            count(c.id, "opened"),
+            count(c.id, "clicked"),
+            count(c.id, "converted"),
+            money(revenueByCampaign.get(c.id) ?? ZERO),
+            // The discount a campaign's coupon gave away is reported once, on
+            // the coupon's own row below — never double-counted here.
+            money(ZERO),
+          ]),
+          ...coupons.map((c): (string | number)[] => {
+            const stat = couponStat.get(c.id);
+            return [
+              c.code,
+              reportKeyCell("mgmtReports.kind.coupon"),
+              // Send/open/click are campaign-channel concepts; a bare coupon
+              // has none, and "0" would read as measured silence rather than
+              // "not applicable".
+              "—",
+              "—",
+              "—",
+              stat?._count._all ?? 0,
+              money(stat?._sum.totalAmount ?? ZERO),
+              money(stat?._sum.discountAmount ?? ZERO),
+            ];
+          }),
+        ],
+        moneyColumns: [6, 7],
         filter,
       };
     }

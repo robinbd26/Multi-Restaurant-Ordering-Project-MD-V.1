@@ -4,6 +4,7 @@ import { json } from "@/lib/http/respond";
 import { revalidateCatalog } from "@/lib/cache/catalog";
 import { prisma } from "@/lib/db";
 import { serializeProduct } from "@/lib/serializers";
+import { setCrossBranchProductHold } from "@/lib/services/catalog";
 import { notifyBranchManagers } from "@/lib/services/notifications";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -17,17 +18,11 @@ export const POST = handle(async (_req: Request, ctx: Ctx) => {
   if (!Number.isSafeInteger(id) || id <= 0) {
     throw notFound(sk("errors.catalog.productNotFound"));
   }
-  const product = await prisma.product.findUnique({ where: { id } });
-  if (!product) throw notFound(sk("errors.catalog.productNotFound"));
-  // Hold every same-named product across all branches (cross-branch hold).
-  await prisma.product.updateMany({ where: { name: product.name }, data: { heldByAdmin: true } });
+  // WS-8.10 — the cross-branch match is case/whitespace-insensitive (see
+  // setCrossBranchProductHold), so "beef burger " no longer escapes the hold.
+  const { product, branchIds } = await setCrossBranchProductHold(id, true);
 
   // Alert the managers of every branch that carries this product.
-  const affected = await prisma.product.findMany({
-    where: { name: product.name },
-    select: { branchId: true },
-  });
-  const branchIds = [...new Set(affected.map((p) => p.branchId))];
   for (const branchId of branchIds) {
     await notifyBranchManagers(branchId, {
       type: "catalog",
