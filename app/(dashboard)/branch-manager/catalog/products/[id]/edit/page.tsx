@@ -7,8 +7,9 @@ import { getSessionUser } from "@/lib/auth/current-user";
 import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
 import { prisma } from "@/lib/db";
-import { branchForManager, categoriesForUser } from "@/lib/selectors";
+import { branchForManager } from "@/lib/selectors";
 import { serializeCategory, serializeProduct } from "@/lib/serializers";
+import { categoriesForBranchManager } from "@/lib/services/catalog";
 import type { Category, Product } from "@/types";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -32,7 +33,12 @@ export default async function ProductEditPage({ params }: { params: Promise<{ id
   // Own-branch scope: a BM may only edit products in their assigned branch.
   if (!product || !branch || product.branchId !== branch.id) notFound();
 
-  const categories = (await categoriesForUser(me)).map(serializeCategory) as Category[];
+  // Own-branch categories only, PLUS the one this product is already filed
+  // under — a legacy global category must stay selectable, otherwise saving an
+  // untouched form would quietly strip the product's category.
+  const categories = (
+    await categoriesForBranchManager(branch.id, { keepCategoryId: product.categoryId })
+  ).map(serializeCategory) as Category[];
 
   return (
     <>
@@ -47,6 +53,7 @@ export default async function ProductEditPage({ params }: { params: Promise<{ id
       <ProductForm
         product={serializeProduct(product) as Product}
         categories={categories}
+        showCategoryScope={false}
         basePath="/branch-manager/catalog"
         categoryCreateHref="/branch-manager/catalog/categories/create"
         fixedBranch={{ id: branch.id, name: branch.name, brand_type: branch.brandType }}

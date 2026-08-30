@@ -93,6 +93,42 @@ function newAttemptKey(): string {
   return `co-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/**
+ * The field errors this form has somewhere to PUT — every name it reads back as
+ * `errors.<name>` below and renders under the matching control.
+ *
+ * The order API also rejects a checkout on inputs that are NOT controls here:
+ * the branch is derived server-side (`branch_id`), the cart lives in the cart
+ * store (`items`), and the fulfilment rail is a pair of tabs rather than a
+ * validated field (`fulfillment_type`). A message keyed to one of those would
+ * be merged into `serverErrors`, matched against no input, and displayed
+ * NOWHERE — the customer would tap "Place order" and watch nothing happen.
+ * That is reachable in normal use: a branch manager can put their branch on
+ * hold (`errors.orders.branchOnHold`) or a branch can fall outside its opening
+ * hours (`errors.orders.branchClosed`) while a full cart sits at checkout.
+ * `orphanFieldError` below routes anything unrenderable to the form-level
+ * Alert instead, so the server's own sentence is always the one shown.
+ */
+const RENDERED_FIELD_ERRORS = [
+  "lat",
+  "lng",
+  "delivery_area_id",
+  "delivery_address",
+  "payment_method",
+  "food_notes",
+  "coupon_code",
+  "reward_code",
+] as const;
+
+/** The first server message that no control on this form would display. */
+function orphanFieldError(fieldErrors: FieldErrors | null | undefined): string | null {
+  const rendered = new Set<string>(RENDERED_FIELD_ERRORS);
+  for (const [field, message] of Object.entries(fieldErrors ?? {})) {
+    if (!rendered.has(field) && message) return message;
+  }
+  return null;
+}
+
 function coordString(value: number | null | undefined): string {
   return value != null && Number.isFinite(value) ? String(value) : "";
 }
@@ -353,7 +389,9 @@ export function CheckoutForm({
         // issued for the retry, because the previous attempt did not produce an
         // order to return.
         attemptKey.current = newAttemptKey();
-        setError(result.error);
+        // A form-level error wins; otherwise fall back to the first field
+        // message this form cannot render, so a refusal is never silent.
+        setError(result.error ?? orphanFieldError(result.fieldErrors));
         return;
       }
       // Cart is cleared ONLY after a confirmed, successful order.

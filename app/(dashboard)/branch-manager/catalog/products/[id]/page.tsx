@@ -14,9 +14,11 @@ export async function generateMetadata(): Promise<Metadata> {
 /**
  * /branch-manager/catalog/products/[id] — dedicated Product View.
  * `productForManage` enforces the OWN-BRANCH restriction server-side, so a
- * manager cannot open another branch's product by guessing its id. Hold and
- * delete are super-admin-only and are therefore not offered here (and are
- * refused by the API regardless).
+ * manager cannot open another branch's product by guessing its id. Hold stays
+ * super-admin-only (and is refused by the API regardless). Delete is offered
+ * here for parity with the catalogue row actions — it is a SOFT delete, and it
+ * is withheld while the super admin holds the product, exactly as the API
+ * enforces it.
  */
 export default async function BranchManagerProductViewPage({
   params,
@@ -35,6 +37,7 @@ export default async function BranchManagerProductViewPage({
       productId={product.id}
       basePath="/branch-manager/catalog/products"
       backLabel={t("catalog.title")}
+      canDelete={!product.heldByAdmin && !product.deletedAt}
     />
   );
 }

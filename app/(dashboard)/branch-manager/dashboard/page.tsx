@@ -4,6 +4,7 @@ import { WeeklySalesChart } from "@/components/dashboard/bar-chart";
 import { DonutChart } from "@/components/dashboard/donut-chart";
 import { Icon } from "@/components/layout/icons";
 import { PageHeader } from "@/components/layout/page-header";
+import { BranchHoldControl } from "@/components/branch/branch-hold-control";
 import { LiveOperationsBoard } from "@/components/branch/live-operations-board";
 import { OrderTable } from "@/components/orders/order-table";
 import { ButtonLink } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { ChipRow, StatChip } from "@/components/ui/stat-chip";
 import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
+import { branchHoldStateById } from "@/lib/services/branch-ops";
 import { branchManagerDashboard } from "@/lib/services/dashboards";
 import type { BranchManagerDashboard } from "@/types";
 
@@ -48,13 +50,22 @@ export default async function BranchManagerDashboardPage() {
   const riders = data.riders ?? { total: 0, on_duty: 0, off_duty: 0 };
   const pending = breakdown.pending + breakdown.accepted;
 
+  // "Hold Orders" state for THIS manager's branch (the branch itself was
+  // resolved from the session by branchManagerDashboard, so no id is trusted
+  // from the request). A read failure degrades to "no hold controls" rather
+  // than taking the whole dashboard down.
+  const hold = await branchHoldStateById(data.branch.id).catch(() => null);
+
   return (
     <>
       <PageHeader
         title={data.branch.name}
         subtitle={data.branch.address}
         action={
-          <span className="flex gap-2">
+          <span className="flex flex-wrap items-center gap-2">
+            {/* The client pointed at the header strip for this control, so it
+                sits FIRST — the most prominent action on the page. */}
+            {hold ? <BranchHoldControl isOnHold={hold.is_on_hold} /> : null}
             <ButtonLink href="/branch-manager/catalog" variant="outline">
               {t("nav.catalog")}
             </ButtonLink>
@@ -62,6 +73,45 @@ export default async function BranchManagerDashboardPage() {
           </span>
         }
       />
+
+      {/* While the branch is held the state has to be UNMISSABLE — a full-width
+          banner above everything, saying what is and is not affected. Orders
+          already in progress keep running; only new intake stops. */}
+      {hold?.is_on_hold ? (
+        <div
+          className="mb-4.5 rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:ring-amber-500/25"
+          role="status"
+          data-testid="branch-hold-banner"
+        >
+          <p className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-200">
+            <Icon name="clock" className="size-4.5" />
+            {t("branchHold.bannerTitle")}
+          </p>
+          <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">{t("branchHold.bannerDesc")}</p>
+          {hold.hold_started_at ? (
+            <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">
+              {t("branchHold.startedAt", { when: fmt.dateTime(hold.hold_started_at) })}
+              {hold.hold_started_by ? ` · ${t("branchHold.startedBy", { name: hold.hold_started_by })}` : ""}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* The super admin's hold is a SEPARATE state that a manager cannot lift.
+          Called out on its own so "I released my hold and orders still fail"
+          never looks like a bug. */}
+      {hold?.admin_hold ? (
+        <div
+          className="mb-4.5 rounded-xl bg-red-50 px-4 py-3 text-sm ring-1 ring-red-200 dark:bg-red-500/10 dark:ring-red-500/25"
+          role="status"
+          data-testid="branch-admin-hold-banner"
+        >
+          <p className="font-semibold text-red-700 dark:text-red-300">{t("branchHold.adminHoldTitle")}</p>
+          <p className="mt-1 text-red-700/90 dark:text-red-300/90">
+            {hold.admin_hold_reason || t("branchHold.adminHoldDesc")}
+          </p>
+        </div>
+      ) : null}
 
       {/* PHASE I/D — live operational board. Polls a small JSON snapshot every
           2 seconds and swaps the numbers in place; the page is never reloaded. */}
@@ -95,6 +145,18 @@ export default async function BranchManagerDashboardPage() {
                 <Badge tone="green">{t("common.active")}</Badge>
               ) : (
                 <Badge tone="red">{t("common.inactive")}</Badge>
+              )}
+            </p>
+          </div>
+          {/* Order intake is its OWN column: `is_active` above is the super
+              admin's hold, this is the manager's. Two states, never merged. */}
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{t("branchHold.statusLabel")}</p>
+            <p className="mt-0.5" data-testid="bm-branch-intake">
+              {hold?.is_on_hold ? (
+                <Badge tone="amber">{t("branchHold.badgeOnHold")}</Badge>
+              ) : (
+                <Badge tone="green">{t("branchHold.accepting")}</Badge>
               )}
             </p>
           </div>

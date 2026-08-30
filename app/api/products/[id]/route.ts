@@ -88,9 +88,11 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   return json(serializeProduct(product));
 });
 
-// DELETE /api/products/[id] — SUPER ADMIN ONLY (req #4). Soft delete: keeps
-// historical OrderItem / FoodReview rows intact, hides the product everywhere.
-// Branch managers + all other roles are rejected server-side (403).
+// DELETE /api/products/[id] — super admin (any branch) or the ASSIGNED branch
+// manager (own branch, and not while the product is on an admin hold). Soft
+// delete: keeps historical OrderItem / FoodReview rows intact and hides the
+// product everywhere. Scope + role are decided in softDeleteProduct, so every
+// other role and every cross-branch attempt is rejected server-side (403).
 export const DELETE = handle(async (_req: Request, ctx: Ctx) => {
   const me = await requireApproved();
   const params = await ctx.params;

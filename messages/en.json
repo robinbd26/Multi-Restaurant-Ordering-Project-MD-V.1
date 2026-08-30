@@ -315,7 +315,22 @@
     "permanentAddress": "Permanent Address",
     "nidFront": "NID Front Image",
     "nidBack": "NID Back Image",
-    "licenseImage": "License Image"
+    "licenseImage": "License Image",
+    "usernameAutoHint": "Created from your name — you can change it.",
+    "usernameChecking": "Checking availability…",
+    "usernameSuggestedIs": "Suggested username: {username}",
+    "usernameUseSuggested": "Use {username} instead",
+    "suggestPassword": "Suggest a strong password",
+    "suggestAnotherPassword": "Suggest another",
+    "suggestPasswordHint": "We'll create one and fill both password boxes.",
+    "copyPassword": "Copy password",
+    "passwordFilled": "Filled into both password boxes. Save it somewhere safe before you continue.",
+    "passwordCopied": "Password copied. Save it somewhere safe.",
+    "passwordCopyFailed": "Could not copy automatically — select the password and copy it yourself.",
+    "passwordWeak": "Weak",
+    "passwordFair": "Fair",
+    "passwordGood": "Good",
+    "passwordStrong": "Strong"
   },
   "home": {
     "header": {
@@ -1635,7 +1650,8 @@
       "branchChanged": "Your nearest delivery branch has changed. Some products in your cart do not belong to it — please review your cart.",
       "notFound": "Order not found.",
       "invalidQuantity": "Quantity must be a whole number between {min} and {max}.",
-      "invalidPaymentMethod": "That payment method is not available."
+      "invalidPaymentMethod": "That payment method is not available.",
+      "branchOnHold": "This branch has paused taking new orders. Please try again shortly."
     },
     "catalog": {
       "onlyAssignedManagerCanModifyCatalog": "Only the assigned branch manager can modify the catalog.",
@@ -1679,7 +1695,14 @@
       "variationTypeRequired": "Please choose a product variation type.",
       "variationTypeInvalid": "Invalid product variation type.",
       "categoryAlreadyInState": "This category is already in that state.",
-      "productNotYourDeliveryBranch": "This product does not belong to your delivery branch."
+      "productNotYourDeliveryBranch": "This product does not belong to your delivery branch.",
+      "cannotDeleteHeldProduct": "This product is on a super admin hold and cannot be deleted. Ask the Super Admin to release the hold first."
+    },
+    "branchHold": {
+      "reasonRequired": "A reason is required to take this branch off hold.",
+      "reasonTooLong": "The reason must be {max} characters or fewer.",
+      "notOnHold": "This branch is not on hold.",
+      "branchArchived": "An archived branch cannot be put on hold."
     },
     "money": {
       "selectValidDecision": "Select a valid decision.",
@@ -3582,6 +3605,26 @@
     "branchType": "Branch type",
     "deliveryAreas": "Delivery areas",
     "archived": "Archived"
+  },
+  "branchHold": {
+    "holdOrders": "Hold Orders",
+    "resumeOrders": "Resume Orders",
+    "confirmTitle": "Are you sure you want to put this branch on hold?",
+    "confirmDesc": "While on hold this branch will stop accepting new orders. Orders already in progress will continue as normal.",
+    "confirmLabel": "Yes, hold orders",
+    "releaseTitle": "Resume taking orders?",
+    "releaseDesc": "Write why this branch was put on hold. The reason is required and is saved to the branch's audit record.",
+    "releaseLabel": "Resume orders",
+    "reasonPlaceholder": "Why was this branch put on hold?",
+    "bannerTitle": "New orders are on hold",
+    "bannerDesc": "This branch is not accepting new orders. Orders already in progress continue as normal.",
+    "startedAt": "On hold since {when}",
+    "startedBy": "Held by {name}",
+    "adminHoldTitle": "Branch operations are held by the super admin",
+    "adminHoldDesc": "Only a super admin can lift this hold. Releasing your own hold will not restore orders.",
+    "statusLabel": "Order intake",
+    "badgeOnHold": "On hold",
+    "accepting": "Accepting orders"
   },
   "categories": {
     "deleteTitle": "Delete category",

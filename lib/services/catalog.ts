@@ -54,20 +54,33 @@ export async function productForManage(user: User, productId: number) {
 }
 
 /**
- * Super-admin soft delete (req #4). Only the super admin may delete a product;
- * branch managers and every other role are rejected. Because OrderItem +
- * FoodReview rows reference the product, a hard delete would break historical
- * orders — so we set deletedAt (+ actor) and force isAvailable=false, which
- * hides the product from every catalog list and blocks new orders while all
- * historical rows keep resolving. Idempotent: re-deleting a deleted product is
- * a no-op. The user-facing action still says "Delete".
+ * Soft delete a product (req #4).
+ *
+ * WHO — the super admin (any branch) and the ASSIGNED branch manager (own
+ * branch only). The manager was previously refused outright; the branch
+ * catalogue now offers Delete as a row action, so the permission is widened by
+ * exactly one role and no further. `productForManage` is the IDOR guard: it
+ * 404s an unknown id and 403s both a foreign branch and every other role, so
+ * a manager can still never reach another branch's product. A product the
+ * super admin has HELD stays untouchable for a manager — otherwise "delete"
+ * would become a way around the hold.
+ *
+ * WHY IT IS NOT A HARD DELETE — same verdict as archiveOrDeleteCoupon in
+ * lib/services/marketing.ts. OrderItem.productId and FoodReview.productId are
+ * REQUIRED relations, so the database refuses to remove any product that has
+ * ever been ordered or reviewed. OrderItem's snapshot (productName/productImage)
+ * only preserves the LABEL — the serializer still falls back to the relation for
+ * rows written before those columns existed, and the reporting joins resolve the
+ * product row itself. So we set deletedAt (+ actor) and force isAvailable=false,
+ * which hides the product from every catalog list and blocks new orders while
+ * all historical rows keep resolving. Idempotent: re-deleting a deleted product
+ * is a no-op. The user-facing action still says "Delete".
  */
 export async function softDeleteProduct(user: User, productId: number): Promise<Product> {
-  if (user.role !== "super_admin") {
-    throw forbidden(sk("errors.catalog.onlyAdminCanDeleteProduct"));
+  const product = await productForManage(user, productId);
+  if (user.role === "branch_manager" && product.heldByAdmin) {
+    throw forbidden(sk("errors.catalog.cannotDeleteHeldProduct"));
   }
-  const product = await prisma.product.findUnique({ where: { id: productId } });
-  if (!product) throw notFound(sk("errors.catalog.productNotFound"));
   if (product.deletedAt) return product; // already deleted — idempotent
   const deleted = await prisma.product.update({
     where: { id: productId },
@@ -121,6 +134,46 @@ export async function assertCategoryUsableInBranch(categoryId: number, branchId:
     throw validationError({ category: sk("errors.catalog.categoryInactive") });
   }
   return category;
+}
+
+/**
+ * The categories a BRANCH MANAGER is OFFERED in the branch dashboard.
+ *
+ * Deliberately NARROWER than assertCategoryUsableInBranch above: a manager is
+ * shown only the categories the super admin created FOR THEIR BRANCH. Global
+ * (branchId null) categories remain perfectly legal on a product — the write
+ * path is unchanged and stays exactly as strict — they are simply no longer
+ * SURFACED to a manager, who has no way to tell a deliberate "Main Branch
+ * (Global)" entry from platform-wide noise. Nothing here is reachable from the
+ * Super Admin views, which keep using categoriesForUser (own + global).
+ */
+export function managerCategoryWhere(branchId: number): Prisma.CategoryWhereInput {
+  return { branchId, isActive: true };
+}
+
+/**
+ * Load that scope for a branch's dashboard, with a product count scoped to the
+ * same branch (so a shared category never reports another branch's totals).
+ *
+ * `keepCategoryId` re-admits ONE otherwise out-of-scope category: the one a
+ * product is ALREADY filed under. Without it, opening the edit form for a
+ * product that sits in a global category would render a select with nothing
+ * selected, and saving would silently move that product to "no category".
+ */
+export async function categoriesForBranchManager(
+  branchId: number,
+  opts: { keepCategoryId?: number | null } = {},
+) {
+  const scope = managerCategoryWhere(branchId);
+  const keep = opts.keepCategoryId;
+  return prisma.category.findMany({
+    where: keep != null ? { OR: [scope, { id: keep }] } : scope,
+    include: {
+      branch: true,
+      _count: { select: { products: { where: { branchId, deletedAt: null } } } },
+    },
+    orderBy: { name: "asc" },
+  });
 }
 
 // ── Category CRUD — SUPER ADMIN ONLY (req #7) ───────────────────────────

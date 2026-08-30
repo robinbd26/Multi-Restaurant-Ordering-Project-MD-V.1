@@ -68,10 +68,11 @@ function resolveCrustChoice(policy: string, submitted: string | undefined): stri
  * products + trusted coordinates, IGNORING any client-submitted branch_id (the
  * browser can never force a branch). The catalog is branch-specific, so the only
  * branch that can serve the cart is the one its products belong to; that branch
- * must be active, not archived, and cover the coordinates. Among branches that
- * could serve the cart it is (trivially) the nearest — computed deterministically
- * with a stable id tiebreak so equal distances resolve consistently. Throws a
- * translated error when no eligible branch can serve the cart.
+ * must be active, not archived, NOT ON A BRANCH-MANAGER HOLD, and cover the
+ * coordinates. Among branches that could serve the cart it is (trivially) the
+ * nearest — computed deterministically with a stable id tiebreak so equal
+ * distances resolve consistently. Throws a translated error when no eligible
+ * branch can serve the cart.
  */
 export async function resolveDeliveryBranch(
   productIds: number[],
@@ -99,6 +100,12 @@ export async function resolveDeliveryBranch(
   // "no branch covers you" (§17). Hours are enforced server-side — the client's
   // open/closed chip is display-only and never trusted here (§20).
   let anyCoveredButClosed = false;
+  // Same treatment for a branch its MANAGER has put on hold: it is excluded
+  // from the nearest-branch race here rather than at the end of checkout, so
+  // the customer is told "this branch paused new orders" up front instead of
+  // hitting a confusing generic failure on the last step. A held branch stays
+  // visible in the catalogue — only order INTAKE stops.
+  let anyCoveredButHeld = false;
   // WS-4.8 — every candidate's zones in ONE query; this used to be a findMany
   // per branch inside the loop, i.e. an N+1 on every order placement.
   const zones = await prisma.branchDeliveryZone.findMany({
@@ -113,6 +120,13 @@ export async function resolveDeliveryBranch(
   for (const b of candidates) {
     if (b.latitude == null || b.longitude == null) continue;
     if (!coverageFor(b, zonesByBranch.get(b.id) ?? [], coords).covered) continue;
+    // Checked BEFORE the hours gate: a manager's hold is a deliberate, current
+    // decision, so it is the more accurate thing to tell the customer when a
+    // branch is both held and outside its opening hours.
+    if (b.isOnHold) {
+      anyCoveredButHeld = true;
+      continue;
+    }
     if (!isBranchOpenNow(b).orderable) {
       anyCoveredButClosed = true;
       continue;
@@ -121,6 +135,7 @@ export async function resolveDeliveryBranch(
   }
   eligible.sort((a, z) => a.dist - z.dist || a.branch.id - z.branch.id);
   if (eligible.length === 0) {
+    if (anyCoveredButHeld) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
     if (anyCoveredButClosed) throw validationError({ branch_id: sk("errors.orders.branchClosed") });
     throw validationError({ delivery_address: sk("errors.orders.noEligibleBranch") });
   }
@@ -276,9 +291,15 @@ function deliveryChargeFor(
 
 /**
  * Resolve the delivery/pickup branch for a cart (shared by createOrder + quote):
- * pickup uses the explicit branch (must be active, not archived, pickup-enabled);
- * delivery derives the branch server-side from the cart + trusted coordinates
- * (client branch_id ignored — #20). Also validates coordinates for delivery.
+ * pickup uses the explicit branch (must be active, not archived, not on a
+ * branch-manager hold, pickup-enabled); delivery derives the branch server-side
+ * from the cart + trusted coordinates (client branch_id ignored — #20). Also
+ * validates coordinates for delivery.
+ *
+ * THE HOLD CHOKE POINT: every order-creating path (`createOrder`, and through
+ * it POST /api/orders and the reorder route) and the checkout quote go through
+ * here, so a held branch is refused ONCE, server-side, for all of them — the
+ * dashboard control is a convenience, never the enforcement.
  */
 async function resolveBranchForCart(input: {
   branchId: number;
@@ -294,6 +315,10 @@ async function resolveBranchForCart(input: {
       where: { id: input.branchId, isActive: true, isArchived: false },
     });
     if (!picked) throw validationError({ branch_id: sk("errors.orders.branchNotFoundOrClosed") });
+    // A branch its MANAGER has put on hold takes no new order on ANY rail —
+    // pickup is an order too, so the gate lives here beside the hours check
+    // rather than only on the delivery path.
+    if (picked.isOnHold) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
     // A branch outside its opening hours cannot take a pickup order either (§17).
     if (!isBranchOpenNow(picked).orderable) throw validationError({ branch_id: sk("errors.orders.branchClosed") });
     if (!picked.pickupEnabled) throw validationError({ fulfillment_type: sk("errors.orders.pickupUnavailable") });

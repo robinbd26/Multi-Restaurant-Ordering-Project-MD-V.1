@@ -6,16 +6,15 @@ import { usePathname } from "next/navigation";
 
 import { DashboardBrand } from "@/components/layout/dashboard-brand";
 import { Icon } from "@/components/layout/icons";
-import { ROLE_NAV, SUPPORT_PHONE, type NavItem } from "@/lib/constants";
+import { ROLE_NAV, type NavItem } from "@/lib/constants";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/types";
 
 /**
  * Dashboard sidebar — ported from static_design/Branch-manager_dashboard.html
- * (.sidebar / .brand-row / .hotline-pill / .nav-group-label / .nav-item):
- * 264px rail, sticky full height, brand row, hotline pill, then nav grouped
- * under section headings.
+ * (.sidebar / .brand-row / .nav-group-label / .nav-item): 264px rail, sticky
+ * full height, brand row, then nav grouped under section headings.
  *
  * Deviations from the mockup, all deliberate:
  *  1. The mockup's helmet-orange accent is mapped to the MAD brand red for
@@ -23,6 +22,11 @@ import type { Role } from "@/types";
  *     DashboardBrand).
  *  2. The .sidebar-foot profile card is dropped — the topbar owns the user
  *     menu, and duplicating it was explicitly not wanted.
+ *  3. The .hotline-pill is dropped. Staff do not phone their own support line,
+ *     so it was rail space spent on nothing. It stays on the PUBLIC site
+ *     (components/home/Header.tsx) and on the customer/rider support pages,
+ *     where the requirement "the helpline number is clearly visible" applies.
+ *     SUPPORT_PHONE therefore remains in lib/constants.
  *
  * Sections come from NavItem.group, so each role keeps its own nav (ROLE_NAV)
  * while sharing the mockup's structure.
@@ -128,17 +132,6 @@ function NavLinks({ role, onNavigate }: { role: Role; onNavigate?: () => void })
   );
 }
 
-/** .hotline-pill — the support number, straight from the shared constant. */
-function HotlinePill() {
-  const { t } = useTranslation();
-  return (
-    <div className="mx-5 mb-4.5 flex items-center gap-2 rounded-[10px] border border-red-500/28 bg-red-500/12 px-3 py-2.25 text-[12.5px] font-semibold text-red-300">
-      <Icon name="phone" className="size-3.5 text-red-400" />
-      {t("common.hotline", { phone: SUPPORT_PHONE })}
-    </div>
-  );
-}
-
 export function Sidebar({
   role,
   open,
@@ -196,7 +189,6 @@ export function Sidebar({
           </button>
         </div>
 
-        <HotlinePill />
         <NavLinks role={role} onNavigate={onClose} />
       </aside>
     </>

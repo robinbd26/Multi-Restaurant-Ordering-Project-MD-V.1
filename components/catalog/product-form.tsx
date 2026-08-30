@@ -105,6 +105,7 @@ export function ProductForm({
   basePath,
   branches,
   fixedBranch,
+  showCategoryScope = true,
 }: {
   product?: Product;
   categories: Category[];
@@ -118,6 +119,13 @@ export function ProductForm({
    * category" empty-state was removed (req #10) so it is no longer rendered.
    */
   categoryCreateHref?: string;
+  /**
+   * Whether an option may be annotated with its scope (" · Global"). The Super
+   * Admin picks categories across every branch and needs that label; the Branch
+   * Manager is only offered their own branch's categories, so the suffix would
+   * be noise there (and is switched off by the branch-manager pages).
+   */
+  showCategoryScope?: boolean;
 }) {
   const { t, fmt } = useTranslation();
   const action = saveProductAction.bind(null, product?.id ?? null, basePath);
@@ -458,7 +466,7 @@ export function ProductForm({
                   {branchCategories.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
-                      {c.is_global ? ` · ${t("catalog.globalCategory")}` : ""}
+                      {showCategoryScope && c.is_global ? ` · ${t("catalog.globalCategory")}` : ""}
                     </option>
                   ))}
                 </Select>

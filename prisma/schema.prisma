@@ -694,6 +694,31 @@ model Branch {
   isArchived        Boolean   @default(false)
   archivedAt        DateTime?
   archivedById      Int?
+  // ── BRANCH-MANAGER ORDER HOLD ─────────────────────────────────────────
+  // DELIBERATELY SEPARATE STATE from isActive/holdReason above, which are the
+  // SUPER ADMIN's hold. Sharing one flag would let a branch manager release a
+  // hold the super admin imposed — a privilege escalation. The two gates are
+  // therefore evaluated independently everywhere (lib/services/orders.ts), so
+  // an admin hold OUTRANKS and SURVIVES a manager's release: taking the branch
+  // off manager hold clears ONLY isOnHold and never touches isActive.
+  //
+  // Scope of the hold: the branch STOPS ACCEPTING NEW ORDERS. It is not hidden
+  // from customers and orders already in progress keep moving to completion —
+  // creation is blocked, live deliveries are not cancelled.
+  //
+  // All columns are additive + defaulted, so existing rows migrate untouched
+  // (an existing branch is simply not on a manager hold).
+  isOnHold          Boolean   @default(false)
+  holdStartedAt     DateTime?
+  // Raw actor ids (no relation), matching archivedById above.
+  holdStartedById   Int?
+  // The reason is captured on RELEASE, not on entry — the client's explicit
+  // spec: no reason is needed to start a hold, but the manager MUST explain
+  // why the branch was held before orders resume. Kept after release so the
+  // start/release pair stays a complete audit record on the row itself.
+  holdReleaseReason String    @default("")
+  holdReleasedAt    DateTime?
+  holdReleasedById  Int?
   openingTime       String? // "HH:MM"
   closingTime       String? // "HH:MM"
   logo              String?

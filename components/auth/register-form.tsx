@@ -1,7 +1,9 @@
 "use client";
 
-import { useActionState, useMemo } from "react";
+import { useActionState, useCallback, useMemo, useRef, useState, type ChangeEvent } from "react";
 
+import { PasswordStrengthMeter, PasswordSuggestion } from "@/components/auth/password-suggestion";
+import { UsernameField } from "@/components/auth/username-field";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/forms/password-input";
@@ -32,6 +34,39 @@ export function RegisterForm({
   const action = registerAction.bind(null, rolePath);
   const [state, formAction, pending] = useActionState(action, initialState);
   const { t } = useTranslation();
+
+  const formRef = useRef<HTMLFormElement>(null);
+  /** Mirrors of the two name boxes — the username suggestion derives from them. */
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  /**
+   * Mirror of the password box, read by the strength meter only. The input
+   * itself stays UNCONTROLLED so browser autofill and password managers keep
+   * behaving exactly as they did before this field grew a meter.
+   */
+  const [passwordValue, setPasswordValue] = useState("");
+
+  /**
+   * Accept a suggested password into BOTH boxes.
+   *
+   * The inputs are uncontrolled, so the value is written through the native
+   * setter and an `input` event is dispatched by hand: React's value tracker
+   * would otherwise treat `el.value = …` as "nothing changed" and swallow the
+   * event, and useFormValidation's onChange — the thing that clears the stale
+   * "passwords do not match" error — would never run.
+   */
+  const acceptPassword = useCallback((password: string) => {
+    const form = formRef.current;
+    if (!form) return;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    for (const name of ["password", "password_confirm"]) {
+      const el = form.elements.namedItem(name);
+      if (!(el instanceof HTMLInputElement)) continue;
+      setValue?.call(el, password);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    setPasswordValue(password);
+  }, []);
 
   const RULES: FieldRules = useMemo(
     () => ({
@@ -65,22 +100,34 @@ export function RegisterForm({
   });
 
   return (
-    <form action={formAction} {...formProps} className="space-y-4">
+    <form ref={formRef} action={formAction} {...formProps} className="space-y-4">
       <Alert tone="error" message={state.error} />
 
       <div className="grid gap-4 sm:grid-cols-2">
+        {/* The two name boxes stay uncontrolled; `onChange` only mirrors them
+            out so UsernameField can derive a suggestion from what is typed. */}
         <Field label={t("auth.firstName")} required error={errors.first_name}>
-          <Input name="first_name" required aria-invalid={!!errors.first_name} placeholder={t("register.firstNamePlaceholder")} />
+          <Input
+            name="first_name"
+            required
+            aria-invalid={!!errors.first_name}
+            placeholder={t("register.firstNamePlaceholder")}
+            onChange={(event: ChangeEvent<HTMLInputElement>) => setFirstName(event.target.value)}
+          />
         </Field>
         <Field label={t("auth.lastName")} required error={errors.last_name}>
-          <Input name="last_name" required aria-invalid={!!errors.last_name} placeholder={t("register.lastNamePlaceholder")} />
+          <Input
+            name="last_name"
+            required
+            aria-invalid={!!errors.last_name}
+            placeholder={t("register.lastNamePlaceholder")}
+            onChange={(event: ChangeEvent<HTMLInputElement>) => setLastName(event.target.value)}
+          />
         </Field>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t("auth.usernameLabel")} required error={errors.username}>
-          <Input name="username" required aria-invalid={!!errors.username} autoComplete="username" placeholder="username" />
-        </Field>
+        <UsernameField firstName={firstName} lastName={lastName} error={errors.username} />
         <Field label={t("register.phoneNumber")} required hint={t("auth.phoneHint")} error={errors.phone}>
           <Input name="phone" required aria-invalid={!!errors.phone} placeholder="01XXXXXXXXX" />
         </Field>
@@ -145,12 +192,21 @@ export function RegisterForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t("auth.passwordLabel")} required hint={t("auth.passwordHint")} error={errors.password}>
-          <PasswordInput name="password" required aria-invalid={!!errors.password} autoComplete="new-password" />
+          <PasswordInput
+            name="password"
+            required
+            aria-invalid={!!errors.password}
+            autoComplete="new-password"
+            onChange={(event: ChangeEvent<HTMLInputElement>) => setPasswordValue(event.target.value)}
+          />
+          <PasswordStrengthMeter value={passwordValue} />
         </Field>
         <Field label={t("auth.confirmPassword")} required error={errors.password_confirm}>
           <PasswordInput name="password_confirm" required aria-invalid={!!errors.password_confirm} autoComplete="new-password" />
         </Field>
       </div>
+
+      <PasswordSuggestion onAccept={acceptPassword} />
 
       <Button type="submit" size="lg" className="w-full" disabled={pending}>
         {pending ? <Spinner className="size-4 border-white/40 border-t-white" /> : null}

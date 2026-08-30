@@ -2,10 +2,12 @@ import "server-only";
 import type { Prisma, User } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
-import { forbidden, notFound, sk, validationError } from "@/lib/http/errors";
+import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { branchForManager } from "@/lib/selectors";
 import { midnight } from "@/lib/utils/dates";
+import { resolveConfigurableBranch } from "@/lib/services/branches";
 import { createNotification, notifyUsers, notifyBranchManagers } from "@/lib/services/notifications";
+import { LIMITS } from "@/lib/validation/limits";
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -94,6 +96,199 @@ export async function assertManagesBranch(user: User, branchId: number) {
     return;
   }
   throw forbidden(sk("errors.ops.noBranchAssigned"));
+}
+
+// ── Branch-manager ORDER HOLD ───────────────────────────────────────────
+/**
+ * "Hold Orders" — a branch manager pauses NEW order intake for their own
+ * branch. Confirmed with a dialog, entered with no reason; the REQUIRED reason
+ * is collected when the hold is RELEASED (the client's explicit spec), so the
+ * pair start→release lands on one complete audit record.
+ *
+ * WHY THIS IS NOT `isActive`/`holdReason` (the two columns that already exist):
+ * those are the SUPER ADMIN's hold. If the manager's hold shared them, a
+ * manager releasing their own hold would also lift an admin's — a privilege
+ * escalation, and the admin's decision would silently disappear. `isOnHold`
+ * is therefore its own state and the two gates are checked independently
+ * (see lib/services/orders.ts): an admin hold OUTRANKS and SURVIVES a
+ * manager's release.
+ *
+ * Scope: creation is blocked, nothing else. The branch is NOT hidden from
+ * customers and orders already in progress keep moving to completion.
+ */
+
+/** A release reason is free text; same bound as every other long note. */
+export const MAX_HOLD_REASON_LENGTH = LIMITS.longTextMax;
+
+/** The Branch columns the hold surfaces need — nothing else is read. */
+const HOLD_SELECT = {
+  id: true,
+  name: true,
+  isOnHold: true,
+  holdStartedAt: true,
+  holdStartedById: true,
+  holdReleaseReason: true,
+  holdReleasedAt: true,
+  holdReleasedById: true,
+  isActive: true,
+  holdReason: true,
+  isArchived: true,
+} satisfies Prisma.BranchSelect;
+
+type HoldRow = Prisma.BranchGetPayload<{ select: typeof HOLD_SELECT }>;
+
+/** Display name for an actor id, or "" when the user is gone/unset. */
+async function actorName(userId: number | null): Promise<string> {
+  if (userId == null) return "";
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { firstName: true, lastName: true, username: true },
+  });
+  if (!user) return "";
+  return `${user.firstName} ${user.lastName}`.trim() || user.username;
+}
+
+/**
+ * The hold state of a branch, as the dashboard reads it.
+ *
+ * `admin_hold` is reported alongside the manager's own hold so the UI can
+ * explain why releasing a manager hold may still leave the branch unable to
+ * take orders, instead of looking broken.
+ */
+export interface BranchHoldState {
+  branch_id: number;
+  branch_name: string;
+  is_on_hold: boolean;
+  hold_started_at: string | null;
+  hold_started_by: string;
+  hold_release_reason: string;
+  hold_released_at: string | null;
+  admin_hold: boolean;
+  admin_hold_reason: string;
+  is_archived: boolean;
+}
+
+async function serializeHold(branch: HoldRow): Promise<BranchHoldState> {
+  return {
+    branch_id: branch.id,
+    branch_name: branch.name,
+    is_on_hold: branch.isOnHold,
+    hold_started_at: branch.holdStartedAt?.toISOString() ?? null,
+    hold_started_by: await actorName(branch.holdStartedById),
+    hold_release_reason: branch.holdReleaseReason,
+    hold_released_at: branch.holdReleasedAt?.toISOString() ?? null,
+    // The super admin's INDEPENDENT hold — reported, never writable from here.
+    admin_hold: !branch.isActive,
+    admin_hold_reason: branch.holdReason,
+    is_archived: branch.isArchived,
+  };
+}
+
+/**
+ * Hold state by branch id, for a caller that has ALREADY established the branch
+ * is theirs (the branch-manager dashboard, whose branch is server-resolved from
+ * the session). Returns null instead of throwing when the branch has gone, so a
+ * dashboard degrades to "no hold controls" rather than to an error page.
+ */
+export async function branchHoldStateById(branchId: number): Promise<BranchHoldState | null> {
+  const row = await prisma.branch.findUnique({ where: { id: branchId }, select: HOLD_SELECT });
+  return row ? serializeHold(row) : null;
+}
+
+/** Read the hold state of a branch the actor may configure (IDOR-safe). */
+export async function branchHoldState(user: User, submittedBranchId?: number): Promise<BranchHoldState> {
+  // Authorization is resolveConfigurableBranch's job: a branch_manager always
+  // gets their OWN branch and a submitted foreign id is a 403; a super_admin
+  // must name the branch. Every other role is forbidden.
+  const branch = await resolveConfigurableBranch(user, submittedBranchId);
+  const row = await prisma.branch.findUniqueOrThrow({ where: { id: branch.id }, select: HOLD_SELECT });
+  return serializeHold(row);
+}
+
+/**
+ * Put the branch on hold. No reason is required to ENTER the hold.
+ *
+ * Idempotent: a double-tapped confirmation leaves the ORIGINAL holdStartedAt /
+ * holdStartedById intact rather than rewriting who started the hold and when.
+ * The guarded `updateMany` makes that atomic, so two simultaneous requests
+ * cannot both count as "the one that started it".
+ */
+export async function holdBranchOrders(user: User, submittedBranchId?: number): Promise<BranchHoldState> {
+  const branch = await resolveConfigurableBranch(user, submittedBranchId);
+  if (branch.isArchived) throw conflict(sk("errors.branchHold.branchArchived"));
+
+  const started = await prisma.branch.updateMany({
+    where: { id: branch.id, isOnHold: false },
+    data: {
+      isOnHold: true,
+      holdStartedAt: new Date(),
+      holdStartedById: user.id,
+      // A new hold window starts clean — the previous window's release reason
+      // belongs to that window and must not be read as this one's.
+      holdReleaseReason: "",
+      holdReleasedAt: null,
+      holdReleasedById: null,
+    },
+  });
+
+  if (started.count > 0) {
+    await prisma.managerActivityLog.create({
+      data: {
+        managerId: user.id,
+        branchId: branch.id,
+        activityType: "action",
+        description: `Held new orders for branch "${branch.name}"`,
+      },
+    });
+  }
+  const row = await prisma.branch.findUniqueOrThrow({ where: { id: branch.id }, select: HOLD_SELECT });
+  return serializeHold(row);
+}
+
+/**
+ * Take the branch off hold. The reason is REQUIRED here (not when the hold
+ * started) and is validated server-side — a UI that forgets to collect it is
+ * rejected with a field error on `hold_release_reason`, never silently accepted.
+ *
+ * Clears ONLY `isOnHold`. `isActive` (the super admin's hold) is deliberately
+ * untouched, so a manager can never release an admin's hold.
+ */
+export async function releaseBranchHold(
+  user: User,
+  rawReason: unknown,
+  submittedBranchId?: number,
+): Promise<BranchHoldState> {
+  const branch = await resolveConfigurableBranch(user, submittedBranchId);
+  const reason = String(rawReason ?? "").trim();
+  if (!reason) throw validationError({ hold_release_reason: sk("errors.branchHold.reasonRequired") });
+  if (reason.length > MAX_HOLD_REASON_LENGTH) {
+    throw validationError({
+      hold_release_reason: sk("errors.branchHold.reasonTooLong", { max: MAX_HOLD_REASON_LENGTH }),
+    });
+  }
+
+  const released = await prisma.branch.updateMany({
+    where: { id: branch.id, isOnHold: true },
+    data: {
+      isOnHold: false,
+      holdReleaseReason: reason,
+      holdReleasedAt: new Date(),
+      holdReleasedById: user.id,
+    },
+  });
+  // Not on hold: refuse rather than record a reason for a hold that never ran.
+  if (released.count === 0) throw conflict(sk("errors.branchHold.notOnHold"));
+
+  await prisma.managerActivityLog.create({
+    data: {
+      managerId: user.id,
+      branchId: branch.id,
+      activityType: "action",
+      description: `Resumed orders for branch "${branch.name}" — reason: ${reason}`,
+    },
+  });
+  const row = await prisma.branch.findUniqueOrThrow({ where: { id: branch.id }, select: HOLD_SELECT });
+  return serializeHold(row);
 }
 
 // ── Delivery hours / time slots ─────────────────────────────────────────

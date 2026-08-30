@@ -5,8 +5,9 @@ import { PageHeader } from "@/components/layout/page-header";
 import { getSessionUser } from "@/lib/auth/current-user";
 import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
-import { branchForManager, categoriesForUser } from "@/lib/selectors";
+import { branchForManager } from "@/lib/selectors";
 import { serializeCategory } from "@/lib/serializers";
+import { categoriesForBranchManager } from "@/lib/services/catalog";
 import type { Category } from "@/types";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -21,7 +22,12 @@ export default async function ProductCreatePage() {
   // fragility that surfaced the "Data could not be loaded" boundary).
   const me = (await getSessionUser())!;
   const branch = await branchForManager(me.id);
-  const categories = (await categoriesForUser(me)).map(serializeCategory) as Category[];
+  // Own-branch categories only (categoriesForBranchManager): global-scope rows
+  // are no longer offered to a manager. Nothing is pre-selected — the select
+  // opens on its "Select a category" placeholder.
+  const categories = branch
+    ? ((await categoriesForBranchManager(branch.id)).map(serializeCategory) as Category[])
+    : [];
 
   return (
     <>
@@ -35,6 +41,7 @@ export default async function ProductCreatePage() {
       />
       <ProductForm
         categories={categories}
+        showCategoryScope={false}
         basePath="/branch-manager/catalog"
         categoryCreateHref="/branch-manager/catalog/categories/create"
         fixedBranch={branch ? { id: branch.id, name: branch.name, brand_type: branch.brandType } : undefined}

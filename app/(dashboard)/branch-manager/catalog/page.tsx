@@ -26,6 +26,7 @@ import {
 import { getT } from "@/lib/i18n/server";
 import { branchForManager } from "@/lib/selectors";
 import { serializeProduct } from "@/lib/serializers";
+import { categoriesForBranchManager } from "@/lib/services/catalog";
 import { cn, mediaUrl } from "@/lib/utils";
 import type { Product } from "@/types";
 
@@ -88,14 +89,9 @@ export default async function CatalogPage({
       skip,
       take,
     }),
-    prisma.category.findMany({
-      where: {
-        isActive: true,
-        OR: [{ branchId }, { branchId: null }],
-      },
-      include: { _count: { select: { products: { where: { branchId, deletedAt: null } } } } },
-      orderBy: { name: "asc" },
-    }),
+    // Own-branch categories only — see categoriesForBranchManager. Global-scope
+    // rows are no longer offered as filter chips here.
+    categoriesForBranchManager(branchId),
   ]);
 
   const products = rows.map(serializeProduct) as unknown as Product[];
@@ -201,7 +197,14 @@ export default async function CatalogPage({
                         )}
                         <span>
                           <span className="flex items-center gap-2 font-medium text-fg-base">
-                            {product.name}
+                            {/* The name itself opens the product, so the inline
+                                action bar can keep View down to one icon. */}
+                            <Link
+                              href={`/branch-manager/catalog/products/${product.id}`}
+                              className="rounded hover:text-brand-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                            >
+                              {product.name}
+                            </Link>
                             {product.is_popular ? <Badge tone="brand">{t("catalog.popular")}</Badge> : null}
                             {product.is_recommended ? <Badge tone="violet">{t("catalog.recommended")}</Badge> : null}
                           </span>
@@ -217,9 +220,18 @@ export default async function CatalogPage({
                       ) : null}
                     </Td>
                     <Td>
-                      {product.is_available ? <Badge tone="green">{t("catalog.available")}</Badge> : <Badge tone="red">{t("catalog.unavailable")}</Badge>}
+                      <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                        {/* A super-admin hold is called out here because it is
+                            what withholds Delete from the manager below. */}
+                        {product.held_by_admin ? <Badge tone="red">{t("adminExtras.heldBadge")}</Badge> : null}
+                        {product.is_available ? <Badge tone="green">{t("catalog.available")}</Badge> : <Badge tone="red">{t("catalog.unavailable")}</Badge>}
+                      </span>
                     </Td>
                     <Td>
+                      {/* Laid out INLINE (not behind a menu): the manager asked
+                          to reach Edit/Delete without hunting for a trigger or
+                          scrolling the table. `canDelete` is a soft delete —
+                          the API re-checks the branch and the admin hold. */}
                       <ProductRowActions
                         productId={product.id}
                         productName={product.name}
@@ -227,6 +239,8 @@ export default async function CatalogPage({
                         isAvailable={product.is_available}
                         heldByAdmin={product.held_by_admin}
                         basePath="/branch-manager/catalog/products"
+                        layout="inline"
+                        canDelete={!product.held_by_admin}
                       />
                     </Td>
                   </tr>
