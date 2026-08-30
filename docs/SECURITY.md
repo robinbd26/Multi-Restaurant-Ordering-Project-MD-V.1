@@ -31,7 +31,10 @@ Auth.js / NextAuth v5 beta, JWT session strategy, two Credentials providers and 
 | `otp` | BD phone + 6-digit code | `verifyOtp()` — SHA-256 digest compared with `timingSafeEqual`, then consumed |
 
 Both providers require `user.isActive === true` **and** `user.status === "approved"` before
-returning a session, and both write a `LoginHistory` row. The OTP provider deliberately
+returning a session, and both write a `LoginHistory` row carrying the client IP (from the
+trusted proxy's `x-forwarded-for`) and a length-bounded user agent, captured via
+`next/headers` inside the authorize request scope and degrading to empty strings — never a
+failed login — if no request scope exists. The OTP provider deliberately
 **re-reads the account after verification** rather than trusting the challenge — the user
 may have been deactivated in the five minutes since the code was sent.
 
@@ -138,6 +141,10 @@ that only counts real accounts is itself an existence oracle.
 
 | Flow | Key | Limit | Window |
 | --- | --- | --- | --- |
+| Password login (identifier + IP) | `login:<id>\|<ip>` | 10 | 5 min |
+| Password login (IP, failures only) | `login:ip:<ip>` | 100 | 15 min |
+| Customer registration, form action (IP) | `register:form:<ip>` | 10 | 60 min |
+| Customer registration, API route (IP) | `register:ip:<ip>` | 30 | 15 min |
 | Password reset request (identifier + IP) | `pwreset:req:<id>\|<ip>` | 5 | 15 min |
 | Password reset request (IP) | `pwreset:req-ip:<ip>` | 20 | 60 min |
 | Password reset confirm (IP) | `pwreset:confirm:<ip>` | 20 | 15 min |
@@ -147,13 +154,26 @@ that only counts real accounts is itself an existence oracle.
 | Reverse geocode | `geo:reverse:<userId>` | 60 | 60 s |
 | Geocode search | `geo:search:<userId>` | 40 | 60 s |
 
+**Password login** (`lib/auth/login-rate-limit.ts`) is throttled at both layers a guess can
+reach: `loginAction` (whose own `bcrypt.compare` pre-check runs before `signIn()`) and the
+Credentials `authorize` (which a direct POST to `/api/auth/callback/credentials` reaches
+without the action). A limited attempt returns the **same generic invalid-credentials
+response** as a wrong password — a distinct "slow down" reply would make the limiter an
+account-existence oracle. A successful login clears the identifier bucket and refunds its
+per-IP count, so the per-IP ceiling meters **failures only** — sized for a shared-office NAT
+in Dhaka. There is deliberately **no account lockout**: lockout is a free denial-of-service
+against anyone whose phone number is known.
+
+**Registration** (`lib/auth/register-rate-limit.ts`) is throttled per real client IP in
+`registerAction` and per observed IP in the public route. The browser flow reaches the route
+through an internal server-to-server fetch that presents the server's own address, so the
+route bucket doubles as a global flood ceiling (~120/hour) while the action bucket is the
+genuine per-visitor budget; direct API POSTs are capped per address at the route.
+
 The client IP comes from `x-forwarded-for` (left-most) or `x-real-ip` in
 `lib/auth/request-info.ts`. **That assumes a trusted reverse proxy.** If the Node process is
 ever exposed directly, those headers are client-controlled and every IP-keyed limit above is
 trivially bypassed.
-
-Two gaps are named in [§9](#9-known-gaps-and-accepted-risks): the password login path and
-public customer registration are not rate limited.
 
 ---
 
@@ -475,21 +495,34 @@ so the daily-login coin cannot be claimed twice in one Dhaka day.
 Honest list. None of these is a reason not to ship, but each should be a decision rather
 than a surprise.
 
+### Closed in the production-hardening pass
+
+| # | Gap | Closed by |
+| --- | --- | --- |
+| 2 | **The password login path was not rate limited** — `bcrypt.compare` was unthrottled at both the server action and the Credentials provider. | `lib/auth/login-rate-limit.ts`, enforced in `loginAction` (`lib/auth/actions.ts`) and `authorize()` (`auth.ts`). Identifier+IP 10/5 min plus a failures-only per-IP ceiling of 100/15 min; limited attempts return the same generic invalid-credentials response; no lockout (DoS vector). See [§2.5](#25-rate-limiting). |
+| 3 | **Public customer registration was not rate limited.** | `lib/auth/register-rate-limit.ts`, enforced per real client IP in `registerAction` (10/hour) and per observed IP in `app/api/auth/register/customer/route.ts` (30/15 min, HTTP 429). See [§2.5](#25-rate-limiting). |
+| 4 | **No security response headers.** | `headers()` block in `next.config.ts` on every path: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (camera/microphone/payment off, geolocation self — the customer location feature needs it), HSTS (180 days, conservative scope), and a working CSP that accommodates the inline theme bootstrap and Google Maps (JS SDK + Embed iframes) while keeping `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`. The nonce-based tightening path is documented in the config. |
+| 6 | **`LoginHistory.ipAddress` / `.userAgent` were always empty.** | `recordLogin()` in `auth.ts` now captures the proxy-reported client IP and a length-bounded user agent via `next/headers`, degrading to `""` (never a failed login) outside a request scope. |
+
+Gap #1's worst outcome — seeding production with the published super-admin password — is
+also now blocked: `prisma/seed.ts` refuses to run with `NODE_ENV === "production"` unless
+`ADMIN_PASSWORD` is set to something other than the published default. The gap itself stays
+open below because `.env.example` still ships the working value.
+
+### Still open
+
 | # | Gap | Where | Suggested action |
 | --- | --- | --- | --- |
-| 1 | **`.env.example` contains a working seed super-admin password** (`ADMIN_PASSWORD=Admin12345@##`) and is in version control. Any deployment that seeds without changing it has a publicly known super-admin credential. | `.env.example`, `prisma/seed.ts` | Set your own `ADMIN_*` before the first production seed, and change the password again after first login. Consider replacing the example value with a placeholder. **Highest-severity item on this list.** |
-| 2 | **The password login path is not rate limited.** OTP, password reset and geocoding are; `bcrypt.compare` is not, so online password guessing is unthrottled at the application layer. | `auth.ts` `authorize()`, `lib/auth/actions.ts` `loginAction` | Apply `rateLimit()` keyed on identifier + IP, and consider a short lockout after N failures. |
-| 3 | **Public customer registration is not rate limited.** | `app/api/auth/register/customer/route.ts` | Add an IP-keyed limit. |
-| 4 | **No security response headers.** `next.config.ts` has no `headers()` function — no CSP, HSTS, `X-Frame-Options`, `X-Content-Type-Options` or `Referrer-Policy`. | `next.config.ts` | Add a `headers()` block, or set them at the Nginx tier. A CSP will need care because of the Google Maps embed. |
+| 1 | **`.env.example` contains a working seed super-admin password** (`ADMIN_PASSWORD=Admin12345@##`) and is in version control. The seed now **refuses to run in production** with that password (or with `ADMIN_PASSWORD` unset), but the value itself remains published, and the seed's demo role accounts all use it. | `.env.example`, `prisma/seed.ts` | Set your own `ADMIN_*` before the first production seed and change the password again after first login. Replace the example value with a placeholder. Never run the demo seed against production data; if you have, deactivate the demo accounts. |
 | 5 | **No application-level CSRF token on `app/api/**` routes.** Protection rests on Auth.js's own CSRF for auth routes and Next.js Server Actions' origin checking; state-changing REST routes are cookie-session-authenticated with nothing further. | `app/api/**` | Verify the Auth.js session cookie's `SameSite` behaviour is adequate for your threat model, or add an origin check to mutating handlers. Also note `allowedDevOrigins: ['**.*']` in `next.config.ts` — dev-only, but permissive. |
-| 6 | **`LoginHistory.ipAddress` and `.userAgent` are always empty.** The columns exist; `recordLogin()` writes only `userId`. Login history therefore has no forensic value. | `auth.ts` `recordLogin()`, `prisma/schema.prisma` | Pass the values from `lib/auth/request-info.ts`. Small change, real benefit. |
-| 7 | **Rate limiter and OTP challenges are in-process.** With N instances the effective allowance is `limit × N`, counters reset on restart, and an OTP is only verifiable on the issuing instance. | `lib/auth/rate-limit.ts`, `lib/auth/otp.ts` | Move both to Redis (or add an `OtpChallenge` model) before scaling out. Both files document this. |
-| 8 | **IP extraction trusts `x-forwarded-for`.** Correct behind the intended Nginx tier; if the Node process is ever exposed directly, every IP-keyed limit is bypassable. | `lib/auth/request-info.ts` | Never expose the process directly. Ensure the proxy overwrites rather than appends the header. |
+| 7 | **Rate limiters and OTP challenges are in-process.** With N instances the effective allowance is `limit × N`, counters reset on restart, and an OTP is only verifiable on the issuing instance. This now also covers the login and registration limiters. | `lib/auth/rate-limit.ts`, `lib/auth/otp.ts` | Move both to Redis (or add an `OtpChallenge` model) before scaling out. Both files document this. |
+| 8 | **IP extraction trusts `x-forwarded-for`.** Correct behind the intended Nginx tier; if the Node process is ever exposed directly, every IP-keyed limit is bypassable. A related wrinkle: the internal server-to-server fetch in `lib/api/client.ts` does not forward the original client IP, so the registration **route** cannot meter form-originated traffic per visitor (the action-level limiter covers that path; see §2.5). | `lib/auth/request-info.ts`, `lib/api/client.ts` | Never expose the process directly. Ensure the proxy overwrites rather than appends the header. Forward the client IP on internal fetches so route-level limits see real addresses. |
 | 9 | **No `@@unique([couponId, customerId])`.** The per-customer coupon cap is re-counted after insert rather than enforced by a constraint, because the schema was frozen. Under a weaker transaction isolation level two orders from the same customer could theoretically both pass. | `lib/services/marketing.ts`, `prisma/schema.prisma` | Add the constraint (or a `perUserLimit` column with a guarded update) in the next migration. Acknowledged in code as a follow-up. |
 | 10 | **The online Nagad driver is a documented stub.** Setting `NAGAD_*` does not enable online Nagad; it only logs a warning. | `lib/services/payments.ts` | Do not represent online Nagad as working. Nagad customers use the manual rail, which is complete. |
 | 11 | **`auth.config.ts` does not override Auth.js cookie flags**, so `secure` / `sameSite` / `httpOnly` are library defaults and could not be verified from repo source. | `auth.config.ts` | Confirm the resulting `Set-Cookie` against a real HTTPS deployment. |
 | 12 | **Per-route role choices have not been reviewed end to end.** 173 of 179 handlers have a guard and the six unguarded ones are intentional, but whether each `requireApiRole(...)` names the *right* roles is a review that has not been done. | `app/api/**` | Schedule a per-route authorization review before a public launch. |
 | 13 | **Git history has not been audited for previously committed secrets.** | — | Run a history scan (`gitleaks`, `trufflehog`) before making the repository public. |
+| 14 | **The CSP ships `script-src 'unsafe-inline'`.** Required today by the pre-paint theme bootstrap and Next's own inline scripts; it means CSP does not yet mitigate injected inline `<script>` (XSS defence rests on React's escaping and input validation). | `next.config.ts`, `app/layout.tsx` | Move to per-request nonces emitted from `proxy.ts` (path documented in `next.config.ts`). |
 
 ---
 
@@ -503,7 +536,7 @@ Every money-moving decision writes a row. When investigating a discrepancy, star
 | `ManagerActivityLog` | Branch-manager actions | `/admin/activity-logs` · `GET /api/activity-logs` |
 | `OrderStatusEvent` | Append-only order state history with actor and reason, written in the same transaction as the status change | Attached to every order detail read |
 | `CampaignEvent` | Append-only marketing sent/opened/clicked/conversion | `/marketing/performance` |
-| `LoginHistory` | Every successful sign-in on both providers (⚠️ IP and user-agent columns are empty — see §9) | `/rider/login-history` |
+| `LoginHistory` | Every successful sign-in on both providers, with client IP and user agent (`recordLogin()` in `auth.ts`) | `/rider/login-history` |
 
 ---
 

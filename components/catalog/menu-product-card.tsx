@@ -35,11 +35,14 @@ export function MenuProductCard({
   const [variationId, setVariationId] = useState<number | null>(defaultVariationId);
   const selected = variations.find((v) => v.id === variationId) ?? variations[0];
 
-  // req #4 — crust policy. THICK/THIN products have a single fixed crust (no
-  // choice to make); BOTH requires the customer to pick before adding to cart.
-  const policy = product.variation_type ?? "THICK";
+  // req #4 — crust policy. "" (not applicable) means the product offers no
+  // crust at all → no crust UI is rendered and the cart line carries "".
+  // THICK/THIN products have a single fixed crust (no choice to make); BOTH
+  // requires the customer to pick before adding to cart.
+  const policy = product.variation_type ?? "";
   const mustChoose = policy === "BOTH";
-  const [crust, setCrust] = useState<string>(mustChoose ? "" : policy);
+  const hasFixedCrust = policy === "THICK" || policy === "THIN";
+  const [crust, setCrust] = useState<string>(hasFixedCrust ? policy : "");
   const [crustError, setCrustError] = useState(false);
 
   const discountPct = Number(product.discount);
@@ -122,7 +125,8 @@ export function MenuProductCard({
 
         {/* req #4 — crust. BOTH lets the customer choose (required before adding);
             a fixed THICK/THIN product shows its single crust, and the server
-            rejects any other value regardless of what the client sends. */}
+            rejects any other value regardless of what the client sends. A ""
+            (not applicable) product renders no crust UI whatsoever. */}
         {mustChoose ? (
           <div data-testid="crust-choice">
             <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("variationType.chooseCrust")}>
@@ -153,11 +157,11 @@ export function MenuProductCard({
               </p>
             ) : null}
           </div>
-        ) : (
+        ) : hasFixedCrust ? (
           <p className="text-xs text-fg-subtle" data-testid="crust-fixed">
             {t(`variationType.${policy}`)}
           </p>
-        )}
+        ) : null}
 
         <div className="mt-auto flex items-center justify-between">
           <div>

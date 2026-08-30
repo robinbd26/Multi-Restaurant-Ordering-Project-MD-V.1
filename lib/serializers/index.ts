@@ -222,7 +222,7 @@ export function serializeProduct(p: ProductRel) {
     preparation_time: p.preparationTime,
     is_popular: p.isPopular,
     is_recommended: p.isRecommended,
-    // req #4 — product crust policy (THICK | THIN | BOTH).
+    // req #4 — product crust policy ("" = not applicable | THICK | THIN | BOTH).
     variation_type: p.variationType,
     default_variation_id: active?.id ?? null,
     has_variations: enabled.length > 0,

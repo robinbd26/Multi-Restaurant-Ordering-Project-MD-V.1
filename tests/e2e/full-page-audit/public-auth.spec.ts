@@ -430,7 +430,7 @@ test.describe("Full page audit — public and authentication", () => {
     await expectNoRawKeys(page);
   });
 
-  test("forgot-password is responsive, accessible, localized, and rejects an invalid identity cleanly", async ({
+  test("forgot-password is responsive, accessible, localized, and answers an unknown identity with the same generic success", async ({
     page,
     context,
   }) => {
@@ -494,12 +494,52 @@ test.describe("Full page audit — public and authentication", () => {
       ).toBeLessThanOrEqual(1);
     }
 
-    for (const name of [
-      "username",
-      "email",
-      "password",
-      "confirm_password",
-    ]) {
+    // STEP 1 of the token reset: one identifier field, and no password can be
+    // chosen on this page any more (the retired one-shot form's fields are gone).
+    const identifier = page.locator('input[name="identifier"]');
+    await expect(identifier).toBeVisible();
+    expect(
+      await identifier.evaluate(
+        (element) =>
+          Boolean(
+            (element as HTMLInputElement).labels?.length ||
+              element.getAttribute("aria-label")?.trim() ||
+              element.getAttribute("aria-labelledby")?.trim(),
+          ),
+      ),
+      "identifier needs an accessible name",
+    ).toBe(true);
+    for (const name of ["username", "email", "password", "confirm_password"]) {
+      await expect(page.locator(`input[name="${name}"]`)).toHaveCount(0);
+    }
+
+    // An unknown identity gets the SAME generic success a real one would — the
+    // request step must not be an account-enumeration oracle, and it responds
+    // 200 (the strict 4xx listener above stays clean).
+    await identifier.fill(`audit-unknown-${Date.now()}@example.com`);
+    await page.getByRole("button", { name: /send reset link/i }).click();
+    await expect(page.getByText(/if an account matches/i)).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/forgot-password");
+    await expect(page.getByRole("link", { name: /back to sign in/i })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+
+    // STEP 2 lives at /forgot-password/reset (reached from the SMS'd link).
+    // Audited without a token: it renders cleanly, is noindexed, the submit is
+    // a dead end, and it offers a fresh start instead of probing tokens.
+    const resetResponse = await page.goto("/forgot-password/reset", {
+      waitUntil: "domcontentloaded",
+    });
+    expect(resetResponse?.status()).toBe(200);
+    await expect(page.locator("main")).toHaveCount(1);
+    await expect(page.locator("h1")).toHaveCount(1);
+    await expect(page).toHaveTitle(/Set a new password/i);
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
+      "content",
+      /noindex/,
+    );
+    for (const name of ["password", "confirm_password"]) {
       const input = page.locator(`input[name="${name}"]`);
       await expect(input).toBeVisible();
       expect(
@@ -514,24 +554,10 @@ test.describe("Full page audit — public and authentication", () => {
         `${name} needs an accessible name`,
       ).toBe(true);
     }
-
-    await page.locator('input[name="username"]').fill("customer");
-    await page
-      .locator('input[name="email"]')
-      .fill(`audit-wrong-${Date.now()}@example.com`);
-    await page.locator('input[name="password"]').fill("Audit12345@##");
-    await page
-      .locator('input[name="confirm_password"]')
-      .fill("Audit12345@##");
-    await page.getByRole("button", { name: /reset password/i }).click();
+    await expect(page.getByRole("button", { name: /reset password/i })).toBeDisabled();
     await expect(
-      page.getByText(/could not verify this account/i),
-    ).toBeVisible();
-    expect(new URL(page.url()).pathname).toBe("/forgot-password");
-    await expect(page.getByRole("link", { name: /back to sign in/i })).toHaveAttribute(
-      "href",
-      "/login",
-    );
+      page.getByRole("link", { name: /request a new reset link/i }),
+    ).toHaveAttribute("href", "/forgot-password");
 
     const brokenImages = await page.locator("img").evaluateAll((images) =>
       images

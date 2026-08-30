@@ -11,6 +11,8 @@ import { prisma } from "@/lib/db";
 import { getT } from "@/lib/i18n/server";
 import { findUserByIdentifier } from "@/lib/auth/identity";
 import { loginDestination } from "@/lib/auth/login-destination";
+import { noteLoginSuccess, registerLoginAttempt } from "@/lib/auth/login-rate-limit";
+import { throttleRegistrationForm } from "@/lib/auth/register-rate-limit";
 import { requestOtp, verifyOtp } from "@/lib/auth/otp";
 import {
   confirmPasswordReset,
@@ -77,6 +79,16 @@ export async function loginAction(
   if (!password) missing.password = t("validation.required");
   if (Object.keys(missing).length > 0) return authFieldErrors(missing);
 
+  // Rate limit BEFORE the lookup, and answer with the SAME generic
+  // invalid-credentials message a wrong password gets: a distinct "slow down"
+  // reply — or a limiter that skips unknown identifiers — would let an
+  // attacker sort real accounts from invented ones. This action needs its own
+  // check because its bcrypt pre-check below runs before signIn() ever reaches
+  // the throttled provider. Budgets: lib/auth/login-rate-limit.ts.
+  if (!(await registerLoginAttempt(identifier))) {
+    return authFormError(t("errors.invalidCredentials"));
+  }
+
   // Mobile number → email → username, in that order (see findUserByIdentifier).
   const user = await findUserByIdentifier(identifier);
 
@@ -108,6 +120,10 @@ export async function loginAction(
   } catch {
     return authFormError(t("errors.invalidCredentials"));
   }
+  // Success — forget the typo-count under the identifier AS TYPED (the
+  // provider settled its own bucket, which is keyed by resolved username) and
+  // refund this attempt's per-IP count.
+  await noteLoginSuccess(identifier);
   // PHASE O — land the user where they were going, or on their role's home.
   redirect(loginDestination(user.role as Role, callbackUrl));
 }
@@ -328,6 +344,15 @@ export async function registerAction(
 
   if (rolePath !== "customer") {
     return authFormError(t("errors.auth.staffCreatedBySuperAdminOnly"));
+  }
+
+  // Per-IP registration throttle at the layer that sees the REAL client IP —
+  // the internal fetch below presents the server's own address to the route,
+  // so the route's limiter cannot meter individual visitors for form traffic.
+  // Budgets + the two-layer design: lib/auth/register-rate-limit.ts.
+  const limited = await throttleRegistrationForm();
+  if (!limited.ok) {
+    return authFormError(t("errors.auth.registerRateLimited", { n: limited.retryAfter }));
   }
 
   const body = new FormData();

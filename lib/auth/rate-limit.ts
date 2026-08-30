@@ -61,6 +61,19 @@ export function clearRateLimit(key: string): void {
   windows.delete(key);
 }
 
+/**
+ * Give back ONE previously counted attempt — for wide shared buckets (e.g. a
+ * per-IP ceiling) where a SUCCESSFUL attempt should not consume the budget but
+ * clearing the whole bucket would also forgive every failure in it. If the
+ * window rolled over in between, the refund lands in the fresh window (or
+ * nowhere); that slight looseness only ever makes the limiter more permissive
+ * by a single count, never stricter.
+ */
+export function refundRateLimit(key: string): void {
+  const existing = windows.get(key);
+  if (existing && existing.count > 0) existing.count -= 1;
+}
+
 /** Drop expired windows; if they were all live, drop the soonest-expiring slice. */
 function sweep(now: number): void {
   for (const [key, window] of windows) {

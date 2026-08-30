@@ -60,7 +60,11 @@ export async function ProductDetailView({
     [t("pages.colBranch"), product.branch.name],
     [t("catalog.brand"), product.brand ? t(`brands.${product.brand}`) : "—"],
     [t("adminExtras.colCategory"), product.category?.name ?? "—"],
-    [t("variationType.label"), t(`variationType.${product.variationType}`)],
+    // "" = "Not applicable" (no crust policy) — never interpolate an empty key.
+    [
+      t("variationType.label"),
+      product.variationType ? t(`variationType.${product.variationType}`) : t("variationType.notApplicable"),
+    ],
     // `catalog.minutes` is the bare unit ("min"), not a templated sentence.
     [t("catalog.prepTime"), `${fmt.num(product.preparationTime)} ${t("catalog.minutes")}`],
     [t("catalog.discount"), `${fmt.num(Number(product.discount))}%`],

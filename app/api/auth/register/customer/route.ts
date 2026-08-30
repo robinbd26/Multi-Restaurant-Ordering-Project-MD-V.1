@@ -1,6 +1,7 @@
 import { normalizeBdPhone } from "@/lib/auth/phone";
+import { throttleRegistrationRoute } from "@/lib/auth/register-rate-limit";
 import { prisma } from "@/lib/db";
-import { handle, sk, validationError } from "@/lib/http/errors";
+import { ApiError, handle, sk, validationError } from "@/lib/http/errors";
 import { created } from "@/lib/http/respond";
 import { serializeUser } from "@/lib/serializers";
 import { assertPhoneAvailable, registerCustomer } from "@/lib/services/users";
@@ -21,6 +22,19 @@ async function readBody(req: Request): Promise<Record<string, string>> {
 
 // POST /api/auth/register/customer — PUBLIC. Creates an auto-approved customer.
 export const POST = handle(async (req: Request) => {
+  // Per-IP throttle for public account creation (SECURITY.md §9 gap #3).
+  // Counted BEFORE any body parsing or database work so a deliberately
+  // malformed flood cannot sidestep it. Budgets and the two-layer design
+  // (this route + registerAction) are documented in lib/auth/register-rate-limit.
+  const limited = await throttleRegistrationRoute();
+  if (!limited.ok) {
+    // 429 with a form-level message; unlike login, registration has no
+    // account to enumerate, so an honest "try again later" is safe here.
+    throw new ApiError(429, {
+      detail: sk("errors.auth.registerRateLimited", { n: limited.retryAfter }),
+    });
+  }
+
   const b = await readBody(req);
 
   if (b.role && b.role !== "customer") {

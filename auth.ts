@@ -1,10 +1,13 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import { headers } from "next/headers";
 
 import { authConfig } from "@/auth.config";
 import { findUserByIdentifier } from "@/lib/auth/identity";
+import { registerLoginAttempt, noteLoginSuccess } from "@/lib/auth/login-rate-limit";
 import { verifyOtp } from "@/lib/auth/otp";
+import { clientIpFromHeaders } from "@/lib/auth/request-info";
 import { prisma } from "@/lib/db";
 import type { Role, UserStatus } from "@/types";
 import type { User } from "@prisma/client";
@@ -31,9 +34,28 @@ function sessionUser(user: User, remember: boolean) {
   };
 }
 
-/** Login history is recorded for every role (PDF requirement), never fatally. */
+/**
+ * Login history is recorded for every role (PDF requirement), never fatally.
+ *
+ * IP and user agent come from `next/headers` — both providers' `authorize`
+ * runs inside the POST /api/auth/callback/[provider] route handler, which IS a
+ * request scope in this Next version, so `headers()` resolves there. The
+ * try/catch keeps the rare scope-less invocation (Auth.js can call a provider
+ * outside a request) from ever failing a login: forensic columns degrade to
+ * "" — their schema default — rather than blocking the sign-in.
+ */
 async function recordLogin(userId: number): Promise<void> {
-  await prisma.loginHistory.create({ data: { userId } }).catch(() => {});
+  let ipAddress = "";
+  let userAgent = "";
+  try {
+    const h = await headers();
+    ipAddress = clientIpFromHeaders(h);
+    // Bounded: UA strings are attacker-supplied and can be arbitrarily long.
+    userAgent = (h.get("user-agent") ?? "").slice(0, 512);
+  } catch {
+    // No request scope — record the login with empty forensic columns.
+  }
+  await prisma.loginHistory.create({ data: { userId, ipAddress, userAgent } }).catch(() => {});
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -52,6 +74,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const remember = String(credentials?.remember ?? "") === "1";
         if (!identifier || !password) return null;
 
+        // Throttle BEFORE the account lookup, and return the same null every
+        // other failure returns — a limited attempt must be indistinguishable
+        // from a wrong password, or the limiter becomes an existence oracle.
+        // Budgets + the no-lockout rationale live in lib/auth/login-rate-limit.
+        if (!(await registerLoginAttempt(identifier))) return null;
+
         const user = await findUserByIdentifier(identifier);
         if (!user || !user.isActive) return null;
         if (user.status !== "approved") return null;
@@ -59,6 +87,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const ok = await bcrypt.compare(password, user.password);
         if (!ok) return null;
 
+        // A real login must not leave its own typo-counts behind.
+        await noteLoginSuccess(identifier);
         await recordLogin(user.id);
         return sessionUser(user, remember);
       },

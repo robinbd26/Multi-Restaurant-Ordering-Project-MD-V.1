@@ -98,7 +98,41 @@ async function seedVariations(
   await prisma.product.update({ where: { id: productId }, data: { price: new Prisma.Decimal(def.price) } });
 }
 
+/**
+ * PRODUCTION GUARD (SECURITY.md §9 gap #1). SEED_PASSWORD is published in this
+ * repository and in .env.example — seeding a production database with it (or
+ * with no ADMIN_PASSWORD at all, which falls back to it) would plant a
+ * publicly known super-admin credential. Refuse loudly instead. Development
+ * and test behaviour is unchanged.
+ */
+function assertProductionSeedIsSafe(): void {
+  if (process.env.NODE_ENV !== "production") return;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword || adminPassword === SEED_PASSWORD) {
+    console.error(
+      [
+        "FATAL: refusing to seed a PRODUCTION database with the published default password.",
+        "",
+        "The seed's built-in password is committed to this repository (and printed in",
+        ".env.example), so any deployment seeded with it has a publicly known",
+        "super-admin credential.",
+        "",
+        "Set a strong, unique ADMIN_PASSWORD (and ADMIN_USERNAME / ADMIN_EMAIL) in the",
+        "production environment, then run the seed again. Change the password once more",
+        "from the profile page after the first login.",
+        "",
+        "Note: the rest of this seed creates DEMO accounts (management, rider, customer,",
+        "…) that all use the published password — they are for development and the e2e",
+        "suite. If you seed production, deactivate or delete them before launch.",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+}
+
 async function main() {
+  assertProductionSeedIsSafe();
+
   const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
 
   // ── Default Super Admin (from ADMIN_* env) ──────────────────────────

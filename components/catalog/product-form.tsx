@@ -29,12 +29,14 @@ import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-va
 import type { FieldErrors } from "@/lib/validation/contract";
 import type { Category, Product } from "@/types";
 
-const VARIATION_TYPES = ["THICK", "THIN", "BOTH"];
+// "" = "Not applicable" — the product offers no crust/style choice at all
+// (rice bowls, drinks…). Only pizza-style products carry THICK/THIN/BOTH.
+const VARIATION_TYPES = ["", "THICK", "THIN", "BOTH"];
 
 const RULES: FieldRules = {
   name: [required, maxLength(LIMITS.nameMax)],
   category: [selectRequired], // req #10 — category selection is mandatory
-  variation_type: [required, oneOf(VARIATION_TYPES)],
+  variation_type: [oneOf(VARIATION_TYPES)],
   description: [maxLength(LIMITS.longTextMax)],
   discount: [number, min(LIMITS.percentMin), max(LIMITS.percentMax)],
   preparation_time: [required, integer, min(LIMITS.minutesMin), max(LIMITS.minutesMax)],
@@ -479,21 +481,22 @@ export function ProductForm({
               )}
             </Field>
 
-            {/* req #4 — MANDATORY product variation (crust) type. Stable internal
-                values are submitted; the visible labels are translated. */}
+            {/* req #4 — crust/style policy. OPTIONAL: it only applies to
+                products that actually offer a crust (pizza); everything else
+                stays "Not applicable" ("" — the default for new products).
+                Stable internal values are submitted; labels are translated. */}
             <Field
               label={t("variationType.label")}
-              required
               hint={t("variationType.hint")}
               error={errors.variation_type}
             >
               <Select
                 name="variation_type"
-                defaultValue={product?.variation_type ?? "THICK"}
-                required
+                defaultValue={product?.variation_type ?? ""}
                 aria-invalid={errors.variation_type ? true : undefined}
                 data-testid="product-variation-type"
               >
+                <option value="">{t("variationType.notApplicable")}</option>
                 <option value="THICK">{t("variationType.THICK")}</option>
                 <option value="THIN">{t("variationType.THIN")}</option>
                 <option value="BOTH">{t("variationType.BOTH")}</option>

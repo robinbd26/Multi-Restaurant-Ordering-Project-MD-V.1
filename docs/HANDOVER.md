@@ -968,14 +968,17 @@ their file paths in [`docs/SECURITY.md` §9](./SECURITY.md#9-known-gaps-and-acce
 
 ### 11.8 Smaller things worth knowing
 
-- `lib/services/order-number.ts` builds `ORD-YYYYMMDD-000001` from the **UTC** calendar day,
-  while settlements now bucket on the Dhaka day. An order placed between 00:00 and 06:00
-  Dhaka therefore carries a date segment one day behind the settlement it lands in. Cosmetic,
-  but confusing during a reconciliation.
+- `lib/services/order-number.ts` now builds `ORD-YYYYMMDD-000001` from the **Dhaka** calendar
+  day (via `dhakaDayKey`), matching the settlement/report business day, so an order placed
+  between 00:00 and 06:00 Dhaka carries the same date segment as the settlement it lands in.
+  The switch from the old UTC key cannot re-issue a historical number: Dhaka (UTC+6) is never
+  behind UTC, the per-day counter row is shared and atomic, and the unique index on
+  `Order.orderNumber` is the final backstop. Numbers issued before the switch keep their old
+  UTC-day segment.
 - `lib/serializers/index.ts` re-implements percentage discount in floats for
   `discountedPrice` — a second, divergent copy of a money rule `orders.ts` claims to own.
   Display-only today.
-- The repo contains **both** `package-lock.json` and `yarn.lock`. `setup.bat` uses npm.
+- npm is the canonical package manager (`package-lock.json`); the stray `yarn.lock` has been removed.
   Pick one and delete the other before publishing.
 - e2e spec filename prefixes are not unique — `10`, `16`, `45` and `57` each appear twice,
   and `delivery-areas-management.spec.ts` has no prefix.

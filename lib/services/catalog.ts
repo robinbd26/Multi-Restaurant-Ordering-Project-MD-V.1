@@ -452,16 +452,21 @@ export interface ProductWriteInput {
 /**
  * req #4 — resolve + validate the product crust policy.
  *
- * The dropdown is MANDATORY on the create/edit forms (which always submit a
- * value), and any value that IS supplied is validated here — a forged request
- * can never store an unknown crust policy. An ABSENT field falls back to the
- * documented safe default (`PRODUCT_VARIATION_TYPE_DEFAULT` = "THICK", a single
- * fixed crust) rather than 400-ing, so existing API clients that predate this
- * field keep working and no legacy product gains a mandatory customer choice.
+ * Accepted values are "" | "THICK" | "THIN" | "BOTH". The EMPTY STRING is a
+ * first-class stored value — "Not applicable", i.e. the product offers no
+ * crust/style choice at all (the default for new products); OrderItem already
+ * documents and accepts "" on order lines. Any value that IS supplied is
+ * validated here — a forged request can never store an unknown crust policy.
+ * An ABSENT field (undefined/null, i.e. the key was never sent) falls back to
+ * the documented safe default (`PRODUCT_VARIATION_TYPE_DEFAULT` = "THICK" on
+ * create, the stored value on edit) rather than 400-ing, so existing API
+ * clients that predate this field keep working and no legacy product's policy
+ * is silently erased.
  */
 function resolveVariationType(value: unknown, fallback = PRODUCT_VARIATION_TYPE_DEFAULT): string {
-  const raw = String(value ?? "").trim().toUpperCase();
-  if (!raw) return fallback;
+  if (value === undefined || value === null) return fallback;
+  const raw = String(value).trim().toUpperCase();
+  if (!raw) return ""; // "Not applicable" — explicitly no crust policy
   if (!isProductVariationType(raw)) {
     throw validationError({ variation_type: sk("errors.catalog.variationTypeInvalid") });
   }

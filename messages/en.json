@@ -1608,7 +1608,8 @@
       "accountPending": "Your account is still awaiting approval.",
       "accountRejected": "Account has been rejected. Reason: {reason}",
       "notSpecified": "Not specified",
-      "staffCreatedBySuperAdminOnly": "Staff accounts can only be created by a super admin."
+      "staffCreatedBySuperAdminOnly": "Staff accounts can only be created by a super admin.",
+      "registerRateLimited": "Too many registration attempts. Try again in {n} seconds."
     },
     "orders": {
       "onlyCustomerCanOrder": "Only customers can place orders.",
@@ -3591,8 +3592,9 @@
     "noResultsDesc": "No branch matches “{query}”. Try a different name or delivery area."
   },
   "variationType": {
-    "label": "Product variation type",
-    "hint": "Controls which crust the customer may choose.",
+    "label": "Crust / style policy",
+    "hint": "Only applies to products that offer a crust or style choice (e.g. pizza). Choose \"Not applicable\" for everything else.",
+    "notApplicable": "Not applicable",
     "select": "Select variation type",
     "THICK": "Thick",
     "THIN": "Thin",

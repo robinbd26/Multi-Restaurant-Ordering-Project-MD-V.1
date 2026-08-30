@@ -3,8 +3,10 @@ import { login, setLocale, PASSWORD, ROLE_HOME, atPath } from "./helpers";
 
 /**
  * The approved login design (static_design/login) ported to /login:
- * brand panel, mobile-or-username sign-in, remember me, theme toggle,
- * forgot-password link, register link and the (unconfigured) social buttons.
+ * brand panel, ONE `identifier` field that accepts a BD mobile number, an
+ * email or a username, remember me, theme toggle, the forgot-password link
+ * (two-step token reset), the SMS-code (OTP) sign-in link, register link and
+ * the (unconfigured) social buttons.
  */
 
 test.describe("Login design — structure", () => {
@@ -43,10 +45,22 @@ test.describe("Login design — structure", () => {
   test("form panel matches the design", async ({ page }) => {
     await page.goto("/login");
     await expect(page.locator(".form-head h2")).toHaveText(/welcome back/i);
+    // ONE identifier field (phone/email/username) — the old username-only
+    // field is gone, and its label says what it accepts.
     await expect(page.locator('input[name="identifier"]')).toBeVisible();
+    await expect(page.locator('label[for="identifier"]')).toHaveText(/mobile number, email or username/i);
+    await expect(page.locator('input[name="username"]')).toHaveCount(0);
     await expect(page.locator('input[name="password"]')).toBeVisible();
     await expect(page.locator('input[name="remember"]')).toBeAttached();
-    await expect(page.getByRole("link", { name: /forgot password/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /forgot password/i })).toHaveAttribute(
+      "href",
+      "/forgot-password",
+    );
+    // WS-3.1 — the real, working SMS-code alternative sits above the divider.
+    await expect(page.getByRole("link", { name: /sign in with an sms code/i })).toHaveAttribute(
+      "href",
+      "/login/otp",
+    );
     await expect(page.locator(".divider")).toHaveText(/or continue with/i);
     await expect(page.locator(".btn-social")).toHaveCount(2);
     await expect(page.getByRole("link", { name: /register now/i })).toBeVisible();
@@ -116,10 +130,21 @@ test.describe("Login design — behaviour", () => {
     await expect(page.locator(".toast.is-visible")).toContainText(/isn't configured/i);
   });
 
-  test("forgot password link opens the reset page", async ({ page }) => {
+  test("forgot password link opens the reset-request page", async ({ page }) => {
     await page.goto("/login");
     await page.getByRole("link", { name: /forgot password/i }).click();
-    await expect(page).toHaveURL(/\/forgot-password/);
+    await expect(page).toHaveURL(/\/forgot-password$/);
+    // Step 1 of the token reset: a single identifier — never a password field.
+    await expect(page.locator('input[name="identifier"]')).toBeVisible();
+    await expect(page.locator('input[name="password"]')).toHaveCount(0);
+  });
+
+  test("OTP link opens the SMS-code sign-in page", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByRole("link", { name: /sign in with an sms code/i }).click();
+    await expect(page).toHaveURL(/\/login\/otp$/);
+    await expect(page.locator("h1")).toHaveText(/sign in with a code/i);
+    await expect(page.locator('input[name="phone"]')).toBeVisible();
   });
 
   test("register link opens customer registration", async ({ page }) => {

@@ -18,8 +18,119 @@ function uploadRemotePatterns(): URL[] {
   }
 }
 
+/** Origin of the optional CDN/object store, for the CSP img-src allow-list. */
+function uploadOrigin(): string {
+  const base = process.env.NEXT_PUBLIC_UPLOAD_BASE_URL?.trim();
+  if (!base) return "";
+  try {
+    return new URL(base).origin;
+  } catch {
+    return ""; // same graceful degradation as uploadRemotePatterns above
+  }
+}
+
+/**
+ * Content-Security-Policy (SECURITY.md §9 gap #4).
+ *
+ * A conservative, WORKING policy rather than a maximally strict one, because
+ * two things in this app are incompatible with a nonce-less strict CSP:
+ *
+ *   • the pre-paint THEME_BOOTSTRAP_SCRIPT is inlined into <head>
+ *     (app/layout.tsx), and Next itself streams inline bootstrap/hydration
+ *     scripts — hence `script-src 'unsafe-inline'`;
+ *   • the Google Maps JS SDK is injected at runtime from maps.googleapis.com
+ *     and pulls its own chunks, tiles, fonts and inline styles from Google
+ *     hosts — hence the maps/gstatic/fonts entries below.
+ *
+ * TIGHTENING PATH (documented, not shipped): dropping 'unsafe-inline' requires
+ * per-request nonces — generate one in proxy.ts, forward it via a request
+ * header, thread it into <Script>/inline tags and Next's own bootstrap scripts
+ * (Next supports this when it sees a nonce in the CSP header, which in turn
+ * means emitting the CSP from proxy.ts per-request instead of this static
+ * block), and stamp it on THEME_BOOTSTRAP_SCRIPT. That also forces every page
+ * through the middleware matcher — a measurable cost this 3G-focused app
+ * avoids today. Revisit when the middleware layer grows a real security role.
+ *
+ * What still holds even with 'unsafe-inline': `object-src 'none'` (no Flash-era
+ * embeds), `base-uri 'self'` (no <base> hijack), `frame-ancestors 'none'`
+ * (clickjacking, the CSP twin of X-Frame-Options below), `form-action 'self'`
+ * (forms cannot exfiltrate to foreign origins), and a closed default-src.
+ *
+ * Verified against the app's own consumers:
+ *   • /sw.js (push service worker) is same-origin → `script-src 'self'` +
+ *     `worker-src 'self'` cover registration and execution; `blob:` is for the
+ *     workers Maps' vector renderer may spawn.
+ *   • /api/uploads/** images are same-origin (`img-src 'self'`); the optional
+ *     CDN origin is appended when configured. `data:`/`blob:` cover inline
+ *     placeholders and client-side previews of not-yet-uploaded photos.
+ *   • Dev needs `'unsafe-eval'` (React refresh) and `ws:`/`wss:` (HMR) —
+ *     added only outside production so the shipped policy stays tight.
+ */
+function contentSecurityPolicy(): string {
+  const dev = process.env.NODE_ENV !== "production";
+  const cdn = uploadOrigin();
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""} https://maps.googleapis.com https://maps.gstatic.com`,
+    // Maps injects inline styles and a Roboto stylesheet from fonts.googleapis.com.
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    // Map tiles/sprites arrive from several Google image hosts (incl. *.ggpht.com).
+    `img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com${cdn ? ` ${cdn}` : ""}`,
+    // next/font self-hosts the app's fonts; fonts.gstatic.com is for Maps' Roboto.
+    "font-src 'self' data: https://fonts.gstatic.com",
+    `connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com${cdn ? ` ${cdn}` : ""}${dev ? " ws: wss:" : ""}`,
+    // Rider live-map / assignment-gate / branch-location panels embed the Maps
+    // EMBED API as an <iframe src="https://www.google.com/maps/embed/...">.
+    "frame-src 'self' https://www.google.com",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
+
 const nextConfig: NextConfig = {
   allowedDevOrigins: ['**.*'],
+  /**
+   * Security response headers on EVERY path — pages, /api/**, /api/uploads,
+   * /sw.js and static assets alike (SECURITY.md §9 gap #4). `/:path*` matches
+   * zero-or-more segments, i.e. the root too. Sending CSP on JSON/image
+   * responses is harmless and closes the "rendered directly" corner cases.
+   */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          // Browsers must not re-guess content types (e.g. an uploaded file
+          // sniffed into something executable).
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          // Legacy-browser twin of CSP frame-ancestors 'none' below.
+          { key: "X-Frame-Options", value: "DENY" },
+          // Full referrer stays same-origin; cross-origin gets origin only —
+          // path/query (order ids, reset-token URLs if ever mis-shared) never
+          // leak to Google Maps or any other third party.
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // The app never uses camera/microphone/payment APIs — turn them off
+          // outright. Geolocation MUST stay allowed for THIS origin: the
+          // customer "use my location" delivery flow depends on it.
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), payment=(), geolocation=(self)" },
+          /**
+           * HSTS — 180 days, no includeSubDomains, no preload. Deliberately
+           * conservative: this ships on a shared VPS whose sibling subdomains
+           * are outside this app's control, and includeSubDomains would force
+           * HTTPS onto all of them; preload is a near-irreversible public
+           * registry commitment. Browsers ignore the header on plain-HTTP
+           * responses, so it is safe to send unconditionally. Widen it at the
+           * proxy tier once the domain layout is settled.
+           */
+          { key: "Strict-Transport-Security", value: "max-age=15552000" },
+          { key: "Content-Security-Policy", value: contentSecurityPolicy() },
+        ],
+      },
+    ];
+  },
   // Isolated build output for the e2e gate (NEXT_DIST_DIR=.next-e2e) so a QA
   // build/serve never shares .next with a dev server or another session.
   distDir: process.env.NEXT_DIST_DIR || ".next",

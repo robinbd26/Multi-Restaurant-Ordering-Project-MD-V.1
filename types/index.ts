@@ -139,7 +139,7 @@ export interface Product {
   preparation_time: number;
   is_popular: boolean;
   is_recommended: boolean;
-  /** req #4 — crust policy: "THICK" | "THIN" | "BOTH". */
+  /** req #4 — crust policy: "" (not applicable) | "THICK" | "THIN" | "BOTH". */
   variation_type: string;
   default_variation_id: number | null;
   has_variations: boolean;

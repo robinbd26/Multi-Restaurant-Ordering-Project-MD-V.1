@@ -67,7 +67,7 @@ export const POST = handle(async (req: Request) => {
     preparationTime: fields.preparation_time ? Number(fields.preparation_time) : 20,
     isPopular: fields.is_popular === "true",
     isRecommended: fields.is_recommended === "true",
-    variationType: fields.variation_type, // req #4 — mandatory crust policy
+    variationType: fields.variation_type, // req #4 — crust policy ("" = not applicable)
     image: image ? await saveUpload(image, "products", "image") : null,
     variations: fields.variations ?? "[]",
   });

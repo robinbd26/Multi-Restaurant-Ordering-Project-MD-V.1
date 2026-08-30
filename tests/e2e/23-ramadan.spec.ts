@@ -137,8 +137,8 @@ test.describe("Ramadan (B7/B8/B9)", () => {
     await cust.context.close(); await bm.context.close();
   });
 
-  // ── Payments + refunds ──────────────────────────────────────────────────
-  test("B9: advance rules, idempotent payment, failure, refund limits + audit", async ({ browser }) => {
+  // ── Payments + refunds (WS-1.3 — the client-asserted /pay contract is DEAD) ─
+  test("B9: advance rules, client-asserted outcome rejected, role-gated offline record, refund limits + audit", async ({ browser }) => {
     const cust = await newSession(browser, "customer");
     const bm = await newSession(browser, "branch_manager");
     const accounts = await newSession(browser, "accounts");
@@ -147,10 +147,16 @@ test.describe("Ramadan (B7/B8/B9)", () => {
     // Percent 20% advance, threshold 4 (seeded). Family platter 1200, 4 guests → total 1200, advance 240.
     await bm.req.patch(`${API_BASE}/api/ramadan/config`, { data: { is_enabled: true, advance_type: "percent", advance_value: 20, advance_guest_threshold: 4, booking_start_date: futureDate(0), booking_end_date: futureDate(45) } });
     const av = await available(cust.req, main, futureDate(7));
-    const slot = av.slots[0], menu = av.menus.find((m: { serving_capacity: number }) => m.serving_capacity === 4) ?? av.menus[0], table = av.tables[1] ?? av.tables[0];
+    const slot = av.slots[0], menu = av.menus.find((m: { serving_capacity: number }) => m.serving_capacity === 4) ?? av.menus[0];
+    // Re-query WITH the slot so only genuinely free tables are offered — keeps
+    // the test correct even when an earlier run's booking still holds a seat.
+    // The party is 4, so a free table that actually seats 4 is required.
+    const avSlot = await available(cust.req, main, futureDate(7), slot.id);
+    const table = (avSlot.tables as { id: number; seats: number }[]).find((t) => t.seats >= 4);
+    expect(table, "a free 4-seat table exists for the target date/slot").toBeTruthy();
 
     const res = await (await cust.req.post(`${API_BASE}/api/ramadan/reservations`, {
-      data: { branch_id: main, booking_date: futureDate(7), slot_id: slot.id, table_id: table.id, menu_id: menu.id, party_size: 4, guest_name: "Pay", guest_phone: "01700000000" },
+      data: { branch_id: main, booking_date: futureDate(7), slot_id: slot.id, table_id: table!.id, menu_id: menu.id, party_size: 4, guest_name: "Pay", guest_phone: "01700000000" },
     })).json();
     expect(res.status).toBe("pending_payment");
     expect(Number(res.advance_required)).toBeCloseTo(240, 1);
@@ -158,17 +164,50 @@ test.describe("Ramadan (B7/B8/B9)", () => {
     // BM cannot confirm before the advance is paid.
     expect((await bm.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/status`, { data: { status: "confirmed" } })).status()).toBe(409);
 
-    // Idempotent payment: same key twice → paid once, no double charge.
-    const key = `pay-${res.id}-abc`;
-    const p1 = await cust.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/pay`, { data: { idempotency_key: key } });
-    expect(p1.status()).toBe(200);
-    const p1body = await p1.json();
-    expect(p1body.payment.status).toBe("paid");
-    const p2 = await cust.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/pay`, { data: { idempotency_key: key } });
-    expect(p2.status()).toBe(200); // idempotent, still paid (no double charge)
-    const p2body = await p2.json();
-    expect(p2body.payment.status).toBe("paid");
-    expect(p2body.payment.paid_amount).toBe(p1body.payment.paid_amount);
+    // THE OLD DEMO CONTRACT IS GONE: /pay used to take `{outcome, idempotency_key}`
+    // from the body and mark the booking paid on the customer's say-so. It now
+    // reads NOTHING from the request body — it only STARTS a gateway payment.
+    // With no gateway configured (this repo's demo rule) that is a clean 400
+    // field error pointing at the counter, never a fabricated settlement.
+    for (const outcome of ["success", "fail"]) {
+      const forged = await cust.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/pay`, {
+        data: { idempotency_key: `forged-${res.id}-${outcome}`, outcome, gateway_ref: "FAKE-TRX" },
+      });
+      expect(forged.status(), `client-asserted outcome:"${outcome}" must be rejected`).toBe(400);
+      expect(await forged.text()).toContain("payment_method"); // graceful "gateway not configured"
+    }
+    // …and nothing about those posts changed the money truth.
+    const afterForged = await (await cust.req.get(`${API_BASE}/api/ramadan/reservations?page_size=50`)).json();
+    const mine = (afterForged.results as { id: number; status: string; payment: { status: string; paid_amount: string } }[]).find((x) => x.id === res.id);
+    expect(mine!.status).toBe("pending_payment");
+    expect(mine!.payment.status).not.toBe("paid");
+    expect(mine!.payment.paid_amount).toBe("0.00");
+    expect((await bm.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/status`, { data: { status: "confirmed" } })).status()).toBe(409);
+
+    // The ONLY non-gateway settlement is /record-payment, and a customer can
+    // never reach it — that is the whole point of the redesign.
+    expect((await cust.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/record-payment`, { data: { reference: "SELF-SERVE" } })).status()).toBe(403);
+
+    // Accounts records the counter payment: reference is mandatory and the
+    // amount must match the required advance to the paisa.
+    expect((await accounts.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/record-payment`, { data: {} })).status()).toBe(400);
+    expect((await accounts.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/record-payment`, { data: { reference: "TRX-BAD-AMT", amount: 100 } })).status()).toBe(400);
+    const accountsMe = await (await accounts.req.get(`${API_BASE}/api/auth/me`)).json();
+    const rec = await accounts.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/record-payment`, {
+      data: { reference: `TRX-${res.id}`, note: "Paid at the counter" },
+    });
+    expect(rec.status()).toBe(200);
+    const recBody = await rec.json();
+    expect(recBody.payment.status).toBe("paid");
+    expect(recBody.payment.paid_amount).toBe("240.00");
+    // Stamped as a hand-entered advance, never mistakable for a gateway settlement.
+    expect(recBody.payment.source).toBe("offline_recorded");
+    expect(recBody.payment.recorded_by).toBe(accountsMe.id);
+    expect(recBody.payment.gateway_ref).toBe(`offline:TRX-${res.id}`);
+    // Advance satisfied → booking moves on to await BM acceptance.
+    expect(recBody.reservation.status).toBe("pending");
+    // Recording the same advance twice is refused — a double-submit can never double-credit.
+    expect((await accounts.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/record-payment`, { data: { reference: `TRX-${res.id}-2` } })).status()).toBe(409);
 
     // Now BM can confirm.
     expect((await bm.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/status`, { data: { status: "confirmed" } })).status()).toBe(200);
@@ -184,13 +223,21 @@ test.describe("Ramadan (B7/B8/B9)", () => {
     // A BM cannot issue a refund.
     expect((await bm.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/refund`, { data: { amount: 10 } })).status()).toBe(403);
 
-    // Failed payment path on a fresh booking → stays unconfirmed.
+    // A fresh booking whose advance is never settled stays unconfirmable —
+    // there is no client-reachable way to flip it to paid.
+    const avSlot2 = await available(cust.req, main, futureDate(8), slot.id);
+    const table2 = (avSlot2.tables as { id: number; seats: number }[]).find((t) => t.seats >= 4);
+    expect(table2, "a free 4-seat table exists for the second date/slot").toBeTruthy();
     const res2 = await (await cust.req.post(`${API_BASE}/api/ramadan/reservations`, {
-      data: { branch_id: main, booking_date: futureDate(8), slot_id: slot.id, table_id: table.id, menu_id: menu.id, party_size: 4, guest_name: "Fail", guest_phone: "01700000000" },
+      data: { branch_id: main, booking_date: futureDate(8), slot_id: slot.id, table_id: table2!.id, menu_id: menu.id, party_size: 4, guest_name: "Fail", guest_phone: "01700000000" },
     })).json();
-    const fail = await cust.req.post(`${API_BASE}/api/ramadan/reservations/${res2.id}/pay`, { data: { idempotency_key: `fail-${res2.id}`, outcome: "fail" } });
-    expect((await fail.json()).payment.status).toBe("failed");
+    expect(res2.status).toBe("pending_payment");
+    expect((await cust.req.post(`${API_BASE}/api/ramadan/reservations/${res2.id}/pay`, { data: { outcome: "success" } })).status()).toBe(400);
     expect((await bm.req.post(`${API_BASE}/api/ramadan/reservations/${res2.id}/status`, { data: { status: "confirmed" } })).status()).toBe(409);
+
+    // Cleanup: cancel both bookings so their tables go back on the market.
+    expect((await cust.req.post(`${API_BASE}/api/ramadan/reservations/${res.id}/status`, { data: { status: "cancelled" } })).status()).toBe(200);
+    expect((await cust.req.post(`${API_BASE}/api/ramadan/reservations/${res2.id}/status`, { data: { status: "cancelled" } })).status()).toBe(200);
 
     await cust.context.close(); await bm.context.close(); await accounts.context.close();
   });
