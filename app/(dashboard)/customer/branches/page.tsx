@@ -83,6 +83,7 @@ export default async function CustomerBranchesPage({
           lng: locationStatus.lng,
           accuracy: locationStatus.accuracy,
           updatedAt: locationStatus.updatedAt,
+          source: locationStatus.source,
         }}
       />
 

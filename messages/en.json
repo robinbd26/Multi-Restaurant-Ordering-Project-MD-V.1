@@ -1914,6 +1914,7 @@
     },
     "location": {
       "staleFix": "That location reading is too old to use. Try again.",
+      "invalidSource": "That location could not be saved: unknown location source.",
       "searchQueryRequired": "Enter a place or address to search.",
       "geoRateLimited": "Too many location searches. Please wait {n} seconds and try again."
     },
@@ -3510,6 +3511,7 @@
     "statusSaved": "Location saved",
     "savedAt": "Updated {when}",
     "accuracy": "Accuracy: ±{m} m",
+    "accuracyManual": "Set by you on the map",
     "enable": "Use my current location",
     "update": "Update my location",
     "retry": "Retry",
@@ -3521,7 +3523,13 @@
     "errTimeout": "Getting your location timed out. Move to an open area and retry.",
     "errUnsupported": "This browser does not support location. Add a saved address with map coordinates instead.",
     "errSave": "Could not save your location. Please try again.",
-    "lowAccuracy": "Location accuracy is low (±{m} m). Move to an open area and retry for a more precise fix — your current fix has still been saved.",
+    "lowAccuracy": "Location accuracy is low (±{m} m). You can correct it on the map below — drag the pin to your exact spot and save it — or move to an open area and retry. Your current fix has still been saved.",
+    "lowAccuracyNoMap": "Location accuracy is low (±{m} m). You can correct it below — search your area or enter your coordinates and save the pin — or move to an open area and retry. Your current fix has still been saved.",
+    "mapTitle": "Set your exact location",
+    "mapHint": "Drag the pin to the exact spot — your gate, not the main road. Your location changes only when you save the pin.",
+    "mapHintNoMap": "Search your area or enter your coordinates below. Your location changes only when you save the pin.",
+    "savePin": "Save this pin",
+    "pinMoved": "Pin moved — save it to update your live location.",
     "riderTracking": "GPS tracking on",
     "riderDenied": "Location permission denied",
     "riderUnavailable": "Location unavailable"

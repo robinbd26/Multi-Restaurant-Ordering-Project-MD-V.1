@@ -9,9 +9,37 @@ import { coverageFor } from "@/lib/services/delivery";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
 
 /**
+ * WS-4.9 — how a stored fix was obtained. A subset of the picker's
+ * `PickerSource`: only these two can ever write `User.currentLat/currentLng`.
+ * A saved address is a different record entirely, and "unverified" is an ORDER
+ * verdict the server reaches on its own — neither is a live location.
+ */
+export type CustomerLocationSource = "device_gps" | "map_pin";
+
+/**
+ * Narrow a client-supplied provenance claim. Absent (every pre-WS-4.9 caller)
+ * means a device reading, which is what those callers send. Anything else is
+ * refused rather than coerced: silently downgrading an unknown value would hide
+ * a client bug, and silently upgrading it would hand a made-up point the trust
+ * of a real GPS reading.
+ */
+function locationSource(value?: string | null): CustomerLocationSource {
+  if (value == null || value === "") return "device_gps";
+  if (value === "device_gps" || value === "map_pin") return value;
+  throw validationError({ source: sk("errors.location.invalidSource") });
+}
+
+/**
  * Save a customer's latest validated GPS fix (req #21). Kept SEPARATE from saved
  * addresses + immutable order snapshots; never overwrites a saved default
  * address. Validates finite + in-range coordinates and non-negative accuracy.
+ *
+ * WS-4.9 — the same entry point now also stores a pin the customer dragged on
+ * the map, so authorization, coordinate validation and the accuracy/timestamp
+ * bookkeeping stay in ONE place. A dragged pin has no metre-accuracy and no
+ * capture moment, so both are dropped server-side for `map_pin` instead of
+ * being taken from the body: a client cannot dress a hand-placed point up as a
+ * precise device reading.
  */
 export async function saveCustomerLocation(
   user: User,
@@ -19,19 +47,24 @@ export async function saveCustomerLocation(
   lng: number,
   accuracy?: number | null,
   capturedAt?: number | string | null,
+  source?: string | null,
 ) {
   if (!isValidLatLng(lat, lng)) throw validationError({ location: sk("errors.orders.invalidCoordinates") });
   if (accuracy != null && (!Number.isFinite(Number(accuracy)) || Number(accuracy) < 0)) {
     throw validationError({ accuracy: sk("errors.orders.invalidCoordinates") });
   }
-  assertFreshFix(capturedAt);
+  const from = locationSource(source);
+  const isDevice = from === "device_gps";
+  const storedAccuracy = isDevice ? accuracy : null;
+  if (isDevice) assertFreshFix(capturedAt);
   await prisma.user.update({
     where: { id: user.id },
     data: {
       currentLat: new Prisma.Decimal(lat.toFixed(7)),
       currentLng: new Prisma.Decimal(lng.toFixed(7)),
-      currentAccuracy: accuracy != null ? new Prisma.Decimal(Number(accuracy).toFixed(2)) : null,
+      currentAccuracy: storedAccuracy != null ? new Prisma.Decimal(Number(storedAccuracy).toFixed(2)) : null,
       locationUpdatedAt: new Date(),
+      currentLocationSource: from,
     },
   });
   return { lat, lng };
@@ -75,6 +108,12 @@ export type PointSource = "gps" | "address";
 
 export interface TrustedPoint extends LatLng {
   source: PointSource;
+  /**
+   * WS-4.9 — true only when a "gps" point really is a device reading. Since the
+   * customer can correct a coarse fix by hand, `source: "gps"` on its own no
+   * longer means the device measured it.
+   */
+  deviceGps: boolean;
 }
 
 /**
@@ -94,14 +133,18 @@ export interface TrustedPoint extends LatLng {
 export async function trustedCustomerPointDetailed(userId: number): Promise<TrustedPoint | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { currentLat: true, currentLng: true, locationUpdatedAt: true },
+    select: { currentLat: true, currentLng: true, locationUpdatedAt: true, currentLocationSource: true },
   });
   if (user?.currentLat != null && user.currentLng != null) {
     const lat = Number(user.currentLat);
     const lng = Number(user.currentLng);
     const stamped = user.locationUpdatedAt?.getTime() ?? null;
     const fresh = stamped != null && Date.now() - stamped <= LOCATION_TRUST_WINDOW_MS;
-    if (fresh && isValidLatLng(lat, lng)) return { lat, lng, source: "gps" };
+    // "" is a row written before the provenance column existed — those could
+    // only ever be device fixes, so they keep their old standing.
+    if (fresh && isValidLatLng(lat, lng)) {
+      return { lat, lng, source: "gps", deviceGps: user.currentLocationSource !== "map_pin" };
+    }
   }
   // Scoped to THIS customer's own addresses, so an address id can never be
   // borrowed from another account.
@@ -111,7 +154,7 @@ export async function trustedCustomerPointDetailed(userId: number): Promise<Trus
   if (addr?.latitude != null && addr.longitude != null) {
     const lat = Number(addr.latitude);
     const lng = Number(addr.longitude);
-    if (isValidLatLng(lat, lng)) return { lat, lng, source: "address" };
+    if (isValidLatLng(lat, lng)) return { lat, lng, source: "address", deviceGps: false };
   }
   return null;
 }
@@ -202,9 +245,11 @@ export async function resolveDeliveryCoordinate(input: {
   const trusted = await trustedCustomerPointDetailed(input.customerId);
   if (trusted && haversineKm(trusted, point) <= COORD_CORROBORATION_KM) {
     // A device fix the SERVER stored itself backs a device_gps claim; anything
-    // else near that point is a pin we can at least vouch for.
+    // else near that point is a pin we can at least vouch for. A stored fix the
+    // customer placed by hand (WS-4.9) is exactly that — a pin — so it can
+    // corroborate a point without ever promoting it to device_gps.
     const source: DeliveryCoordSource =
-      trusted.source === "gps" && input.sourceHint === "device_gps" ? "device_gps" : "map_pin";
+      trusted.source === "gps" && trusted.deviceGps && input.sourceHint === "device_gps" ? "device_gps" : "map_pin";
     return { lat, lng, source, customerAddressId: null };
   }
 
@@ -242,16 +287,26 @@ export async function customerLocationStatus(userId: number): Promise<{
   lng: number | null;
   accuracy: number | null;
   updatedAt: string | null;
+  /** WS-4.9 — device reading or hand-placed pin, so the card can say which. */
+  source: CustomerLocationSource;
 }> {
   const u = await prisma.user.findUnique({
     where: { id: userId },
-    select: { currentLat: true, currentLng: true, currentAccuracy: true, locationUpdatedAt: true },
+    select: {
+      currentLat: true,
+      currentLng: true,
+      currentAccuracy: true,
+      locationUpdatedAt: true,
+      currentLocationSource: true,
+    },
   });
   return {
     lat: u?.currentLat != null ? Number(u.currentLat) : null,
     lng: u?.currentLng != null ? Number(u.currentLng) : null,
     accuracy: u?.currentAccuracy != null ? Number(u.currentAccuracy) : null,
     updatedAt: u?.locationUpdatedAt ? u.locationUpdatedAt.toISOString() : null,
+    // Legacy rows ("") predate the column and can only be device fixes.
+    source: u?.currentLocationSource === "map_pin" ? "map_pin" : "device_gps",
   };
 }
 

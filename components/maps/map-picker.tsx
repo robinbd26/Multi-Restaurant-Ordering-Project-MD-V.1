@@ -77,6 +77,7 @@ export function MapPicker({
   latError,
   lngError,
   persistGps = false,
+  defaultOpen = false,
   testId = "map-picker",
   className,
 }: {
@@ -100,13 +101,20 @@ export function MapPicker({
    * WS-4.2 later reconciles a submitted delivery coordinate against.
    */
   persistGps?: boolean;
+  /**
+   * WS-4.9 — start with the picker already open. Off everywhere by default,
+   * because opening it is what fetches the ~500 KB Maps SDK (see
+   * `useGoogleMaps`): only pass it on a screen whose whole purpose is the pin,
+   * and only when the customer actually has something to correct.
+   */
+  defaultOpen?: boolean;
   testId?: string;
   className?: string;
 }) {
   const { t, locale } = useTranslation();
   const hasKey = mapsApiKey().length > 0;
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const { status, maps } = useGoogleMaps(open && hasKey, locale === "en" ? "en" : "bn");
   const mapFailed = status === "error" || status === "unavailable";
 

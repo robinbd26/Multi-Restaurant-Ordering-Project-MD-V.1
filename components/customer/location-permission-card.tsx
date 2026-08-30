@@ -3,17 +3,26 @@
 import { useState, useEffect, useRef } from "react";
 
 import { Icon } from "@/components/layout/icons";
+import { MapPicker } from "@/components/maps/map-picker";
+import { mapsApiKey } from "@/components/maps/use-google-maps";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useTranslation } from "@/lib/i18n/use-translation";
-import { useLocationRequest } from "@/lib/hooks/use-location-request";
+import { LOW_ACCURACY_M, useLocationRequest } from "@/lib/hooks/use-location-request";
 
 export interface LocationStatus {
   lat: number | null;
   lng: number | null;
   accuracy: number | null;
   updatedAt: string | null;
+  /** WS-4.9 — device reading or a pin the customer placed by hand. */
+  source: "device_gps" | "map_pin";
+}
+
+/** Six decimals ≈ 0.1 m — the picker's own precision, so the two can be compared. */
+function coord(value: number): string {
+  return value.toFixed(6);
 }
 
 /**
@@ -22,14 +31,35 @@ export interface LocationStatus {
  * and refreshes the page to instantly activate nearby branches. The request +
  * save + refresh sequence is the shared `useLocationRequest` hook (§22 — one
  * live-location implementation); this component only renders the status/wording.
+ *
+ * WS-4.9 — the card also carries the shared `MapPicker`, so a customer whose
+ * phone reported a coarse fix (±105 m is an ordinary reading in a Dhaka
+ * building) can drag the pin to their gate instead of being told to walk
+ * outside. GPS stays FIRST and unchanged: the map corrects it, never replaces
+ * it, and the pin is only stored when the customer taps save.
  */
 export function LocationPermissionCard({ initial }: { initial: LocationStatus }) {
   const { t, fmt } = useTranslation();
   const [status, setStatus] = useState<LocationStatus>(initial);
+  // The pin currently shown on the map — decimal strings, the picker's shape.
+  // Seeded from the saved fix, and re-seeded after every successful save so the
+  // "save this pin" affordance disappears once the two agree again.
+  const [pin, setPin] = useState<{ lat: string; lng: string }>({
+    lat: initial.lat != null ? coord(initial.lat) : "",
+    lng: initial.lng != null ? coord(initial.lng) : "",
+  });
   const autoRequested = useRef(false);
-  const { request, phase, busy, saveError } = useLocationRequest({
-    onSaved: (fix) =>
-      setStatus({ lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy, updatedAt: new Date().toISOString() }),
+  const { request, savePin, phase, busy, saveError } = useLocationRequest({
+    onSaved: (fix) => {
+      setStatus({
+        lat: fix.lat,
+        lng: fix.lng,
+        accuracy: fix.accuracy,
+        updatedAt: new Date().toISOString(),
+        source: fix.source,
+      });
+      setPin({ lat: coord(fix.lat), lng: coord(fix.lng) });
+    },
   });
 
   const hasLocation = status.lat != null && status.lng != null;
@@ -37,6 +67,25 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
   // the success state immediately (the hook starts "idle"); a fresh save moves
   // the phase to "saved" itself.
   const showSaved = phase === "saved" || (phase === "idle" && hasLocation);
+
+  // The pin is "moved" only once it is a usable coordinate that differs from the
+  // stored one — half-typed decimals in the no-key fallback must not offer a
+  // save, and re-saving the identical point would be a pointless round trip on
+  // a metered connection.
+  const pinLat = Number(pin.lat);
+  const pinLng = Number(pin.lng);
+  const pinValid =
+    pin.lat.trim() !== "" && pin.lng.trim() !== "" && Number.isFinite(pinLat) && Number.isFinite(pinLng);
+  const savedKey = status.lat != null && status.lng != null ? `${coord(status.lat)},${coord(status.lng)}` : "";
+  const pinMoved = pinValid && `${coord(pinLat)},${coord(pinLng)}` !== savedKey;
+  // Read once, at mount, by the picker: the map opens itself ONLY for the
+  // customer who has something to correct (a coarse saved fix). Everyone else
+  // gets the collapsed picker and never downloads the Maps SDK.
+  const startOpen = initial.accuracy != null && initial.accuracy > LOW_ACCURACY_M;
+  // GRACEFUL DEGRADATION: with no Maps key the picker mounts no map at all — it
+  // offers area search and labelled manual coordinates instead — so the card
+  // must not tell the customer to drag a pin that is not on their screen.
+  const hasMap = mapsApiKey().length > 0;
 
   // Automatically request location when customer lands if not yet set
   useEffect(() => {
@@ -62,7 +111,10 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
               : phase === "lowaccuracy"
                 ? {
                     tone: "warning",
-                    message: t("location.lowAccuracy", {
+                    // The remedy is now the pin, not a walk: a coarse fix is
+                    // corrected in seconds by dragging it. The no-map wording
+                    // points at the same picker's search/coordinate fallback.
+                    message: t(hasMap ? "location.lowAccuracy" : "location.lowAccuracyNoMap", {
                       m: fmt.num(Math.round(status.accuracy ?? 0)),
                     }),
                   }
@@ -96,6 +148,13 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
               </span>
               {status.accuracy != null ? (
                 <span className="text-fg-subtle">{t("location.accuracy", { m: fmt.num(Math.round(status.accuracy)) })}</span>
+              ) : status.source === "map_pin" ? (
+                // A dragged pin has no metre-accuracy: the customer placed it,
+                // no instrument measured it. Quoting a ± figure here — or
+                // reusing the one from the GPS fix it replaced — would be a
+                // fabricated precision, so the card states the provenance
+                // instead and leaves the number out.
+                <span className="text-fg-subtle">{t("location.accuracyManual")}</span>
               ) : null}
               {status.updatedAt ? (
                 <span className="text-fg-subtle">{t("location.savedAt", { when: fmt.dateTime(status.updatedAt) })}</span>
@@ -126,6 +185,39 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
             </Button>
           ) : null}
         </div>
+
+        {/* WS-4.9 — correct the fix by hand. The shared picker does all of it:
+            the lazily-loaded Maps SDK, a touch-draggable pin, tap-to-place,
+            server-side search, and — with NEXT_PUBLIC_GOOGLE_MAPS_API_KEY empty
+            — its own labelled fallback (area search + manual coordinates), so
+            this card never shows a broken or blank map frame. Nothing is
+            written until the customer confirms the pin below. */}
+        <MapPicker
+          label={t("location.mapTitle")}
+          hint={t(hasMap ? "location.mapHint" : "location.mapHintNoMap")}
+          lat={pin.lat}
+          lng={pin.lng}
+          onChange={(point) => setPin({ lat: point.lat, lng: point.lng })}
+          latName="current_lat"
+          lngName="current_lng"
+          defaultOpen={startOpen}
+          testId="location-map"
+        />
+
+        {pinMoved ? (
+          <div className="flex flex-wrap items-center gap-3">
+            {/* An explicit confirm, not save-on-drag: a drag fires on every
+                pin-down and the reverse geocode commits a second time, so
+                auto-saving would POST twice per adjustment on a prepaid
+                connection — and the customer could never look around the map
+                without overwriting their location. */}
+            <Button onClick={() => savePin(pinLat, pinLng)} disabled={busy} data-testid="location-save-pin">
+              <Icon name="check" className="size-4" />
+              {busy ? t("location.saving") : t("location.savePin")}
+            </Button>
+            <p className="text-xs text-fg-subtle">{t("location.pinMoved")}</p>
+          </div>
+        ) : null}
       </CardContent>
       </Card>
     </div>

@@ -70,6 +70,12 @@ model User {
   currentLng              Decimal?
   currentAccuracy         Decimal?
   locationUpdatedAt       DateTime?
+  // WS-4.9 — HOW that fix was obtained. The customer may now correct a coarse
+  // reading by dragging a pin, so this pair is no longer necessarily a device
+  // reading, and a hand-placed pin must never be able to vouch for a
+  // `device_gps` delivery coordinate later. "" = legacy row (written before
+  // this column existed, i.e. a device fix). device_gps | map_pin
+  currentLocationSource   String                      @default("")
   processedRefunds        Refund[]                    @relation("RefundProcessor")
   recordedExpenses        BranchExpense[]             @relation("ExpenseRecorder")
   generatedSettlements    BranchSettlement[]          @relation("SettlementGenerator")
