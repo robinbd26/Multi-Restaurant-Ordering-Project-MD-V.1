@@ -618,10 +618,23 @@ export async function saveAddressAction(
     custom_label?: string;
     address: string;
     area?: string;
+    city?: string;
+    postal_code?: string;
+    country?: string;
     instructions?: string;
     latitude?: number | null;
     longitude?: number | null;
     is_default: boolean;
+    main_area?: string;
+    sub_area?: string;
+    custom_area?: string;
+    road_lane?: string;
+    custom_road?: string;
+    house_plot?: string;
+    flat_number?: string;
+    landmark?: string;
+    map_address?: string;
+    place_id?: string;
   },
 ): Promise<ActionState> {
   try {

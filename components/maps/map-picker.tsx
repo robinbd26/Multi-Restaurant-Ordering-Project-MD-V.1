@@ -46,12 +46,26 @@ export interface PickedPoint {
   address: string;
   /** Locality / thana ("" when unknown). */
   area: string;
+  /** Locality / city ("" when unknown). */
+  city: string;
+  /** Postal code ("" when unknown). */
+  postalCode: string;
+  /** Country ("" when unknown). */
+  country: string;
+  /** Google place_id for this place ("" when unknown / no geocoder). */
+  placeId: string;
+  /** GPS accuracy in metres, only when the device supplied one. */
+  accuracy?: number | null;
 }
 
 interface Suggestion {
   label: string;
   address: string;
   area: string;
+  city: string;
+  postalCode: string;
+  country: string;
+  placeId: string;
   lat: number;
   lng: number;
   demo: boolean;
@@ -78,6 +92,8 @@ export function MapPicker({
   lngError,
   persistGps = false,
   defaultOpen = false,
+  gpsLabel,
+  searchPlaceholder,
   testId = "map-picker",
   className,
 }: {
@@ -108,6 +124,10 @@ export function MapPicker({
    * and only when the customer actually has something to correct.
    */
   defaultOpen?: boolean;
+  /** Overrides the GPS button label ("Use Current Location" on the address page). */
+  gpsLabel?: string;
+  /** Overrides the search placeholder without touching the shared wording. */
+  searchPlaceholder?: string;
   testId?: string;
   className?: string;
 }) {
@@ -146,11 +166,32 @@ export function MapPicker({
 
   /** Push a new point to the parent and remember it as ours. */
   const commit = useCallback(
-    (nextLat: number, nextLng: number, source: PickerSource, nextAddress: string, nextArea: string) => {
+    (
+      nextLat: number,
+      nextLng: number,
+      source: PickerSource,
+      nextAddress: string,
+      nextArea: string,
+      nextCity = "",
+      nextPostalCode = "",
+      nextCountry = "",
+      nextPlaceId = "",
+      nextAccuracy: number | null = null,
+    ) => {
       const value = { lat: coord(nextLat), lng: coord(nextLng) };
       lastCommitted.current = `${value.lat},${value.lng}`;
       setAddress(nextAddress);
-      onChange({ ...value, source, address: nextAddress, area: nextArea });
+      onChange({
+        ...value,
+        source,
+        address: nextAddress,
+        area: nextArea,
+        city: nextCity,
+        postalCode: nextPostalCode,
+        country: nextCountry,
+        placeId: nextPlaceId,
+        accuracy: nextAccuracy,
+      });
     },
     [onChange],
   );
@@ -171,7 +212,17 @@ export function MapPicker({
         if (!res.ok) return;
         const data = (await res.json()) as { result: Suggestion | null };
         if (seq !== reverseSeq.current || !data.result) return;
-        commit(pLat, pLng, source, data.result.address, data.result.area);
+        commit(
+          pLat,
+          pLng,
+          source,
+          data.result.address,
+          data.result.area,
+          data.result.city,
+          data.result.postalCode,
+          data.result.country,
+          data.result.placeId,
+        );
       } catch {
         /* keep the coordinate; the address stays blank */
       }
@@ -181,8 +232,8 @@ export function MapPicker({
 
   /** A pin the customer placed by hand — committed first, named afterwards. */
   const setPin = useCallback(
-    (pLat: number, pLng: number, source: PickerSource) => {
-      commit(pLat, pLng, source, "", "");
+    (pLat: number, pLng: number, source: PickerSource, accuracy: number | null = null) => {
+      commit(pLat, pLng, source, "", "", "", "", "", "", accuracy);
       markerRef.current?.setPosition({ lat: pLat, lng: pLng });
       mapRef.current?.panTo({ lat: pLat, lng: pLng });
       void resolveAddress(pLat, pLng, source);
@@ -301,7 +352,7 @@ export function MapPicker({
   }, [query]);
 
   function chooseSuggestion(s: Suggestion) {
-    commit(s.lat, s.lng, "map_pin", s.address, s.area);
+    commit(s.lat, s.lng, "map_pin", s.address, s.area, s.city, s.postalCode, s.country, s.placeId);
     markerRef.current?.setPosition({ lat: s.lat, lng: s.lng });
     mapRef.current?.panTo({ lat: s.lat, lng: s.lng });
     mapRef.current?.setZoom(DEFAULT_ZOOM);
@@ -326,7 +377,7 @@ export function MapPicker({
       (pos) => {
         setLocating(false);
         const { latitude, longitude, accuracy } = pos.coords;
-        setPin(latitude, longitude, "device_gps");
+        setPin(latitude, longitude, "device_gps", accuracy ?? null);
         if (persistGps) {
           void fetch("/api/customer/location", {
             method: "POST",
@@ -356,7 +407,7 @@ export function MapPicker({
     // still re-derives the real provenance and may well upgrade it. Callers also
     // use this source to tell hand-typing apart from a deliberate pin (checkout
     // does not re-run its coverage call on every keystroke).
-    onChange({ lat: nextLat, lng: nextLng, source: "unverified", address: "", area: "" });
+    onChange({ lat: nextLat, lng: nextLng, source: "unverified", address: "", area: "", city: "", postalCode: "", country: "", placeId: "" });
     if (valid) {
       markerRef.current?.setPosition({ lat: a, lng: b });
       mapRef.current?.panTo({ lat: a, lng: b });
@@ -440,7 +491,7 @@ export function MapPicker({
                   e.preventDefault();
                   if (results[0]) chooseSuggestion(results[0]);
                 }}
-                placeholder={t("mapPicker.searchPlaceholder")}
+                placeholder={searchPlaceholder ?? t("mapPicker.searchPlaceholder")}
                 data-testid={`${testId}-search`}
               />
             </Field>
@@ -474,7 +525,7 @@ export function MapPicker({
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={useMyLocation} disabled={locating} data-testid={`${testId}-gps`}>
               {locating ? <Spinner className="size-4" /> : null}
-              {locating ? t("mapPicker.locating") : t("location.enable")}
+              {locating ? t("mapPicker.locating") : (gpsLabel ?? t("location.enable"))}
             </Button>
             {!mapFailed ? (
               <Button type="button" variant="outline" size="sm" onClick={() => setManual((v) => !v)} data-testid={`${testId}-manual-toggle`}>

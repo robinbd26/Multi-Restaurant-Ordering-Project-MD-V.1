@@ -4,12 +4,16 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 
 import type { Brand } from "@/lib/home/types";
+
+/** localStorage key for the public homepage cart (cart preservation, req #13). */
+const HOME_CART_STORAGE_KEY = "mad-delivery-home-cart";
 
 /** Normalised payload sent to the cart when a product (or a configured size) is added. */
 export interface CartAddInput {
@@ -31,6 +35,8 @@ export interface CartAddInput {
 export interface HomeCartLine {
   /** Unique per item + variant. */
   lineId: string;
+  /** Raw menu-item id — needed to hand the line to the checkout cart. */
+  itemId: string;
   name: string;
   unitPrice: number;
   brand: Brand;
@@ -114,6 +120,31 @@ export function HomeCartProvider({
   const [lastAdded, setLastAdded] = useState<LastAdded | null>(null);
   const [pendingBranchSwitch, setPendingBranchSwitch] = useState<BranchSwitchRequest | null>(null);
 
+  // req #13 — cart preservation across the login/signup round-trip. The cart
+  // used to live only in component state, so navigating to /login to sign in
+  // (the exact moment the ordering flow demands it) threw the whole selection
+  // away. Hydrate once on mount, then mirror every change back to storage.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(HOME_CART_STORAGE_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (raw) setLines(JSON.parse(raw) as HomeCartLine[]);
+    } catch {
+      /* corrupted storage — start fresh */
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHydrated(true);
+  }, []);
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem(HOME_CART_STORAGE_KEY, JSON.stringify(lines));
+    } catch {
+      /* storage full/blocked — the in-memory cart still works */
+    }
+  }, [lines, hydrated]);
+
   // One order belongs to exactly one branch, so the FIRST item locks the cart to
   // its branch. Derived from the lines rather than stored separately, so it can
   // never disagree with what is actually in the cart.
@@ -132,6 +163,7 @@ export function HomeCartProvider({
         ...prev,
         {
           lineId,
+          itemId: input.id,
           name: input.name,
           unitPrice: input.unitPrice,
           brand: input.brand,

@@ -30,7 +30,7 @@ export type OrderStatus =
  * lives in PAYMENT_METHOD_DEFS in lib/constants/index.ts — add a rail there and
  * to this union together, and nothing else needs a new branch.
  */
-export type PaymentMethod = "cash" | "bkash" | "nagad" | "rocket";
+export type PaymentMethod = "cash" | "bkash" | "nagad" | "rocket" | "bank";
 
 export interface Paginated<T> {
   count: number;

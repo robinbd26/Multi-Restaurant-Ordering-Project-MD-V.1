@@ -1,0 +1,57 @@
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › tests\e2e\04-customer-order-flow.spec.ts:4:5 › customer order → BM pipeline → rider deliver → commission once → review (14.4s)
+  ✓  2 [chromium] › tests\e2e\61-address-book.spec.ts:10:7 › Customer address book (English locale) › dropdown spec: + Add your Own first, custom area input, dynamic sub-areas, Basundhara (6.8s)
+  ✓  3 [chromium] › tests\e2e\61-address-book.spec.ts:114:7 › Customer address book (English locale) › save flow: address-type modal, Others custom name saved on the right (6.1s)
+  ✓  4 [chromium] › tests\e2e\61-address-book.spec.ts:176:7 › Customer address book (English locale) › map address round-trip: coordinates + reverse-geocoded map address are stored and returned (4.4s)
+
+
+  1) [chromium] › tests\e2e\04-customer-order-flow.spec.ts:4:5 › customer order → BM pipeline → rider deliver → commission once → review 
+
+    Error: a sellable product exists
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+       9 |   try {
+      10 |     const prod = (await (await customer.req.get(`${API_BASE}/api/products?page_size=1`)).json()).results[0];
+    > 11 |     expect(prod, "a sellable product exists").toBeTruthy();
+         |                                               ^
+      12 |     const riderId = (await (await rider.req.get(`${API_BASE}/api/auth/me`)).json()).id;
+      13 |     const before = await (await rider.req.get(`${API_BASE}/api/rider/wallet`)).json();
+      14 |
+        at F:\Mad Delivary Project v.3 N\tests\e2e\04-customer-order-flow.spec.ts:11:47
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\04-customer-order-flow-cus-58f6a--→-commission-once-→-review-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\04-customer-order-flow-cus-58f6a--→-commission-once-→-review-chromium\test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\04-customer-order-flow-cus-58f6a--→-commission-once-→-review-chromium\test-failed-3.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\04-customer-order-flow-cus-58f6a--→-commission-once-→-review-chromium\error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\04-customer-order-flow-cus-58f6a--→-commission-once-→-review-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\04-customer-order-flow-cus-58f6a--→-commission-once-→-review-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › tests\e2e\04-customer-order-flow.spec.ts:4:5 › customer order → BM pipeline → rider deliver → commission once → review 
+  3 passed (40.3s)
+
+To open last HTML report run:
+[36m[39m
+[36m  npx playwright show-report[39m
+[36m[39m
+E2E_EXIT=1

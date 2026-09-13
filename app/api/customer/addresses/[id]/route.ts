@@ -22,11 +22,24 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
     custom_label?: string;
     address?: string;
     area?: string;
+    city?: string;
+    postal_code?: string;
+    country?: string;
     instructions?: string;
     latitude?: number | null;
     longitude?: number | null;
     is_default?: boolean;
     is_active?: boolean;
+    main_area?: string;
+    sub_area?: string;
+    custom_area?: string;
+    road_lane?: string;
+    custom_road?: string;
+    house_plot?: string;
+    flat_number?: string;
+    landmark?: string;
+    map_address?: string;
+    place_id?: string;
   };
   if (body.label !== undefined && !body.label.trim()) throw validationError({ label: sk("errors.ops.labelRequired") });
   if (body.address !== undefined && !body.address.trim()) throw validationError({ address: sk("errors.ops.addressRequired") });
@@ -36,7 +49,20 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   if (body.custom_label !== undefined) data.customLabel = body.custom_label.trim();
   if (body.address !== undefined) data.address = body.address.trim();
   if (body.area !== undefined) data.area = body.area.trim();
+  if (body.city !== undefined) data.city = body.city.trim();
+  if (body.postal_code !== undefined) data.postalCode = body.postal_code.trim();
+  if (body.country !== undefined) data.country = body.country.trim();
   if (body.instructions !== undefined) data.instructions = body.instructions.trim();
+  if (body.main_area !== undefined) data.mainArea = body.main_area.trim();
+  if (body.sub_area !== undefined) data.subArea = body.sub_area.trim();
+  if (body.custom_area !== undefined) data.customArea = body.custom_area.trim();
+  if (body.road_lane !== undefined) data.roadLane = body.road_lane.trim();
+  if (body.custom_road !== undefined) data.customRoad = body.custom_road.trim();
+  if (body.house_plot !== undefined) data.housePlot = body.house_plot.trim();
+  if (body.flat_number !== undefined) data.flatNumber = body.flat_number.trim();
+  if (body.landmark !== undefined) data.landmark = body.landmark.trim();
+  if (body.map_address !== undefined) data.mapAddress = body.map_address.trim();
+  if (body.place_id !== undefined) data.placeId = body.place_id.trim();
   if (body.latitude !== undefined || body.longitude !== undefined) {
     if (body.latitude == null || body.longitude == null) {
       data.latitude = null;

@@ -1,0 +1,14 @@
+
+> mad-delivery-hq@1.0.0 dev
+> next dev --webpack
+
+⚠ Port 3000 is in use by process 12364, using available port 3001 instead.
+▲ Next.js 16.2.10 (webpack)
+- Local:         http://localhost:3001
+- Network:       http://192.168.68.75:3001
+- Environments: .env.local, .env
+✓ Ready in 1970ms
+- Experiments (use with caution):
+  · proxyClientMaxBodySize: "50mb"
+  · serverActions
+

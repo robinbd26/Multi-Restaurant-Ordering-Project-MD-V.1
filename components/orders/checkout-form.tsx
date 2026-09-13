@@ -13,7 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { placeOrderAction } from "@/lib/api/actions";
 import { useCart } from "@/lib/hooks/use-cart";
 import { useTranslation } from "@/lib/i18n/use-translation";
-import { PAYMENT_LABELS } from "@/lib/constants";
+import { CUSTOMER_PAYMENT_METHODS, paymentMethodDef, PAYMENT_LABELS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { FieldErrors } from "@/lib/validation/contract";
 import { LIMITS } from "@/lib/validation/limits";
@@ -196,14 +196,23 @@ export function CheckoutForm({
   }, [branchId]);
 
   // WS-4.10 — the customer's own saved addresses, so Home/Office can be chosen
-  // instead of re-pinning a location that is already on file.
+  // instead of re-pinning a location that is already on file. The DEFAULT
+  // address is preselected (req #7); the customer can switch to any other.
   useEffect(() => {
     let active = true;
     fetch("/api/customer/addresses?active=1")
       .then((r) => (r.ok ? r.json() : { results: [] }))
-      .then((d) => { if (active) setSavedAddresses(d.results ?? []); })
+      .then((d) => {
+        if (!active) return;
+        const list: SavedAddress[] = d.results ?? [];
+        setSavedAddresses(list);
+        const preferred = list.find((a) => a.is_default) ?? list[0];
+        if (preferred) selectSavedAddress(String(preferred.id));
+      })
       .catch(() => { if (active) setSavedAddresses([]); });
     return () => { active = false; };
+    // Runs once on mount; selectSavedAddress only touches state on the first pass.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // WS-7.1 — the customer's spendable reward vouchers. ?vouchers=1 is the light
@@ -407,13 +416,16 @@ export function CheckoutForm({
   const validateCheckout = useCallback((): FieldErrors => {
     const found: FieldErrors = {};
     if (fulfillment === "delivery") {
+      // req #8/#28 — a delivery order MUST ride on one of the customer's saved
+      // addresses. There is no "continue without an address" path.
+      if (!addressId) found.customer_address_id = t("checkout.addressRequired");
       if (!lat || !lng) found.lat = t("b1.deliveryLocationRequired");
       else if (coverage && !coverage.covered) found.lat = t("b1.deliveryUnavailable");
       const area = areas.find((a) => String(a.id) === areaId);
       if (area?.is_held) found.delivery_area_id = t("checkout.areaHeldNote");
     }
     return found;
-  }, [areaId, areas, coverage, fulfillment, lat, lng, t]);
+  }, [addressId, areaId, areas, coverage, fulfillment, lat, lng, t]);
 
   const { errors, formProps } = useFormValidation(RULES, {
     validate: validateCheckout,
@@ -431,6 +443,52 @@ export function CheckoutForm({
         description={t("orders.cartEmptyCheckoutDesc")}
         action={<ButtonLink href="/customer/branches">{t("orders.viewRestaurants")}</ButtonLink>}
       />
+    );
+  }
+
+  // req #5/#6/#28 — NO SAVED ADDRESS = NO NEXT STEP. Delivery checkout stops
+  // here: no order information, no payment, no submit — the customer must save
+  // an address first. The cart is untouched (localStorage), so returning from
+  // the address page restores this exact checkout with every item intact.
+  // There is deliberately no "continue without address" button; pickup, which
+  // needs no delivery address, remains available as the existing alternative.
+  if (fulfillment === "delivery" && savedAddresses.length === 0) {
+    return (
+      <div className="mx-auto max-w-xl space-y-4" data-testid="checkout-address-blocked">
+        <Alert tone="warning" message={t("checkout.noSavedAddressTitle")} />
+        <p className="text-sm text-fg-muted">{t("checkout.noSavedAddressDesc")}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <ButtonLink href="/customer/addresses" data-testid="go-add-address">
+            {t("checkout.addDeliveryAddress")}
+          </ButtonLink>
+          <Button type="button" variant="outline" onClick={() => setFulfillment("pickup")}>
+            {t("checkout.pickupInstead")}
+          </Button>
+        </div>
+        {/* The cart stays visible so the customer can see nothing was lost. */}
+        <div className="rounded-2xl border border-border-base/80 bg-surface-card p-5">
+          <h3 className="font-semibold text-fg-base">{t("checkout.summaryTitle")}</h3>
+          <p className="mt-2 text-xs text-fg-subtle">
+            {t("checkout.totalItems", { n: fmt.num(cart.items.reduce((s, i) => s + i.quantity, 0)) })}
+          </p>
+          <ul className="mt-3 space-y-2 border-t border-border-base pt-3 text-sm">
+            {cart.items.map((item) => (
+              <li key={`${item.productId}:${item.variationId ?? 0}`} className="flex justify-between gap-3">
+                <span className="text-fg-muted">
+                  {item.name}{item.variationName ? ` · ${item.variationName}` : ""} × {fmt.num(item.quantity)}
+                </span>
+                <span className="font-medium text-fg-base">
+                  {fmt.money(item.unitPrice * item.quantity)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex justify-between border-t border-border-base pt-3">
+            <span className="font-semibold text-fg-base">{t("checkout.summarySubtotal")}</span>
+            <span className="font-bold text-brand-600">{fmt.money(total)}</span>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -472,7 +530,9 @@ export function CheckoutForm({
                 onChange={(e) => selectSavedAddress(e.target.value)}
                 data-testid="saved-address-select"
               >
-                <option value="">{t("checkout.otherLocation")}</option>
+                {/* req #8/#28 — every delivery order rides on a SAVED address.
+                    The old "Other location" escape hatch is gone: a map pick
+                    without saving an address can no longer be submitted. */}
                 {savedAddresses.map((a) => (
                   <option key={a.id} value={a.id}>
                     {(a.display_label || a.label) + " — " + a.address}
@@ -583,26 +643,29 @@ export function CheckoutForm({
         >
           <input type="hidden" name="payment_method" value={payment} />
           <div className="grid gap-3 sm:grid-cols-2">
-            {(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((method) => (
-              <button
-                key={method}
-                type="button"
-                aria-pressed={payment === method}
-                onClick={() => setPayment(method)}
-                className={cn(
-                  "rounded-2xl border-2 p-4 text-left transition-colors",
-                  payment === method
-                    ? "border-brand-500 bg-brand-50"
-                    : "border-border-base bg-surface-card hover:border-border-strong",
-                )}
-              >
-                <span className="text-xl">{method === "cash" ? "💵" : "📱"}</span>
-                <p className="mt-1 font-semibold text-fg-base">{t(`payment.${method}`)}</p>
-                <p className="text-xs text-fg-muted">
-                  {method === "cash" ? t("orders.cashHint") : t("orders.bkashHint")}
-                </p>
-              </button>
-            ))}
+            {/* req #10 — exactly three customer-facing methods: Cash on
+                Delivery, bKash, Bank Transfer (cats:Nagad/Rocket only historical). */}
+            {CUSTOMER_PAYMENT_METHODS.map((method) => {
+              const def = paymentMethodDef(method)!;
+              return (
+                <button
+                  key={method}
+                  type="button"
+                  aria-pressed={payment === method}
+                  onClick={() => setPayment(method)}
+                  className={cn(
+                    "rounded-2xl border-2 p-4 text-left transition-colors",
+                    payment === method
+                      ? "border-brand-500 bg-brand-50"
+                      : "border-border-base bg-surface-card hover:border-border-strong",
+                  )}
+                >
+                  <span className="text-xl">{def.icon}</span>
+                  <p className="mt-1 font-semibold text-fg-base">{t(def.labelKey)}</p>
+                  <p className="text-xs text-fg-muted">{t(def.hintKey)}</p>
+                </button>
+              );
+            })}
           </div>
         </FieldGroup>
 
@@ -733,6 +796,18 @@ export function CheckoutForm({
           {pending ? <Spinner className="size-4 border-white/40 border-t-white" /> : null}
           {t("orders.confirmOrder")}
         </Button>
+        {/* req #15/#29 — the SAME servicing branch the quote (and therefore the
+            server-side order create) resolves. Never a random or customer-chosen
+            branch: the server re-derives it from the delivery point. */}
+        {fulfillment === "delivery" && quote ? (
+          <div className="mt-4 rounded-xl bg-brand-50 px-4 py-3 text-sm dark:bg-brand-500/10" data-testid="nearest-branch">
+            <p className="font-semibold text-brand-700 dark:text-brand-300">{t("checkout.nearestBranchTitle")}</p>
+            <p className="mt-1 font-medium text-fg-base">{quote.branch.name}</p>
+            <p className="mt-0.5 text-xs text-fg-muted">
+              {t("checkout.nearestBranchNote", { branch: quote.branch.name })}
+            </p>
+          </div>
+        ) : null}
       </div>
     </form>
   );

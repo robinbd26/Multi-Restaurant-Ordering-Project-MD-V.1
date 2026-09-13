@@ -3,9 +3,17 @@ import Link from "next/link";
 
 import { cn } from "@/lib/utils";
 
-export function Card({ className, children }: { className?: string; children: ReactNode }) {
+export function Card({
+  className,
+  children,
+  testId,
+}: {
+  className?: string;
+  children: ReactNode;
+  testId?: string;
+}) {
   return (
-    <div className={cn("min-w-0 rounded-2xl border border-border-base bg-surface-card", className)}>
+    <div data-testid={testId} className={cn("min-w-0 rounded-2xl border border-border-base bg-surface-card", className)}>
       {children}
     </div>
   );

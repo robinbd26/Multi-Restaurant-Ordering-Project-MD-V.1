@@ -1,0 +1,165 @@
+
+> mad-delivery-hq@1.0.0 db:test:deploy
+> node scripts/ensure-test-db.mjs && node scripts/with-test-db.mjs npx prisma migrate deploy
+
+Isolated SQLite test database file is ready.
+(node:10652) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+warn The configuration property `package.json#prisma` is deprecated and will be removed in Prisma 7. Please migrate to a Prisma config file (e.g., `prisma.config.ts`).
+For more information, see: https://pris.ly/prisma-config
+
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": SQLite database "test.db" at "file:F:\Mad Delivary Project v.3 N\prisma\test.db"
+
+32 migrations found in prisma/migrations
+
+Applying migration `20260711142903_init`
+Applying migration `20260711162005_complaints_notifications_notices`
+Applying migration `20260711172358_rider_money_flow`
+Applying migration `20260711180406_customer_core`
+Applying migration `20260711181503_super_admin_controls`
+Applying migration `20260711182651_accounts_financials`
+Applying migration `20260711183428_marketing`
+Applying migration `20260711192119_bm_extras`
+Applying migration `20260711193209_rider_location_login`
+Applying migration `20260711195059_notification_i18n_keys`
+Applying migration `20260718125330_products_brand_variations`
+Applying migration `20260718135907_phase_b_core`
+Applying migration `20260718150255_part_c_rider`
+Applying migration `20260718151000_part_c_confirmation_unique`
+Applying migration `20260718162354_ramadan_system`
+Applying migration `20260720084948_new_features_core`
+Applying migration `20260720095151_delivery_areas_archive_gps_assignment`
+Applying migration `20260721090524_add_product_variation_type_and_category_status_audit`
+Applying migration `20260722094516_add_branch_delivery_fee_and_order_radius_snapshots`
+Applying migration `20260722105246_add_payment_verification_and_branch_bkash`
+Applying migration `20260722110803_add_order_status_event_history`
+Applying migration `20260722114851_add_reward_earning_rules_teams_platter_archive`
+Applying migration `20260722130000_add_order_idempotency_key`
+Applying migration `20260803131915_order_item_product_snapshot`
+Applying migration `20260829112917_production_blockers`
+Applying migration `20260829123921_high_severity_gaps`
+Applying migration `20260830052003_customer_location_source`
+Applying migration `20260830061703_branch_manager_hold`
+Applying migration `20260908195444_add_location_fields_to_customer_address`
+Applying migration `20260908220927_add_structured_address_fields`
+Applying migration `20260913000000_add_map_address_to_customer_address`
+Applying migration `20260914000000_add_place_id_to_customer_address`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 20260711142903_init/
+    └─ migration.sql
+  └─ 20260711162005_complaints_notifications_notices/
+    └─ migration.sql
+  └─ 20260711172358_rider_money_flow/
+    └─ migration.sql
+  └─ 20260711180406_customer_core/
+    └─ migration.sql
+  └─ 20260711181503_super_admin_controls/
+    └─ migration.sql
+  └─ 20260711182651_accounts_financials/
+    └─ migration.sql
+  └─ 20260711183428_marketing/
+    └─ migration.sql
+  └─ 20260711192119_bm_extras/
+    └─ migration.sql
+  └─ 20260711193209_rider_location_login/
+    └─ migration.sql
+  └─ 20260711195059_notification_i18n_keys/
+    └─ migration.sql
+  └─ 20260718125330_products_brand_variations/
+    └─ migration.sql
+  └─ 20260718135907_phase_b_core/
+    └─ migration.sql
+  └─ 20260718150255_part_c_rider/
+    └─ migration.sql
+  └─ 20260718151000_part_c_confirmation_unique/
+    └─ migration.sql
+  └─ 20260718162354_ramadan_system/
+    └─ migration.sql
+  └─ 20260720084948_new_features_core/
+    └─ migration.sql
+  └─ 20260720095151_delivery_areas_archive_gps_assignment/
+    └─ migration.sql
+  └─ 20260721090524_add_product_variation_type_and_category_status_audit/
+    └─ migration.sql
+  └─ 20260722094516_add_branch_delivery_fee_and_order_radius_snapshots/
+    └─ migration.sql
+  └─ 20260722105246_add_payment_verification_and_branch_bkash/
+    └─ migration.sql
+  └─ 20260722110803_add_order_status_event_history/
+    └─ migration.sql
+  └─ 20260722114851_add_reward_earning_rules_teams_platter_archive/
+    └─ migration.sql
+  └─ 20260722130000_add_order_idempotency_key/
+    └─ migration.sql
+  └─ 20260803131915_order_item_product_snapshot/
+    └─ migration.sql
+  └─ 20260829112917_production_blockers/
+    └─ migration.sql
+  └─ 20260829123921_high_severity_gaps/
+    └─ migration.sql
+  └─ 20260830052003_customer_location_source/
+    └─ migration.sql
+  └─ 20260830061703_branch_manager_hold/
+    └─ migration.sql
+  └─ 20260908195444_add_location_fields_to_customer_address/
+    └─ migration.sql
+  └─ 20260908220927_add_structured_address_fields/
+    └─ migration.sql
+  └─ 20260913000000_add_map_address_to_customer_address/
+    └─ migration.sql
+  └─ 20260914000000_add_place_id_to_customer_address/
+    └─ migration.sql
+      
+All migrations have been successfully applied.
+
+> mad-delivery-hq@1.0.0 seed:test
+> node scripts/with-test-db.mjs --seed npm run seed
+
+(node:19744) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+> mad-delivery-hq@1.0.0 seed
+> tsx prisma/seed.ts
+
+✔ Super Admin ready: admin
+✔ super_admin: super_admin
+✔ management: management
+✔ marketing: marketing
+✔ branch_manager: branch_manager
+✔ accounts: accounts
+✔ rider: rider
+✔ customer: customer
+✔ Upload fixtures: qa_upload_1, qa_upload_2
+✔ Branch: Main Branch (combined)
+✔ Assigned manager: branch_manager → Main Branch
+✔ Rider assigned: rider → Main Branch
+✔ Catalog: 3 categories, 3 products (multi-variation)
+✔ Brand branch: Cheez Gulshan (cheez)
+✔ Brand branch: Madchef Dhanmondi (madchef)
+✔ Phase B demo: 4 tables, 4 employees, zone + attendance
+✔ Part C demo: rider active duty session at Main Branch + history + courier2
+✔ Ramadan demo: config + 2 slots + 2 platters
+✔ Created 4 sample orders
+✔ Commission setting: ৳50.00/delivery
+✔ Backfilled 2 commission rows
+✔ Seeded withdrawals: 1 paid, 1 pending
+✔ Blocked demo customer
+✔ Reward rules + coin value
+✔ Seeded 2 customer addresses
+✔ Seeded sample rider + food reviews
+✔ Seeded 2 coupons + 1 campaign
+✔ Seeded 1 audience segment
+✔ Seeded complaints, 1 notice, notifications for every role
+✔ Seeded 2 delivery time slots (branch hours left unset for deterministic ordering)
+✔ Seeded 1 table reservation
+✔ Seeded 2 ramadan tables + 1 booking
+✔ Seeded rider route trail (6 points)
+✔ Seeded login history
+
+Seed accounts ready. Password for all: Admin12345@##
+RESET_EXIT=0

@@ -193,7 +193,11 @@ export default async function HomePage() {
         </main>
         <Footer />
         <FloatingActions />
-        <CartDrawer signedIn={Boolean(user)} />
+        <CartDrawer
+          signedIn={Boolean(user)}
+          customerName={user?.full_name ?? null}
+          customerPhone={user?.phone ?? null}
+        />
         <CartToast />
         <BranchSwitchDialog />
         <CutoffCountdown />

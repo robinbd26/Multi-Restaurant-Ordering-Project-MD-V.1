@@ -50,6 +50,10 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
   });
   const autoRequested = useRef(false);
   const { request, savePin, phase, busy, saveError } = useLocationRequest({
+    // The address card prefers an accurate fix: when the device's first reading
+    // is coarse (an ordinary indoor result), the hook silently re-reads once and
+    // keeps the better fix, so the ± warning appears far less often.
+    improveAccuracy: true,
     onSaved: (fix) => {
       setStatus({
         lat: fix.lat,
@@ -65,8 +69,10 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
   const hasLocation = status.lat != null && status.lng != null;
   // Preserve the original mount behavior: with a location already on file, show
   // the success state immediately (the hook starts "idle"); a fresh save moves
-  // the phase to "saved" itself.
-  const showSaved = phase === "saved" || (phase === "idle" && hasLocation);
+  // the phase to "saved" itself. A COARSE fix is still a saved fix — the
+  // green confirmation must show, with the ± note rendered as a calm hint
+  // below (never as an error-style alert that reads like the save failed).
+  const showSaved = phase === "saved" || phase === "lowaccuracy" || (phase === "idle" && hasLocation);
 
   // The pin is "moved" only once it is a usable coordinate that differs from the
   // stored one — half-typed decimals in the no-key fallback must not offer a
@@ -96,7 +102,10 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial.lat, initial.lng]);
 
-  // Map the terminal error phases to a translated message + tone.
+  // Map the terminal error phases to a translated message + tone. "lowaccuracy"
+  // is deliberately NOT here: the fix WAS saved, so it gets the success alert
+  // plus a muted hint (rendered in the body below), not a warning alert that
+  // reads like a failure and buries the confirmation.
   const problem: { tone: "error" | "warning"; message: string } | null =
     phase === "denied"
       ? { tone: "error", message: t("location.errDenied") }
@@ -108,17 +117,16 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
             ? { tone: "error", message: t("location.errUnsupported") }
             : phase === "error"
               ? { tone: "error", message: saveError ?? t("location.errSave") }
-              : phase === "lowaccuracy"
-                ? {
-                    tone: "warning",
-                    // The remedy is now the pin, not a walk: a coarse fix is
-                    // corrected in seconds by dragging it. The no-map wording
-                    // points at the same picker's search/coordinate fallback.
-                    message: t(hasMap ? "location.lowAccuracy" : "location.lowAccuracyNoMap", {
-                      m: fmt.num(Math.round(status.accuracy ?? 0)),
-                    }),
-                  }
-                : null;
+              : null;
+
+  // Coarse-but-saved fix: informational hint. The remedy is the map pin, not a
+  // walk — and the retry button stays available for a fresh GPS attempt.
+  const coarseNote =
+    phase === "lowaccuracy"
+      ? t(hasMap ? "location.lowAccuracy" : "location.lowAccuracyNoMap", {
+          m: fmt.num(Math.round(status.accuracy ?? 0)),
+        })
+      : null;
 
   return (
     <div data-testid="location-card">
@@ -167,6 +175,11 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
 
         {showSaved ? <Alert tone="success" message={t("location.savedOk")} /> : null}
         {problem ? <Alert tone={problem.tone} message={problem.message} /> : null}
+        {coarseNote ? (
+          <p className="rounded-lg bg-surface-muted px-3 py-2 text-xs text-fg-muted" data-testid="location-coarse-note">
+            ℹ️ {coarseNote}
+          </p>
+        ) : null}
 
         <div className="flex items-center gap-3">
           <Button onClick={request} disabled={busy} data-testid="location-enable">

@@ -150,12 +150,37 @@ model CustomerAddress {
   userId       Int
   user         User     @relation("AddressOwner", fields: [userId], references: [id], onDelete: Cascade)
   label        String // Home | Office | Second Home | Others
-  customLabel  String   @default("") // free-text label when label = "Others" (req #17)
+  customLabel  String   @default("") // free-text label when label == "Others" (req #17)
   address      String
   area         String   @default("") // delivery area / locality (req #17)
-  instructions String   @default("") // optional delivery instructions
+  // Exact map location + structured reverse-geocode parts (location v3).
+  // The coordinates are the AUTHORITATIVE delivery point; the text fields are
+  // the best human-readable address the server could resolve for it.
   latitude     Decimal?
   longitude    Decimal?
+  city         String   @default("") // locality / city from reverse geocoding
+  postalCode   String   @default("") // postal code when the provider supplies one
+  country      String   @default("") // country name ("Bangladesh", "বাংলাদেশ")
+  instructions String   @default("") // optional delivery instructions
+  // Structured address fields (location v4 — compact area/road/flat picker).
+  // These build the `address` text automatically; they are also stored
+  // individually so an address can be re-edited with its original parts.
+  mainArea     String   @default("") // Banani | Gulshan | Dhanmondi | ...
+  subArea      String   @default("") // selected sub-area (e.g. "All Over Banani")
+  customArea   String   @default("") // manually entered area when "__custom__" chosen
+  roadLane     String   @default("") // Road 1 .. Road 100
+  customRoad   String   @default("") // manually entered road/lane
+  housePlot    String   @default("") // house / plot number
+  flatNumber   String   @default("") // flat / apartment
+  landmark     String   @default("") // specific landmark
+  // Google Maps / reverse-geocoded address text for the SELECTED PIN. Kept
+  // separate from `address` (the manual/structured full address) so a map
+  // pick is never lost when the customer also fills Area/Road/House etc.
+  mapAddress   String   @default("") // e.g. "House 25, Road 11, Banani, Dhaka"
+  // Google's stable identifier for that place ("" when unavailable). Captured
+  // at pick time and carried through the save flow so the exact location can
+  // be re-opened on Google Maps without re-geocoding.
+  placeId      String   @default("") // e.g. "ChIJ0V1o4VWFTjERU93xZ8vCTBE"
   isDefault    Boolean  @default(false)
   isActive     Boolean  @default(true) // req #17 — soft-deactivate instead of losing history
   createdAt    DateTime @default(now())

@@ -49,6 +49,12 @@ export const LIMITS = {
   shortTextMax: 200,
   /** Long free text (descriptions, notes, reasons, messages). */
   longTextMax: 2000,
+  /**
+   * Hard cap on saved delivery addresses per customer account. Enforced by the
+   * client (drawer/address-book UI) AND the POST /customer/addresses route, so
+   * a 6th address can never be created — deleting one frees the slot again.
+   */
+  maxSavedAddresses: 5,
   phoneDigits: 11,
   /** Money: two decimal places, non-negative, capped well below overflow. */
   moneyMin: 0,

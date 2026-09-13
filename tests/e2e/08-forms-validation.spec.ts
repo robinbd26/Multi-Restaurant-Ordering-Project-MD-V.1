@@ -47,8 +47,9 @@ test.describe("Forms & JS validation (English locale)", () => {
     await login(page, "customer");
     await page.goto("/customer/addresses");
     await page.getByRole("button", { name: "New Address" }).click();
-    await page.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText(/enter a label|enter the address/i).first()).toBeVisible();
+    await page.getByTestId("mode-manual").click();
+    await page.getByTestId("save-address").click();
+    await expect(page.getByText(/this field is required|enter a label|enter the address/i).first()).toBeVisible();
   });
 
   test("rider withdrawal: invalid amount → error, no navigation", async ({ page }) => {

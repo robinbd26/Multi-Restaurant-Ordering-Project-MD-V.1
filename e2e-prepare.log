@@ -1,0 +1,67 @@
+
+> mad-delivery-hq@1.0.0 test:e2e:prepare
+> npm run db:test:deploy && npm run seed:test
+
+
+> mad-delivery-hq@1.0.0 db:test:deploy
+> node scripts/ensure-test-db.mjs && node scripts/with-test-db.mjs npx prisma migrate deploy
+
+Isolated SQLite test database file is ready.
+(node:9420) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+warn The configuration property `package.json#prisma` is deprecated and will be removed in Prisma 7. Please migrate to a Prisma config file (e.g., `prisma.config.ts`).
+For more information, see: https://pris.ly/prisma-config
+
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": SQLite database "test.db" at "file:F:\Mad Delivary Project v.3 N\prisma\test.db"
+
+32 migrations found in prisma/migrations
+
+
+┌─────────────────────────────────────────────────────────┐
+│  Update available 6.19.3 -> 8.0.0-rc.14                 │
+│                                                         │
+│  This is a major update - please follow the guide at    │
+│  https://pris.ly/d/major-version-upgrade                │
+│                                                         │
+│  Run the following to update                            │
+│    npm i --save-dev prisma@latest                       │
+│    npm i @prisma/client@latest                          │
+└─────────────────────────────────────────────────────────┘
+No pending migrations to apply.
+
+> mad-delivery-hq@1.0.0 seed:test
+> node scripts/with-test-db.mjs --seed npm run seed
+
+(node:9972) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+> mad-delivery-hq@1.0.0 seed
+> tsx prisma/seed.ts
+
+✔ Super Admin ready: admin
+✔ super_admin: super_admin
+✔ management: management
+✔ marketing: marketing
+✔ branch_manager: branch_manager
+✔ accounts: accounts
+✔ rider: rider
+✔ customer: customer
+✔ Upload fixtures: qa_upload_1, qa_upload_2
+✔ Branch: Main Branch (combined)
+✔ Rider assigned: rider → Main Branch
+✔ Catalog: 3 categories, 3 products (multi-variation)
+✔ Brand branch: Cheez Gulshan (cheez)
+✔ Brand branch: Madchef Dhanmondi (madchef)
+✔ Phase B demo: 4 tables, 4 employees, zone + attendance
+✔ Part C demo: rider active duty session at Main Branch + history + courier2
+✔ Ramadan demo: config + 2 slots + 2 platters
+• Sample orders already exist — skipped
+✔ Commission setting: ৳50.00/delivery
+• Withdrawals already exist — skipped
+✔ Blocked demo customer
+✔ Reward rules + coin value
+• Complaints already exist — skipped
+
+Seed accounts ready. Password for all: Admin12345@##

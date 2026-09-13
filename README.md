@@ -509,3 +509,4 @@ until real merchant credentials are supplied.
 All of it — with file paths — is in
 [`docs/HANDOVER.md` §11](./docs/HANDOVER.md#11-known-limitations-and-outstanding-work).
 Read that section before promising anything to a stakeholder.
+# Personal-AI-Wanda-v.1

@@ -16,21 +16,37 @@ import {
   setDefaultAddressAction,
 } from "@/lib/api/actions";
 import { useTranslation } from "@/lib/i18n/use-translation";
-import { Field, Input, Textarea } from "@/components/ui/input";
+import { Field, Input, Select } from "@/components/ui/input";
 import type { FieldErrors } from "@/lib/validation/contract";
-import { LIMITS } from "@/lib/validation/limits";
-import { maxLength, number, range, required } from "@/lib/validation/rules";
+import { maxLength, required } from "@/lib/validation/rules";
 import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-validation";
+import { MAIN_AREA_NAMES, subAreasFor, CUSTOM_VALUE } from "@/lib/constants/area-data";
+import { cn } from "@/lib/utils";
 
-const RULES: FieldRules = {
-  label: [required, maxLength(40)],
-  custom_label: [maxLength(40)],
-  address: [required, maxLength(LIMITS.longTextMax)],
-  area: [maxLength(80)],
-  instructions: [maxLength(200)],
-  latitude: [number, range(LIMITS.latMin, LIMITS.latMax)],
-  longitude: [number, range(LIMITS.lngMin, LIMITS.lngMax)],
+const ADDRESS_TYPES = ["Home", "Home-2", "Home-3", "Office", "Others"] as const;
+const PRESET_TYPES = ["Home", "Home-2", "Home-3", "Office"] as const;
+
+const TYPE_EMOJI: Record<string, string> = {
+  Home: "🏠",
+  "Home-2": "🏠",
+  "Home-3": "🏠",
+  Office: "🏢",
+  Others: "✏",
 };
+
+function coord(value: number | null | undefined): string {
+  return value != null && Number.isFinite(value) ? value.toFixed(6) : "";
+}
+
+/** Map a stored main-area value onto the curated list, tolerating case drift
+ *  (e.g. a legacy "Beaily Road" record now reads as "Beaily road"). Returns ""
+ *  when the value is genuinely custom. */
+function normalizeMainArea(name: string): string {
+  if (!name) return "";
+  const exact = MAIN_AREA_NAMES.find((a) => a === name);
+  if (exact) return name;
+  return MAIN_AREA_NAMES.find((a) => a.toLowerCase() === name.toLowerCase()) ?? "";
+}
 
 export interface AddressT {
   id: number;
@@ -39,6 +55,19 @@ export interface AddressT {
   display_label?: string;
   address: string;
   area?: string;
+  main_area?: string;
+  sub_area?: string;
+  custom_area?: string;
+  road_lane?: string;
+  custom_road?: string;
+  house_plot?: string;
+  flat_number?: string;
+  landmark?: string;
+  map_address?: string;
+  place_id?: string;
+  city?: string;
+  postal_code?: string;
+  country?: string;
   instructions?: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -46,337 +75,978 @@ export interface AddressT {
   is_active?: boolean;
 }
 
-const PRESET_LABELS = ["home", "office", "secondHome", "other"] as const;
+function iconForLabel(rawLabel: string): string {
+  const norm = rawLabel.trim().toLowerCase();
+  if (norm === "office") return "briefcase";
+  if (
+    norm === "home" ||
+    norm === "home-2" ||
+    norm === "home2" ||
+    norm === "home 2" ||
+    norm === "home-3" ||
+    norm === "home3" ||
+    norm === "home 3" ||
+    norm === "parents' house" ||
+    norm === "baba's house" ||
+    norm === "father's house"
+  )
+    return "home";
+  return "pin";
+}
 
-// Distinct icon per address kind. The stored label is free text (a localized
-// preset or a custom string) so we match it against the localized presets and
-// fall back to a generic pin for anything custom.
-const PRESET_ICONS: Record<(typeof PRESET_LABELS)[number], string> = {
-  home: "home",
-  office: "briefcase",
-  secondHome: "building",
-  other: "pin",
+/**
+ * One labelled preview row (§UI clarity): a small muted label above a stronger,
+ * readable value. Empty values render NOTHING — never "N/A", "-", or a bare
+ * label with a blank value (req #6).
+ */
+function PreviewRow({ label, value, testId }: { label: string; value: string; testId?: string }) {
+  const text = value.trim();
+  if (!text) return null;
+  return (
+    <div data-testid={testId}>
+      <p className="text-xs text-fg-subtle">{label}</p>
+      <p className="text-sm font-medium text-fg-base">{text}</p>
+    </div>
+  );
+}
+
+function buildAddress(parts: {
+  housePlot?: string;
+  flatNumber?: string;
+  roadLane?: string;
+  subArea?: string;
+  customArea?: string;
+  mainArea?: string;
+  customMainArea?: string;
+}): string {
+  const lines: string[] = [];
+  // Human-readable line labels (req #10): "8, b10" alone is unreadable — the
+  // customer cannot tell a house number from a road number. Only the parts
+  // actually present are labelled and joined, so no empty commas appear.
+  const dwelling = [
+    parts.housePlot?.trim() ? `House/Plot ${parts.housePlot.trim()}` : "",
+    parts.flatNumber?.trim() ? `Flat ${parts.flatNumber.trim()}` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  if (dwelling) lines.push(dwelling);
+  const road = parts.roadLane?.trim();
+  if (road) lines.push(`Road/Lane ${road}`);
+  const area = parts.customArea?.trim() || parts.subArea?.trim();
+  if (area) lines.push(area);
+  const main = parts.customMainArea?.trim() || parts.mainArea?.trim();
+  if (main) lines.push(main);
+  // City is handled automatically (never asked on the form); only include it
+  // once real address parts exist so an empty form renders no bare "Dhaka".
+  if (lines.length > 0) lines.push("Dhaka");
+  return lines.join("\n");
+}
+
+const RULES: FieldRules = {
+  main_area: [required],
+  custom_main_area: [maxLength(80)],
+  sub_area: [maxLength(80)],
+  custom_area: [maxLength(80)],
+  // Road/Lane and House/Plot are OPTIONAL free-text fields.
+  road_lane: [maxLength(80)],
+  house_plot: [maxLength(40)],
+  flat_number: [maxLength(40)],
+  landmark: [maxLength(80)],
+  instructions: [maxLength(200)],
 };
 
-/** Full CRUD manager for the customer's saved addresses. */
 export function AddressManager({ addresses }: { addresses: AddressT[] }) {
   const { t } = useTranslation();
   const router = useRouter();
   const [pending, start] = useTransition();
-
-  // Pick a distinct icon by matching the stored label to a localized preset.
-  function iconForLabel(rawLabel: string): string {
-    const norm = rawLabel.trim().toLowerCase();
-    for (const key of PRESET_LABELS) {
-      if (t(`addresses.preset_${key}`).toLowerCase() === norm) return PRESET_ICONS[key];
-    }
-    return "pin";
-  }
+  const formRef = useRef<HTMLFormElement>(null);
 
   const [editing, setEditing] = useState<AddressT | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [label, setLabel] = useState("");
-  const [customLabel, setCustomLabel] = useState("");
-  const [addressText, setAddressText] = useState("");
-  const [area, setArea] = useState("");
-  const [instructions, setInstructions] = useState("");
+  const [showTypeModal, setShowTypeModal] = useState(false);
+  // Foodpanda-style entry: map-first pin picking, with "Add Manually" as a
+  // first-class alternative that never requires coordinates.
+  const [entryMode, setEntryMode] = useState<"map" | "manual">("map");
+  const [locationConfirmed, setLocationConfirmed] = useState(false);
+  const [selectedType, setSelectedType] = useState("");
+  const [customTypeName, setCustomTypeName] = useState("");
+  const [typeModalError, setTypeModalError] = useState<string | null>(null);
+  const [mainArea, setMainArea] = useState("");
+  const [customMainArea, setCustomMainArea] = useState("");
+  const [subArea, setSubArea] = useState("");
+  const [customArea, setCustomArea] = useState("");
+  const [roadLane, setRoadLane] = useState("");
+  const [housePlot, setHousePlot] = useState("");
+  const [flatNumber, setFlatNumber] = useState("");
+  const [landmark, setLandmark] = useState("");
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
+  const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [addressText, setAddressText] = useState("");
+  // The Google Maps / reverse-geocoded text of the CURRENTLY SELECTED PIN.
+  // Dedicated state so a map pick is never overwritten or dropped by the
+  // manual fields: it is re-set on every pick and saved as `map_address`.
+  const [mapAddress, setMapAddress] = useState("");
+  // Google's stable place identifier for the selected pin ("" when the
+  // geocoder did not supply one, or when typing a manual address). Kept with
+  // the other map data in the MAIN form state, saved as `place_id`.
+  const [placeId, setPlaceId] = useState("");
+  const [area, setArea] = useState("");
+  const [city, setCity] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [country, setCountry] = useState("");
+  const [instructions, setInstructions] = useState("");
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [submissionId, setSubmissionId] = useState(0);
 
-  // "Others" reveals a free-text custom label (matches the localized preset).
-  const isOther = label.trim().toLowerCase() === t("addresses.preset_other").toLowerCase();
+  const crossValidate = useCallback(
+    (values: Record<string, string>): FieldErrors => {
+      const errors: FieldErrors = {};
+      // "+ Add your Own" (custom main area) requires the custom name.
+      if (values.main_area === CUSTOM_VALUE && !values.custom_main_area?.trim()) {
+        errors.custom_main_area = t("validation.required");
+      }
+      // Custom sub-area ("+ Add your Own") requires the custom name.
+      if (values.sub_area === CUSTOM_VALUE && !values.custom_area?.trim()) {
+        errors.custom_area = t("validation.required");
+      }
+      // Sub-area is required once a predefined main area is selected. A custom
+      // main area ("+ Add your Own") has no curated sub-area list, so there is
+      // nothing to require there.
+      if (values.main_area && values.main_area !== CUSTOM_VALUE && !values.sub_area?.trim()) {
+        errors.sub_area = t("validation.required");
+      }
+      return errors;
+    },
+    [t],
+  );
 
-  /**
-   * WS-4.1 — the address text the map picker last filled in. The customer's own
-   * typing always wins: a newly resolved address only overwrites the field when
-   * it is empty or still holds what the picker put there.
-   */
-  const pickedAddress = useRef("");
+  const resolvedMainArea = mainArea === CUSTOM_VALUE ? customMainArea.trim() : mainArea;
+  const resolvedSubArea = subArea === CUSTOM_VALUE ? customArea.trim() : subArea;
+  const resolvedRoadLane = roadLane.trim();
 
-  const handlePick = useCallback((point: PickedPoint) => {
-    setLat(point.lat);
-    setLng(point.lng);
-    if (point.address) {
-      setAddressText((current) => {
-        if (current.trim() === "" || current === pickedAddress.current) {
-          pickedAddress.current = point.address;
-          return point.address;
-        }
-        return current;
-      });
-    }
-    if (point.area) setArea((current) => (current.trim() === "" ? point.area : current));
-  }, []);
+  // Map-mode data quality: a picked pin must be explicitly confirmed before the
+  // address can be saved. Manual mode never blocks on coordinates.
+  const coordsPicked = lat.trim() !== "" && lng.trim() !== "";
+  const saveBlocked = entryMode === "map" && coordsPicked && !locationConfirmed;
 
-  /** Coordinates are optional but must be supplied as a PAIR. */
-  const validateCoords = useCallback((): FieldErrors => {
-    const hasLat = lat.trim() !== "";
-    const hasLng = lng.trim() !== "";
-    if (hasLat && !hasLng) return { longitude: t("addresses.errCoordPair") };
-    if (hasLng && !hasLat) return { latitude: t("addresses.errCoordPair") };
-    return {};
-  }, [lat, lng, t]);
+  const previewAddress = buildAddress({
+    housePlot: housePlot.trim(),
+    flatNumber: flatNumber.trim(),
+    roadLane: resolvedRoadLane,
+    subArea: subArea === CUSTOM_VALUE ? "" : subArea,
+    customArea: subArea === CUSTOM_VALUE ? customArea.trim() : "",
+    mainArea: mainArea === CUSTOM_VALUE ? "" : mainArea,
+    customMainArea: mainArea === CUSTOM_VALUE ? customMainArea.trim() : "",
+  });
 
   function openCreate() {
     setEditing(null);
-    setLabel("");
-    setCustomLabel("");
-    setAddressText("");
-    setArea("");
-    setInstructions("");
+    setMainArea("");
+    setCustomMainArea("");
+    setSubArea("");
+    setCustomArea("");
+    setRoadLane("");
+    setHousePlot("");
+    setFlatNumber("");
+    setLandmark("");
     setLat("");
     setLng("");
+    setAccuracy(null);
+    setAddressText("");
+    setMapAddress("");
+    setPlaceId("");
+    setArea("");
+    setCity("");
+    setPostalCode("");
+    setCountry("");
+    setInstructions("");
     setIsDefault(addresses.length === 0);
+    setSelectedType("");
+    setCustomTypeName("");
+    setTypeModalError(null);
     setError(null);
     setServerErrors({});
     resetErrors();
+    setShowTypeModal(false);
+    setLocationConfirmed(false);
+    setEntryMode("map");
     setShowForm(true);
   }
 
   function openEdit(a: AddressT) {
     setEditing(a);
-    setLabel(a.label);
-    setCustomLabel(a.custom_label ?? "");
+
+    const savedMain = a.main_area ?? "";
+    const canonicalMain = normalizeMainArea(savedMain);
+    if (canonicalMain) {
+      setMainArea(canonicalMain);
+      setCustomMainArea("");
+    } else {
+      setMainArea(savedMain ? CUSTOM_VALUE : "");
+      setCustomMainArea(savedMain);
+    }
+
+    const subs = canonicalMain ? subAreasFor(canonicalMain) : [];
+    const savedSub = a.sub_area ?? "";
+    if (savedSub && subs.includes(savedSub)) {
+      setSubArea(savedSub);
+      setCustomArea("");
+    } else if (savedSub) {
+      // Legacy sub-area value not on the current curated list — keep it
+      // selectable so the saved record round-trips intact.
+      setSubArea(savedSub);
+      setCustomArea(a.custom_area ?? "");
+    } else if (a.custom_area) {
+      setSubArea(CUSTOM_VALUE);
+      setCustomArea(a.custom_area);
+    } else {
+      setSubArea("");
+      setCustomArea("");
+    }
+
+    // Road/Lane is a free-text field; a legacy custom road value becomes the text.
+    setRoadLane(a.road_lane ?? a.custom_road ?? "");
+
+    setHousePlot(a.house_plot ?? "");
+    setFlatNumber(a.flat_number ?? "");
+    setLandmark(a.landmark ?? "");
+    setLat(coord(a.latitude));
+    setLng(coord(a.longitude));
+    setAccuracy(null);
     setAddressText(a.address);
+    setMapAddress(a.map_address ?? "");
+    setPlaceId(a.place_id ?? "");
     setArea(a.area ?? "");
+    setCity(a.city ?? "");
+    setPostalCode(a.postal_code ?? "");
+    setCountry(a.country ?? "");
     setInstructions(a.instructions ?? "");
-    setLat(a.latitude != null ? String(a.latitude) : "");
-    setLng(a.longitude != null ? String(a.longitude) : "");
     setIsDefault(a.is_default);
+
+    const isPreset = (PRESET_TYPES as readonly string[]).includes(a.label);
+    if (a.label === "Others") {
+      setSelectedType("Others");
+      setCustomTypeName(a.custom_label ?? a.label);
+    } else if (!isPreset) {
+      setSelectedType("Others");
+      setCustomTypeName(a.label);
+    } else {
+      setSelectedType(a.label);
+      setCustomTypeName("");
+    }
+
+    setTypeModalError(null);
     setError(null);
     setServerErrors({});
     resetErrors();
+    setShowTypeModal(false);
+    // An address with stored coordinates reopens in map mode (already trusted);
+    // a manual-only address reopens in manual mode with no map required.
+    const hasSavedCoords = a.latitude != null && a.longitude != null;
+    setEntryMode(hasSavedCoords ? "map" : "manual");
+    setLocationConfirmed(hasSavedCoords);
     setShowForm(true);
   }
 
-  /** Runs only after every client rule passed. */
-  const submit = useCallback(
-    (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      setError(null);
-      const hasCoords = lat.trim() !== "" && lng.trim() !== "";
-      start(async () => {
-        const res = await saveAddressAction(editing?.id ?? null, {
-          label: label.trim(),
-          custom_label: isOther ? customLabel.trim() : "",
-          address: addressText.trim(),
-          area: area.trim(),
-          instructions: instructions.trim(),
-          ...(hasCoords
-            ? { latitude: Number(lat), longitude: Number(lng) }
-            : { latitude: null, longitude: null }),
-          is_default: isDefault,
-        });
-        setSubmissionId((n) => n + 1);
-        setServerErrors(res.fieldErrors ?? {});
-        if (res.error || Object.keys(res.fieldErrors ?? {}).length > 0) {
-          // The form stays OPEN with every value the customer typed.
-          setError(res.error);
-          return;
-        }
-        setShowForm(false); // closed only after a confirmed save
-        router.refresh();
+  const handlePick = useCallback((point: PickedPoint) => {
+    setLat(point.lat);
+    setLng(point.lng);
+    setAccuracy(typeof point.accuracy === "number" && Number.isFinite(point.accuracy) ? point.accuracy : null);
+    // A moved/re-selected pin must be re-confirmed before it can be saved.
+    setLocationConfirmed(false);
+    // ALWAYS overwrite the map text with THIS pin's reverse-geocoded address —
+    // a second pick must never leave the previous location's text behind
+    // (the "addressText only if empty" behaviour below stays only as a
+    // legacy fallback for the `address` column).
+    setMapAddress(point.address);
+    // Same for the place id: every pick carries ITS OWN place_id (or ""),
+    // so the saved record always points at the location the customer last chose.
+    setPlaceId(point.placeId);
+    if (point.address) setAddressText((current) => (current.trim() === "" ? point.address : current));
+    if (point.area) setArea(point.area);
+    if (point.city) setCity(point.city);
+    if (point.postalCode) setPostalCode(point.postalCode);
+    if (point.country) setCountry(point.country);
+  }, []);
+
+  const handleFormValid = useCallback((event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSelectedType(editing ? (selectedType || "") : "");
+    if (!editing) setCustomTypeName("");
+    setTypeModalError(null);
+    setShowTypeModal(true);
+  }, [editing, selectedType]);
+
+  const handleTypeSelect = useCallback((type: string) => {
+    setSelectedType(type);
+    if (type !== "Others") setCustomTypeName("");
+    setTypeModalError(null);
+  }, []);
+
+  const handleSaveWithType = useCallback(() => {
+    if (!selectedType) {
+      setTypeModalError(t("addresses.errAddressType"));
+      return;
+    }
+    if (selectedType === "Others" && !customTypeName.trim()) {
+      setTypeModalError(t("addresses.errCustomLabel"));
+      return;
+    }
+
+    setTypeModalError(null);
+    setError(null);
+
+    const isOthers = selectedType === "Others";
+    const finalLabel = isOthers ? customTypeName.trim() : selectedType;
+
+    const hasCoords =
+      lat.trim() !== "" && lng.trim() !== "" && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
+
+    const fullAddress = buildAddress({
+      housePlot: housePlot.trim(),
+      flatNumber: flatNumber.trim(),
+      roadLane: resolvedRoadLane,
+      subArea: subArea === CUSTOM_VALUE ? "" : subArea,
+      customArea: subArea === CUSTOM_VALUE ? customArea.trim() : "",
+      mainArea: mainArea === CUSTOM_VALUE ? "" : mainArea,
+      customMainArea: mainArea === CUSTOM_VALUE ? customMainArea.trim() : "",
+    });
+
+    start(async () => {
+      const res = await saveAddressAction(editing?.id ?? null, {
+        label: finalLabel,
+        custom_label: "",
+        address: fullAddress || mapAddress.trim() || addressText.trim(),
+        area: area.trim(),
+        city: city.trim() || "Dhaka",
+        country: country.trim() || "Bangladesh",
+        postal_code: postalCode.trim(),
+        instructions: instructions.trim(),
+        latitude: hasCoords ? Number(lat) : null,
+        longitude: hasCoords ? Number(lng) : null,
+        is_default: isDefault,
+        main_area: resolvedMainArea,
+        sub_area: subArea === CUSTOM_VALUE ? "" : subArea,
+        custom_area: subArea === CUSTOM_VALUE ? customArea.trim() : "",
+        road_lane: roadLane.trim(),
+        custom_road: "",
+        house_plot: housePlot.trim(),
+        flat_number: flatNumber.trim(),
+        landmark: landmark.trim(),
+        map_address: mapAddress.trim(),
+        place_id: placeId,
       });
-    },
-    [addressText, area, customLabel, editing, instructions, isDefault, isOther, label, lat, lng, router],
-  );
+
+      setSubmissionId((n) => n + 1);
+      setServerErrors(res.fieldErrors ?? {});
+      if (res.error || Object.keys(res.fieldErrors ?? {}).length > 0) {
+        setError(res.error);
+        setShowTypeModal(false);
+        return;
+      }
+      setShowTypeModal(false);
+      setShowForm(false);
+      router.refresh();
+    });
+  }, [
+    selectedType, customTypeName, editing, lat, lng, housePlot, flatNumber,
+    resolvedRoadLane, subArea, customArea, mainArea, resolvedMainArea, customMainArea,
+    roadLane, area, city, postalCode, country, instructions, addressText,
+    isDefault, router, landmark, t, mapAddress, placeId,
+  ]);
 
   const { errors, formProps, reset: resetErrors } = useFormValidation(RULES, {
-    validate: validateCoords,
-    onSubmitValid: submit,
+    onSubmitValid: handleFormValid,
     serverErrors,
     submissionId,
     pending,
+    validate: crossValidate,
   });
 
   return (
     <div className="space-y-4">
       {!showForm ? (
-        <div className="flex justify-end">
-          <Button onClick={openCreate} data-testid="add-address">
-            <Icon name="plus" className="size-4" /> {t("addresses.add")}
-          </Button>
-        </div>
+        <>
+          <div className="flex items-center justify-end gap-3">
+            <Button onClick={openCreate} data-testid="add-address">
+              <Icon name="plus" className="size-4" /> {t("addresses.add")}
+            </Button>
+          </div>
+
+          {addresses.length === 0 ? (
+            <Card>
+              <EmptyState
+                title={t("addresses.emptyTitle")}
+                description={t("addresses.emptyDesc")}
+                action={
+                  <Button size="sm" onClick={openCreate}>
+                    {t("addresses.add")}
+                  </Button>
+                }
+              />
+            </Card>
+          ) : (
+            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {addresses.map((a) => (
+                <li key={a.id}>
+                  <Card className="h-full" testId={`saved-address-${a.id}`}>
+                    <CardContent className="flex h-full flex-col p-4">
+                      <div className="flex items-center gap-2">
+                        <span className="flex size-9 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                          <Icon name={iconForLabel(a.label)} className="size-4" />
+                        </span>
+                        <span className="font-semibold text-fg-base">
+                          {a.display_label ?? a.label}
+                        </span>
+                        {a.is_default ? (
+                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-600 ring-1 ring-emerald-200" data-testid="addr-default-badge">
+                            {t("addresses.default")}
+                          </span>
+                        ) : null}
+                      </div>
+                      {/* Same labelled clarity as the live preview (req #13):
+                          no raw value lists. Legacy records without structured
+                          fields still fall back to the saved address string. */}
+                      {a.main_area || a.sub_area || a.custom_area || a.road_lane || a.house_plot || a.flat_number || a.landmark ? (
+                        <div className="mt-2 space-y-2" data-testid={`saved-address-details-${a.id}`}>
+                          <PreviewRow label={t("addresses.previewArea")} value={a.main_area || a.area || ""} />
+                          <PreviewRow label={t("addresses.previewSubArea")} value={a.sub_area || a.custom_area || ""} />
+                          <PreviewRow label={t("addresses.previewRoadLane")} value={a.road_lane || a.custom_road || ""} />
+                          <PreviewRow label={t("addresses.previewHousePlot")} value={a.house_plot || ""} />
+                          <PreviewRow label={t("addresses.previewFlat")} value={a.flat_number || ""} />
+                          <PreviewRow label={t("addresses.landmark")} value={a.landmark || ""} />
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-sm text-fg-muted line-clamp-2">{a.address || a.area}</p>
+                      )}
+                      {a.latitude != null && a.longitude != null ? (
+                        <p className="mt-1 text-xs text-fg-subtle">
+                          🗺️ {t("addresses.mapLocation")}: {t("addresses.locationConfirmed")} ({coord(a.latitude)}, {coord(a.longitude)})
+                        </p>
+                      ) : null}
+                      {a.map_address ? (
+                        <p className="mt-1 text-xs text-fg-subtle line-clamp-2" data-testid="saved-map-address">
+                          🗺️ {t("addresses.mapLocation")}: {a.map_address}
+                        </p>
+                      ) : null}
+                      {a.latitude != null && a.longitude != null ? (
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${a.latitude},${a.longitude}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 inline-block text-xs font-medium text-brand-600 hover:underline"
+                        >
+                          📍 {t("addresses.viewOnMap")}
+                        </a>
+                      ) : null}
+                      <div className="mt-auto pt-3 flex items-center gap-3 text-sm">
+                        <button type="button" onClick={() => openEdit(a)} className="font-medium text-fg-muted hover:text-brand-600 hover:underline">
+                          {t("common.edit")}
+                        </button>
+                        {!a.is_default ? (
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() =>
+                              start(async () => {
+                                await setDefaultAddressAction(a.id);
+                                router.refresh();
+                              })
+                            }
+                            className="font-medium text-fg-muted hover:text-brand-600 hover:underline"
+                          >
+                            {t("addresses.setDefault")}
+                          </button>
+                        ) : null}
+                        <ConfirmModal
+                          trigger={
+                            <button type="button" className="font-medium text-red-600 hover:underline">
+                              {t("common.delete")}
+                            </button>
+                          }
+                          title={t("addresses.deleteTitle")}
+                          description={t("addresses.deleteDesc")}
+                          confirmLabel={t("common.delete")}
+                          action={async () => {
+                            const res = await deleteAddressAction(a.id);
+                            router.refresh();
+                            return res;
+                          }}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       ) : (
-        <Card>
-          <CardContent>
-            <form {...formProps} className="space-y-4" data-testid="address-form">
+        <form ref={formRef} {...formProps} className="grid gap-4 lg:grid-cols-[360px_1fr]" data-testid="address-form">
+          <Card>
+            <CardContent className="space-y-2 pt-3">
               <Alert tone="error" message={error} />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Field label={t("addresses.labelField")} name="label" required error={errors.label}>
-                    <Input
-                      name="label"
-                      value={label}
-                      onChange={(e) => setLabel(e.target.value)}
-                      maxLength={40}
-                      data-testid="addr-label"
-                    />
-                  </Field>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {PRESET_LABELS.map((key) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setLabel(t(`addresses.preset_${key}`))}
-                        className="rounded-full bg-surface-muted px-3 py-1 text-xs font-medium text-fg-muted hover:bg-brand-50 hover:text-brand-600"
-                      >
-                        {t(`addresses.preset_${key}`)}
-                      </button>
-                    ))}
-                  </div>
-                  {isOther ? (
-                    <Field
-                      label={t("addresses.customLabelPlaceholder")}
-                      name="custom_label"
-                      className="mt-2"
-                      error={errors.custom_label}
-                    >
-                      <Input
-                        name="custom_label"
-                        value={customLabel}
-                        onChange={(e) => setCustomLabel(e.target.value)}
-                        maxLength={40}
-                        placeholder={t("addresses.customLabelPlaceholder")}
-                        data-testid="addr-custom-label"
-                      />
-                    </Field>
-                  ) : null}
+
+              {/* Method chooser — map-first, but "Add Manually" is a first-class
+                  path: the customer is never forced to use the map. */}
+              <div className="rounded-xl border border-border-strong p-3" data-testid="entry-mode">
+                <h3 className="text-sm font-semibold text-fg-base">{t("addresses.addDeliveryAddress")}</h3>
+                <p className="mt-0.5 text-xs text-fg-subtle">{t("addresses.chooseMethodHint")}</p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEntryMode("map")}
+                    className={cn(
+                      "flex min-h-11 flex-col items-center justify-center rounded-lg border p-2 text-center text-xs font-medium transition-colors",
+                      entryMode === "map"
+                        ? "border-brand-500 bg-brand-50 text-brand-700"
+                        : "border-border-strong text-fg-muted hover:border-brand-300",
+                    )}
+                    data-testid="mode-map"
+                  >
+                    <span aria-hidden="true">🗺️</span> {t("addresses.pickOnMap")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEntryMode("manual")}
+                    className={cn(
+                      "flex min-h-11 flex-col items-center justify-center rounded-lg border p-2 text-center text-xs font-medium transition-colors",
+                      entryMode === "manual"
+                        ? "border-brand-500 bg-brand-50 text-brand-700"
+                        : "border-border-strong text-fg-muted hover:border-brand-300",
+                    )}
+                    data-testid="mode-manual"
+                  >
+                    <span aria-hidden="true">📝</span> {t("addresses.addManually")}
+                  </button>
                 </div>
-                <Field label={t("addresses.addressField")} name="address" required error={errors.address}>
-                  <Textarea
-                    name="address"
-                    rows={3}
-                    value={addressText}
-                    onChange={(e) => setAddressText(e.target.value)}
-                    data-testid="addr-address"
+              </div>
+
+              <Field label={t("addresses.selectYourArea")} name="main_area" required error={errors.main_area}>
+                <Select
+                  name="main_area"
+                  value={mainArea}
+                  onChange={(e) => {
+                    setMainArea(e.target.value);
+                    // Any main-area switch resets the sub-area choice.
+                    setSubArea("");
+                    setCustomArea("");
+                    if (e.target.value !== CUSTOM_VALUE) {
+                      setCustomMainArea("");
+                    }
+                  }}
+                  data-testid="addr-main-area"
+                >
+                  <option value="" hidden>
+                    {t("addresses.selectYourArea")}
+                  </option>
+                  <option value={CUSTOM_VALUE}>{t("addresses.addYourOwn")}</option>
+                  {MAIN_AREA_NAMES.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </Select>
+              </Field>
+              {mainArea === CUSTOM_VALUE ? (
+                <Field label={t("addresses.enterYourAreaName")} name="custom_main_area" error={errors.custom_main_area}>
+                  <Input
+                    name="custom_main_area"
+                    value={customMainArea}
+                    onChange={(e) => setCustomMainArea(e.target.value)}
+                    maxLength={80}
+                    placeholder={t("addresses.enterYourAreaNamePlaceholder")}
+                    data-testid="addr-custom-main-area"
+                  />
+                </Field>
+              ) : null}
+
+              <Field label={t("addresses.selectYourAreaName")} name="sub_area" required error={errors.sub_area}>
+                <Select
+                  name="sub_area"
+                  value={subArea}
+                  onChange={(e) => setSubArea(e.target.value)}
+                  disabled={!mainArea || mainArea === CUSTOM_VALUE}
+                  data-testid="addr-sub-area"
+                >
+                  <option value="">{t("addresses.selectAreaName")}</option>
+                  {mainArea && mainArea !== CUSTOM_VALUE
+                    ? subAreasFor(mainArea).map((name) => (
+                        <option key={name} value={name}>{name}</option>
+                      ))
+                    : null}
+                  {subArea && subArea !== CUSTOM_VALUE && !subAreasFor(mainArea).includes(subArea) ? (
+                    // Legacy: a stored sub-area that is not on the current list.
+                    <option value={subArea}>{subArea}</option>
+                  ) : null}
+                </Select>
+              </Field>
+              {subArea === CUSTOM_VALUE ? (
+                // Legacy-safe: an OLD saved address stored a free-text custom
+                // sub-area. The "Select Area" dropdown only lists predefined
+                // sub-areas (req #5), so this value is surfaced as a plain text
+                // input instead — never as a dropdown option.
+                <Field label={t("addresses.enterAreaName")} name="custom_area" error={errors.custom_area}>
+                  <Input
+                    name="custom_area"
+                    value={customArea}
+                    onChange={(e) => setCustomArea(e.target.value)}
+                    maxLength={80}
+                    placeholder={t("addresses.enterAreaName")}
+                    data-testid="addr-custom-area"
+                  />
+                </Field>
+              ) : null}
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Field label={t("addresses.selectRoadLane")} name="road_lane" error={errors.road_lane}>
+                  <Input
+                    name="road_lane"
+                    value={roadLane}
+                    onChange={(e) => setRoadLane(e.target.value)}
+                    maxLength={80}
+                    placeholder={t("addresses.roadLanePlaceholder")}
+                    data-testid="addr-road-lane"
+                  />
+                </Field>
+                <Field label={t("addresses.housePlot")} name="house_plot" error={errors.house_plot}>
+                  <Input
+                    name="house_plot"
+                    value={housePlot}
+                    onChange={(e) => setHousePlot(e.target.value)}
+                    maxLength={40}
+                    placeholder={t("addresses.housePlotPlaceholder")}
+                    data-testid="addr-house-plot"
                   />
                 </Field>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label={t("addresses.areaField")} name="area" error={errors.area}>
-                  <Input name="area" value={area} onChange={(e) => setArea(e.target.value)} maxLength={80} data-testid="addr-area" />
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Field label={t("addresses.flatNumber")} name="flat_number" error={errors.flat_number}>
+                  <Input
+                    name="flat_number"
+                    value={flatNumber}
+                    onChange={(e) => setFlatNumber(e.target.value)}
+                    maxLength={40}
+                    placeholder={t("addresses.flatNumberPlaceholder")}
+                    data-testid="addr-flat-number"
+                  />
                 </Field>
-                <Field label={t("addresses.instructionsField")} name="instructions" error={errors.instructions}>
-                  <Input name="instructions" value={instructions} onChange={(e) => setInstructions(e.target.value)} maxLength={200} data-testid="addr-instructions" />
+                <Field label={t("addresses.landmark")} name="landmark" error={errors.landmark}>
+                  <Input
+                    name="landmark"
+                    value={landmark}
+                    onChange={(e) => setLandmark(e.target.value)}
+                    maxLength={80}
+                    placeholder={t("addresses.landmarkPlaceholder")}
+                    data-testid="addr-landmark"
+                  />
                 </Field>
               </div>
-              {/* WS-4.1 — pin the address on a map instead of typing decimal
-                  degrees. Manual entry survives inside the picker as the
-                  labelled fallback when no Maps key is configured. */}
-              <MapPicker
-                label={t("mapPicker.addressTitle")}
-                hint={t("mapPicker.addressHint")}
-                lat={lat}
-                lng={lng}
-                onChange={handlePick}
-                latName="latitude"
-                lngName="longitude"
-                latTestId="addr-lat"
-                lngTestId="addr-lng"
-                latError={errors.latitude}
-                lngError={errors.longitude}
-                persistGps
-                testId="addr-map"
-              />
-              <label className="flex items-center gap-2 text-sm text-fg-muted">
-                <input
-                  type="checkbox"
-                  checked={isDefault}
-                  onChange={(e) => setIsDefault(e.target.checked)}
-                  className="size-4 rounded border-border-strong text-brand-500"
-                />
-                {t("addresses.makeDefault")}
-              </label>
-              <div className="flex justify-end gap-3">
-                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
-                  {t("common.cancel")}
-                </Button>
-                <Button type="submit" disabled={pending}>
-                  {pending ? t("common.saving") : t("common.save")}
-                </Button>
+
+              {entryMode === "map" ? (
+                <div className="space-y-2" data-testid="map-mode-section">
+                  {/* Selected Location — the pin the customer is confirming:
+                      reverse-geocoded text when resolved, lat/lng always. */}
+                  <div className="rounded-lg bg-surface-muted px-3 py-2" data-testid="selected-location">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
+                      {t("addresses.selectedLocation")}
+                    </p>
+                    {coordsPicked ? (
+                      <>
+                        <p className="mt-1 text-sm font-medium text-fg-base">
+                          {mapAddress.trim() || addressText.trim() || t("mapPicker.selected")}
+                        </p>
+                        <p className="text-xs text-fg-subtle">{t("mapPicker.coordinates", { lat, lng })}</p>
+                      </>
+                    ) : (
+                      <p className="mt-1 text-sm text-fg-muted">{t("mapPicker.noneSelected")}</p>
+                    )}
+                    <div className="mt-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={!coordsPicked || locationConfirmed}
+                        onClick={() => setLocationConfirmed(true)}
+                        data-testid="confirm-location"
+                      >
+                        {locationConfirmed ? `✓ ${t("addresses.locationConfirmed")}` : t("addresses.confirmLocation")}
+                      </Button>
+                    </div>
+                  </div>
+                  <MapPicker
+                    label={t("mapPicker.addressTitle")}
+                    hint={t("mapPicker.addressHint")}
+                    lat={lat}
+                    lng={lng}
+                    onChange={handlePick}
+                    latName="latitude"
+                    lngName="longitude"
+                    latTestId="addr-lat"
+                    lngTestId="addr-lng"
+                    testId="addr-map"
+                    defaultOpen
+                    gpsLabel={t("addresses.useCurrentLocation")}
+                    searchPlaceholder={t("addresses.mapSearchPlaceholder")}
+                  />
+                </div>
+              ) : (
+                <p className="text-xs text-fg-subtle" data-testid="manual-mode-hint">
+                  {t("addresses.manualModeHint")}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="space-y-4">
+            <Card className="bg-surface-muted/50">
+              <CardContent className="pt-3">
+                <h3 className="mb-3 text-sm font-semibold text-fg-base">{t("addresses.addressPreview")}</h3>
+                <div className="space-y-3" data-testid="address-preview">
+                  {selectedType ? (
+                    <p className="font-semibold text-fg-base">
+                      {selectedType === "Others" && customTypeName.trim()
+                        ? customTypeName.trim()
+                        : selectedType}
+                    </p>
+                  ) : null}
+                  {/* Address Details — every value carries its field label, so
+                      "76" is never mistaken for a house number (req #1/#2).
+                      Empty fields render no row at all (req #6). */}
+                  <PreviewRow label={t("addresses.previewArea")} value={resolvedMainArea} testId="preview-area" />
+                  <PreviewRow label={t("addresses.previewSubArea")} value={resolvedSubArea} testId="preview-sub-area" />
+                  <PreviewRow label={t("addresses.previewRoadLane")} value={resolvedRoadLane} testId="preview-road-lane" />
+                  <PreviewRow label={t("addresses.previewHousePlot")} value={housePlot} testId="preview-house-plot" />
+                  <PreviewRow label={t("addresses.previewFlat")} value={flatNumber} testId="preview-flat" />
+                  <PreviewRow label={t("addresses.landmark")} value={landmark} testId="preview-landmark" />
+                  {!resolvedMainArea &&
+                  !resolvedSubArea &&
+                  !resolvedRoadLane &&
+                  !housePlot.trim() &&
+                  !flatNumber.trim() &&
+                  !landmark.trim() &&
+                  !coordsPicked ? (
+                    <p className="text-sm text-fg-subtle">{t("addresses.fillFormToPreview")}</p>
+                  ) : null}
+
+                  {/* Map Location — a SEPARATE section from the postal address:
+                      GPS/map data never mixes with Road/House/Flat (req #4).
+                      Manual mode with no pin shows nothing here (req #5). */}
+                  {coordsPicked ? (
+                    <div className="rounded-lg border border-border-strong bg-surface-muted/60 p-3" data-testid="preview-map">
+                      <p className="text-xs font-semibold text-fg-base">🗺️ {t("addresses.mapLocation")}</p>
+                      <div className="mt-2 space-y-2">
+                        {mapAddress.trim() || addressText.trim() ? (
+                          <PreviewRow label={t("addresses.previewSelectedLocation")} value={mapAddress.trim() || addressText} testId="preview-selected-location" />
+                        ) : null}
+                        <PreviewRow label={t("addresses.previewLatitude")} value={lat ?? ""} testId="preview-lat" />
+                        <PreviewRow label={t("addresses.previewLongitude")} value={lng ?? ""} testId="preview-lng" />
+                        {typeof accuracy === "number" && Number.isFinite(accuracy) ? (
+                          <p className="text-xs text-fg-subtle">
+                            {t("location.accuracy", { m: Math.round(accuracy) })}
+                          </p>
+                        ) : null}
+                        {saveBlocked ? (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">⚠ {t("addresses.confirmLocationHint")}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="mt-4 border-t border-border-strong pt-3">
+                  <p className="text-xs font-medium text-fg-base">{t("addresses.fullAddressPreview")}</p>
+                  <p className="mt-1 whitespace-pre-line text-xs text-fg-muted">
+                    {previewAddress || t("addresses.fillFormToPreview")}
+                  </p>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-3 border-t border-border-strong pt-3">
+                  <label className="flex items-center gap-2 text-sm text-fg-muted">
+                    <input
+                      type="checkbox"
+                      checked={isDefault}
+                      onChange={(e) => setIsDefault(e.target.checked)}
+                      className="size-4 rounded border-border-strong text-brand-500"
+                      data-testid="addr-default-checkbox"
+                    />
+                    {t("addresses.setAsDefault")}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowForm(false)}
+                      data-testid="cancel-address"
+                    >
+                      {t("common.cancel")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={pending || saveBlocked}
+                      onClick={() => formRef.current?.requestSubmit()}
+                      data-testid="save-address"
+                    >
+                      {pending ? t("common.saving") : t("addresses.saveAddress")}
+                    </Button>
+                  </div>
+                </div>
+                {saveBlocked ? (
+                  <p className="mt-2 text-right text-xs text-amber-600 dark:text-amber-400" data-testid="save-blocked-hint">
+                    {t("addresses.confirmLocationHint")}
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            {addresses.length > 0 ? (
+              <div className="space-y-2" data-testid="saved-addresses">
+                <h3 className="text-sm font-semibold text-fg-base">{t("addresses.savedAddresses")}</h3>
+                {addresses.map((a) => (
+                  <Card key={a.id} className="bg-surface-muted/30" testId={`saved-address-${a.id}`}>
+                    <CardContent className="py-3">
+                      <div className="flex items-center gap-2">
+                        <Icon name={iconForLabel(a.label)} className="size-4 text-brand-600" />
+                        <span className="text-sm font-medium text-fg-base">
+                          {a.display_label ?? a.label}
+                        </span>
+                        {a.is_default ? (
+                          <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">
+                            {t("addresses.default")}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs text-fg-muted">{a.address || a.area}</p>
+                      {a.map_address ? (
+                        <p className="mt-1 text-xs text-fg-subtle line-clamp-2">🗺️ {t("addresses.mapLocation")}: {a.map_address}</p>
+                      ) : null}
+                      {a.latitude != null && a.longitude != null ? (
+                        <p className="mt-1 text-xs text-fg-subtle">🗺️ {coord(a.latitude)}, {coord(a.longitude)}</p>
+                      ) : null}
+                      {a.latitude != null && a.longitude != null ? (
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${a.latitude},${a.longitude}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 inline-block text-xs font-medium text-brand-600 hover:underline"
+                        >
+                          📍 {t("addresses.viewOnMap")}
+                        </a>
+                      ) : null}
+                      <div className="mt-2 flex items-center gap-3 text-xs">
+                        <button type="button" onClick={() => openEdit(a)} className="font-medium text-fg-muted hover:text-brand-600">
+                          {t("common.edit")}
+                        </button>
+                        {!a.is_default ? (
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() =>
+                              start(async () => {
+                                await setDefaultAddressAction(a.id);
+                                router.refresh();
+                              })
+                            }
+                            className="font-medium text-fg-muted hover:text-brand-600"
+                          >
+                            {t("addresses.setDefault")}
+                          </button>
+                        ) : null}
+                        <ConfirmModal
+                          trigger={
+                            <button type="button" className="font-medium text-red-600 hover:underline">
+                              {t("common.delete")}
+                            </button>
+                          }
+                          title={t("addresses.deleteTitle")}
+                          description={t("addresses.deleteDesc")}
+                          confirmLabel={t("common.delete")}
+                          action={async () => {
+                            const res = await deleteAddressAction(a.id);
+                            router.refresh();
+                            return res;
+                          }}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
-            </form>
-          </CardContent>
-        </Card>
+            ) : null}
+          </div>
+        </form>
       )}
 
-      {addresses.length === 0 && !showForm ? (
-        <Card>
-          <EmptyState
-            title={t("addresses.emptyTitle")}
-            description={t("addresses.emptyDesc")}
-            action={
-              <Button size="sm" onClick={openCreate}>
-                {t("addresses.add")}
-              </Button>
-            }
-          />
-        </Card>
-      ) : (
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {addresses.map((a) => (
-            <li key={a.id}>
-              <Card className="h-full">
-                <CardContent className="flex h-full flex-col">
-                  <div className="flex items-center gap-2">
-                    <span className="flex size-9 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
-                      <Icon name={iconForLabel(a.label)} className="size-4" />
+      {showTypeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="max-w-md w-full rounded-2xl border border-border-base bg-surface-card p-6 shadow-xl" data-testid="address-type-modal">
+            <h3 className="text-lg font-semibold text-fg-base">{t("addresses.addressTypeTitle")}</h3>
+            <div>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {ADDRESS_TYPES.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => handleTypeSelect(type)}
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-2 rounded-xl border p-4 text-center transition-all",
+                      selectedType === type
+                        ? "border-brand-500 bg-brand-50"
+                        : "border-border-strong hover:border-brand-300",
+                    )}
+                    data-testid={`type-${type.toLowerCase()}`}
+                  >
+                    <span className="text-2xl" aria-hidden="true">
+                      {TYPE_EMOJI[type]}
                     </span>
-                    <span className="font-semibold text-fg-base">{a.display_label ?? a.label}</span>
-                    {a.is_default ? (
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-600 ring-1 ring-emerald-200" data-testid="addr-default-badge">
-                        {t("addresses.default")}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="mt-2 text-sm text-fg-muted">{a.address}</p>
-                  {a.area ? <p className="mt-1 text-xs text-fg-subtle">📍 {a.area}</p> : null}
-                  {a.instructions ? <p className="mt-1 flex-1 text-xs text-fg-subtle">📝 {a.instructions}</p> : <span className="flex-1" />}
-                  <div className="mt-3 flex items-center gap-3 text-sm">
-                    <button type="button" onClick={() => openEdit(a)} className="font-medium text-fg-muted hover:text-brand-600 hover:underline">
-                      {t("common.edit")}
-                    </button>
-                    {!a.is_default ? (
-                      <button
-                        type="button"
-                        disabled={pending}
-                        onClick={() =>
-                          start(async () => {
-                            await setDefaultAddressAction(a.id);
-                            router.refresh();
-                          })
-                        }
-                        className="font-medium text-fg-muted hover:text-brand-600 hover:underline"
-                      >
-                        {t("addresses.setDefault")}
-                      </button>
-                    ) : null}
-                    <ConfirmModal
-                      trigger={
-                        <button type="button" className="font-medium text-red-600 hover:underline">
-                          {t("common.delete")}
-                        </button>
-                      }
-                      title={t("addresses.deleteTitle")}
-                      description={t("addresses.deleteDesc")}
-                      confirmLabel={t("common.delete")}
-                      action={async () => {
-                        const res = await deleteAddressAction(a.id);
-                        router.refresh();
-                        return res;
-                      }}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </li>
-          ))}
-        </ul>
+                    <span className="text-sm font-medium">{type}</span>
+                  </button>
+                ))}
+              </div>
+
+              {selectedType === "Others" ? (
+                <div className="mt-4">
+                  <label className="mb-1.5 block text-sm font-medium text-fg-base">
+                    {t("addresses.enterAddressName")}
+                  </label>
+                  <Input
+                    value={customTypeName}
+                    onChange={(e) => setCustomTypeName(e.target.value)}
+                    maxLength={40}
+                    placeholder={t("addresses.enterAddressNamePlaceholder")}
+                    data-testid="addr-custom-type-name"
+                  />
+                </div>
+              ) : null}
+
+              {typeModalError ? (
+                <p className="mt-3 text-sm font-medium text-red-600" role="alert">
+                  {typeModalError}
+                </p>
+              ) : null}
+
+              <div className="mt-6 flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowTypeModal(false)}
+                  data-testid="cancel-address-type"
+                >
+                  {t("common.cancel")}
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={pending}
+                  onClick={handleSaveWithType}
+                  data-testid="confirm-address-type"
+                >
+                  {pending ? t("common.saving") : t("addresses.saveAddress")}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -147,6 +147,31 @@ export async function PaymentStatusCard({ order }: { order: OrderWithPayment }) 
   const status: PaymentStatus = order.payment_status ?? "unpaid";
   const settled = status === "verified" || status === "paid";
 
+  // Bank Transfer (req #13): the order is placed with payment PENDING. There is
+  // no auto-success and no invented account number — the branch verifies the
+  // transfer in person and settles the order; until then the status stays
+  // unpaid. Mirrors the COD panel's shape so both designs stay consistent.
+  if (order.payment_method === "bank") {
+    return (
+      <section data-testid="payment-panel" data-method="bank">
+        <Card>
+          <CardHeader
+            title={t("orders.payment")}
+            subtitle={t("payments.bank")}
+            action={<PaymentStatusBadge status={status} t={t} />}
+          />
+          <CardContent>
+            <p className="text-sm text-fg-muted">
+              {settled
+                ? t("payments.bankSettled")
+                : t("payments.bankPendingNotice", { amount: fmt.money(order.total_amount) })}
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+    );
+  }
+
   if (order.payment_method !== "bkash") {
     return (
       <section data-testid="payment-panel" data-method="cash">

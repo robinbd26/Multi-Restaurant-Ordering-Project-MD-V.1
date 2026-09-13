@@ -69,6 +69,13 @@ export function useLocationRequest(opts?: {
   onSaved?: (fix: LocationFix) => void;
   /** Refresh the current route on success so the server re-resolves. Default true. */
   refresh?: boolean;
+  /**
+   * Take ONE extra GPS reading when the first fix comes back coarser than
+   * LOW_ACCURACY_M (an ordinary indoor reading) and persist whichever fix is
+   * more accurate. Off by default: the homepage bar and branches gate want the
+   * fastest possible fix, while the address card prefers an accurate one.
+   */
+  improveAccuracy?: boolean;
 }): UseLocationRequest {
   const router = useRouter();
   const { t } = useTranslation();
@@ -135,22 +142,62 @@ export function useLocationRequest(opts?: {
       return;
     }
     setPhase("requesting");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
-        void persist(
-          { lat: latitude, lng: longitude, accuracy: accuracy ?? null, source: "device_gps" },
-          pos.timestamp,
-        );
-      },
-      (err) => {
-        if (err.code === err.PERMISSION_DENIED) setPhase("denied");
-        else if (err.code === err.POSITION_UNAVAILABLE) setPhase("unavailable");
-        else if (err.code === err.TIMEOUT) setPhase("timeout");
-        else setPhase("error");
-      },
-      GEO_OPTIONS,
-    );
+    const improve = optsRef.current?.improveAccuracy === true;
+
+    /**
+     * One GPS reading. When `improve` is on and the reading is coarser than
+     * LOW_ACCURACY_M, a single retry (shorter timeout) runs automatically —
+     * permission is already granted, so the second read is silent — and the
+     * MORE ACCURATE of the two fixes is persisted. A failed retry never loses
+     * the first fix: it is saved as-is and the card's coarse note explains the
+     * pin-drag remedy.
+     */
+    const attempt = (retriesLeft: number, best: GeolocationPosition | null) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const better =
+            !best || (pos.coords.accuracy ?? Infinity) < (best.coords.accuracy ?? Infinity) ? pos : best;
+          const accuracy = better.coords.accuracy;
+          if (retriesLeft > 0 && (accuracy == null || accuracy > LOW_ACCURACY_M)) {
+            attempt(retriesLeft - 1, better);
+            return;
+          }
+          void persist(
+            {
+              lat: better.coords.latitude,
+              lng: better.coords.longitude,
+              accuracy: better.coords.accuracy ?? null,
+              source: "device_gps",
+            },
+            better.timestamp,
+          );
+        },
+        (err) => {
+          // The retry failed but an earlier fix exists — that fix is valid and
+          // must still be saved; a flaky second read must not void the first.
+          if (best) {
+            void persist(
+              {
+                lat: best.coords.latitude,
+                lng: best.coords.longitude,
+                accuracy: best.coords.accuracy ?? null,
+                source: "device_gps",
+              },
+              best.timestamp,
+            );
+            return;
+          }
+          if (err.code === err.PERMISSION_DENIED) setPhase("denied");
+          else if (err.code === err.POSITION_UNAVAILABLE) setPhase("unavailable");
+          else if (err.code === err.TIMEOUT) setPhase("timeout");
+          else setPhase("error");
+        },
+        // The retry is a quick second opinion, not a second 15 s wait.
+        best ? { ...GEO_OPTIONS, timeout: 8_000 } : GEO_OPTIONS,
+      );
+    };
+
+    attempt(improve ? 1 : 0, null);
   }
 
   return { request, savePin, phase, busy: phase === "requesting" || phase === "saving", saveError, fix };

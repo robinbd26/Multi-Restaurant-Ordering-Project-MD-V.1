@@ -51,7 +51,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
  * (lib/constants/enums.ts), which have no dictionary access; every USER-FACING
  * render goes through `labelKey`/`hintKey` and the i18n dictionary instead.
  */
-export type PaymentRail = "cod" | "wallet";
+export type PaymentRail = "cod" | "wallet" | "bank";
 
 export interface PaymentMethodDef {
   value: PaymentMethod;
@@ -71,10 +71,26 @@ export const PAYMENT_METHOD_DEFS: readonly PaymentMethodDef[] = [
   { value: "bkash", rail: "wallet", labelKey: "payment.bkash", hintKey: "orders.bkashHint", icon: "📱", bnLabel: "বিকাশ" },
   { value: "nagad", rail: "wallet", labelKey: "payment.nagad", hintKey: "orders.nagadHint", icon: "📱", bnLabel: "নগদ" },
   { value: "rocket", rail: "wallet", labelKey: "payment.rocket", hintKey: "orders.rocketHint", icon: "📱", bnLabel: "রকেট" },
+  // Manually-verified off-wallet rail: no destination number/TrxID machinery;
+  // the order is placed and stays "unpaid" (pending) until the branch confirms
+  // the transfer. No fake success — see the bank payment panel on the order page.
+  { value: "bank", rail: "bank", labelKey: "payment.bank", hintKey: "orders.bankHint", icon: "🏦", bnLabel: "ব্যাংক ট্রান্সফার" },
 ] as const;
 
 /** Every method value, in the order customers should see them. */
 export const PAYMENT_METHODS: PaymentMethod[] = PAYMENT_METHOD_DEFS.map((m) => m.value);
+
+/**
+ * The methods offered to the CUSTOMER at checkout (req #8): Cash on Delivery,
+ * bKash, Nagad and Bank Transfer. Rocket stays in the catalogue for history,
+ * reports and invoices, but is no longer offered to new customers.
+ */
+export const CUSTOMER_PAYMENT_METHODS: readonly PaymentMethod[] = [
+  "cash",
+  "bkash",
+  "nagad",
+  "bank",
+];
 
 /** The MFS rails — the ones with a destination number and a TrxID to verify. */
 export const WALLET_PAYMENT_METHODS: PaymentMethod[] = PAYMENT_METHOD_DEFS.filter(

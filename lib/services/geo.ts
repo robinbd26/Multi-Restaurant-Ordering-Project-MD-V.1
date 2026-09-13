@@ -99,6 +99,16 @@ export interface GeoSuggestion {
   address: string;
   /** Locality / thana when the provider supplies one; "" otherwise. */
   area: string;
+  /** Locality / city (Dhaka, Chattogram) when available; "" otherwise. */
+  city: string;
+  /** Postal code when the provider supplies one; "" otherwise. */
+  postalCode: string;
+  /** Country name when available; "" otherwise. */
+  country: string;
+  /** Google place_id for the resolved place ("" when unavailable). Kept so the
+   *  customer's saved address can be re-opened on Google Maps by id and so a
+   *  future checkout can pin the exact place without re-geocoding. */
+  placeId: string;
   lat: number;
   lng: number;
   /** True when this came from the offline table rather than a live geocoder. */
@@ -152,6 +162,10 @@ function demoSearch(query: string, bangla: boolean, limit: number): GeoSuggestio
       label: demoLabel(p, bangla),
       address: demoLabel(p, bangla),
       area: bangla ? p.bn : p.en,
+      city: bangla ? p.city_bn : p.city_en,
+      postalCode: "",
+      country: "Bangladesh",
+      placeId: "",
       lat: p.lat,
       lng: p.lng,
       demo: true,
@@ -164,6 +178,8 @@ interface GoogleAddressComponent {
   types?: string[];
 }
 interface GoogleGeocodeResult {
+  /** Google's stable identifier for this place (e.g. "ChIJ0V1o4V..."). */
+  place_id?: string;
   formatted_address?: string;
   address_components?: GoogleAddressComponent[];
   geometry?: { location?: { lat?: number; lng?: number } };
@@ -181,6 +197,26 @@ function areaOf(result: GoogleGeocodeResult): string {
     if (hit?.long_name) return hit.long_name;
   }
   return "";
+}
+
+/** The locality / city ("Dhaka", "Chattogram") Google returned, or "". */
+function cityOf(result: GoogleGeocodeResult): string {
+  const wanted = ["locality", "administrative_area_level_1", "administrative_area_level_2"];
+  for (const type of wanted) {
+    const hit = result.address_components?.find((c) => c.types?.includes(type));
+    if (hit?.long_name) return hit.long_name;
+  }
+  return "";
+}
+
+/** The postal code ("1207") Google returned, or "". */
+function postalCodeOf(result: GoogleGeocodeResult): string {
+  return result.address_components?.find((c) => c.types?.includes("postal_code"))?.long_name ?? "";
+}
+
+/** The short or long country name Google returned, or "". */
+function countryOf(result: GoogleGeocodeResult): string {
+  return result.address_components?.find((c) => c.types?.includes("country"))?.long_name ?? "";
 }
 
 /** Shorten a formatted address to a list-friendly label (first two parts). */
@@ -225,6 +261,10 @@ function toSuggestion(result: GoogleGeocodeResult): GeoSuggestion | null {
     label: shortLabel(formatted),
     address: formatted,
     area: areaOf(result),
+    city: cityOf(result),
+    postalCode: postalCodeOf(result),
+    country: countryOf(result),
+    placeId: result.place_id ?? "",
     lat: Number(lat),
     lng: Number(lng),
     demo: false,
@@ -305,6 +345,10 @@ function nearestDemoPlace(point: LatLng, bangla: boolean): GeoSuggestion | null 
     label,
     address: label,
     area: bangla ? best.place.bn : best.place.en,
+    city: bangla ? best.place.city_bn : best.place.city_en,
+    postalCode: "",
+    country: "Bangladesh",
+    placeId: "",
     lat: point.lat,
     lng: point.lng,
     demo: true,
