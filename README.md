@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # MAD DELIVERY HQ
 
 A **Next.js-only full-stack** multi-branch food-delivery and restaurant-operations platform
@@ -510,3 +511,7 @@ All of it — with file paths — is in
 [`docs/HANDOVER.md` §11](./docs/HANDOVER.md#11-known-limitations-and-outstanding-work).
 Read that section before promising anything to a stakeholder.
 # Personal-AI-Wanda-v.1
+=======
+# Multi-Restaurant-Ordering-Project-MD-V.1
+An enterprise-grade Multi-Restaurant Food Ordering &amp; Delivery Management System built with Django, DRF, PostgreSQL, Next.js, and Flutter. It features multi-role dashboards, real-time rider tracking, secure payments, analytics, reservations, SEO optimization, and a scalable architecture for high-traffic restaurant operations.
+>>>>>>> c578b439616f89fc78c79a28f478573c988eb44b
