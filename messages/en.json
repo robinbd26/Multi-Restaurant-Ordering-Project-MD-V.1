@@ -641,7 +641,20 @@
       "labelLandmark": "Landmark",
       "mapLocationRequired": "Please choose a location on the map first.",
       "orderStatusLabel": "Order Status",
-      "addressLoadError": "Could not load your saved addresses. Please try again."
+      "addressLoadError": "Could not load your saved addresses. Please try again.",
+      "selfPickup": "Self Pickup",
+      "pickupConfirmQuestion": "Are you sure you want to pick up from {branch}?",
+      "confirmPickup": "Confirm Pickup",
+      "changePickupLocation": "Back",
+      "backToPickupConfirm": "Pickup Confirmation",
+      "pickupBranchLoadError": "Could not load pickup details for this branch. Please try again.",
+      "pickupUnavailableAtBranch": "Self Pickup is not available at this branch right now.",
+      "pickupTime": "Pickup Time",
+      "pickupTimeHint": "Minimum 30 minutes from now.",
+      "pickupTimeOptionLabel": "{time} (in {minutes} min)",
+      "pickupLocation": "Pickup Location",
+      "freePickup": "Free (Pickup)",
+      "errPickupBranchRequired": "Pickup details are still loading. Please wait a moment."
     }
   },
   "superAdmin": {

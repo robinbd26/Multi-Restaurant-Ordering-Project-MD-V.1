@@ -641,7 +641,20 @@
       "labelLandmark": "ল্যান্ডমার্ক",
       "mapLocationRequired": "অনুগ্রহ করে প্রথমে ম্যাপে একটি লোকেশন নির্বাচন করুন।",
       "orderStatusLabel": "অর্ডার স্ট্যাটাস",
-      "addressLoadError": "সাশ্রয়ের ঠিকানাগুলো লোড করতে সমস্যা হচ্ছে। আবার চেষ্টা করুন।"
+      "addressLoadError": "সাশ্রয়ের ঠিকানাগুলো লোড করতে সমস্যা হচ্ছে। আবার চেষ্টা করুন।",
+      "selfPickup": "সেলফ পিকআপ",
+      "pickupConfirmQuestion": "আপনি কি নিশ্চিত যে আপনি {branch} থেকে পিকআপ করতে চান?",
+      "confirmPickup": "পিকআপ নিশ্চিত করুন",
+      "changePickupLocation": "পেছনে",
+      "backToPickupConfirm": "পিকআপ নিশ্চিতকরণ",
+      "pickupBranchLoadError": "এই শাখার পিকআপ তথ্য লোড করা যায়নি। আবার চেষ্টা করুন।",
+      "pickupUnavailableAtBranch": "এই মুহূর্তে এই শাখায় সেলফ পিকআপ উপলব্ধ নেই।",
+      "pickupTime": "পিকআপের সময়",
+      "pickupTimeHint": "এখন থেকে সর্বনিম্ন ৩০ মিনিট।",
+      "pickupTimeOptionLabel": "{time} ({minutes} মিনিটে)",
+      "pickupLocation": "পিকআপ লোকেশন",
+      "freePickup": "ফ্রি (পিকআপ)",
+      "errPickupBranchRequired": "পিকআপের তথ্য লোড হচ্ছে। অনুগ্রহ করে একটু অপেক্ষা করুন।"
     }
   },
   "superAdmin": {
