@@ -1730,6 +1730,8 @@
       "variationUnavailable": "A selected option is unavailable.",
       "outOfCoverage": "This address is outside the delivery coverage area.",
       "pickupUnavailable": "Pickup is not available at this branch.",
+      "pickupTimeRequired": "Please choose a pickup time.",
+      "pickupTimeTooSoon": "Pickup time must be at least {minutes} minutes from now.",
       "locationRequired": "A valid delivery location is required. Please check delivery coverage for your address.",
       "riderNotOnBranchDuty": "The rider is not on an active duty session for this branch.",
       "invalidCoordinates": "Invalid coordinates.",

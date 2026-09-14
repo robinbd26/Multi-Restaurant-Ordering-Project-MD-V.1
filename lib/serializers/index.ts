@@ -330,6 +330,8 @@ export function serializeOrder(o: OrderRel) {
     delivery_lat: o.deliveryLat != null ? Number(o.deliveryLat) : null,
     delivery_lng: o.deliveryLng != null ? Number(o.deliveryLng) : null,
     fulfillment_type: o.fulfillmentType,
+    // Self Pickup — the customer's requested pickup time (null for delivery).
+    pickup_time: o.requestedPickupAt != null ? o.requestedPickupAt.toISOString() : null,
     prep_time_snapshot: o.prepTimeSnapshot ?? null,
     // #1/#13 — immutable delivery snapshots.
     delivery_area: o.deliveryAreaId ?? null,

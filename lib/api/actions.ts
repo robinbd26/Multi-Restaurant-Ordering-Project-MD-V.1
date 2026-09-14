@@ -445,6 +445,8 @@ export interface CheckoutPayload {
   reward_code?: string;
   items: { product_id: number; variation_id?: number; variation_type?: string; quantity: number; food_note: string }[];
   fulfillment_type?: string;
+  /** Self Pickup — the customer's requested pickup time (ISO string). */
+  pickup_time?: string;
   lat?: number;
   lng?: number;
   /** WS-4.2 — a saved address; the server reads ITS coordinates, not lat/lng. */

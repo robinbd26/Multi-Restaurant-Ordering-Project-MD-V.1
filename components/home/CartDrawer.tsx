@@ -613,10 +613,6 @@ export function CartDrawer({
     setPlacing(true);
     setPlaceError(null);
     try {
-      // NOTE — the chosen pickupTimeMinutes is not yet sent to the API: the
-      // Order model has no column for it until the pickup-time schema/API work
-      // lands (a separate, reviewed migration). Wiring it through is a
-      // one-line addition to this payload once that field exists.
       const payload =
         fulfillmentType === "pickup"
           ? {
@@ -626,6 +622,7 @@ export function CartDrawer({
               delivery_address: pickupBranch!.pickupAddress || pickupBranch!.name,
               food_notes: "",
               fulfillment_type: "pickup" as const,
+              pickup_time: new Date(pickupTimeBase + pickupTimeMinutes * 60000).toISOString(),
               items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
             }
           : (() => {
