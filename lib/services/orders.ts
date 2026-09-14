@@ -543,13 +543,14 @@ export async function createOrder(input: {
   const branch = resolved.branch;
   const deliveryLat = resolved.lat != null ? new Prisma.Decimal(resolved.lat.toFixed(7)) : null;
   const deliveryLng = resolved.lng != null ? new Prisma.Decimal(resolved.lng.toFixed(7)) : null;
-  // Self Pickup — the requested time must parse and sit at least
-  // PICKUP_MIN_LEAD_MINUTES out from the SERVER's clock, never the client's.
+  // Self Pickup — a requested time is OPTIONAL (some pickup orders are placed
+  // without scheduling one), but whenever one is given it must parse and sit
+  // at least PICKUP_MIN_LEAD_MINUTES out from the SERVER's clock, never the
+  // client's.
   let requestedPickupAt: Date | null = null;
-  if (fulfillmentType === "pickup") {
-    const raw = (input.pickupTime ?? "").trim();
-    if (!raw) throw validationError({ pickup_time: sk("errors.orders.pickupTimeRequired") });
-    const parsed = new Date(raw);
+  const rawPickupTime = (input.pickupTime ?? "").trim();
+  if (fulfillmentType === "pickup" && rawPickupTime) {
+    const parsed = new Date(rawPickupTime);
     if (Number.isNaN(parsed.getTime())) {
       throw validationError({ pickup_time: sk("errors.orders.pickupTimeRequired") });
     }

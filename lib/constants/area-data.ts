@@ -211,12 +211,5 @@ export function subAreasFor(mainArea: string): string[] {
   return entry ? entry.subs : [];
 }
 
-/**
- * Road/Lane is a free-text input since location v4 — customers type values like
- * "Road 11", "Lane 5" or "Main Road" rather than choosing from a fixed range.
- * Kept exported for historical reference; the customer form no longer uses it.
- */
-export const ROAD_LANE_OPTIONS: string[] = Array.from({ length: 100 }, (_, i) => `Road ${i + 1}`);
-
 /** Sentinel value that reveals a free-text input (custom main area / legacy custom sub-area). */
 export const CUSTOM_VALUE = "__custom__";

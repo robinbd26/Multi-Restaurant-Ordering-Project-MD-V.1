@@ -9,7 +9,6 @@ import { CUSTOMER_PAYMENT_METHODS, paymentMethodDef } from "@/lib/constants";
 import {
   CUSTOM_VALUE,
   MAIN_AREA_NAMES,
-  ROAD_LANE_OPTIONS,
   subAreasFor,
 } from "@/lib/constants/area-data";
 import { useTranslation } from "@/lib/i18n/use-translation";
@@ -139,11 +138,11 @@ export function CartDrawer({
   const [savingAddress, setSavingAddress] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
   // Compact add-address form — the same Area → sub-area model as the address book.
-  const [labelChoice, setLabelChoice] = useState("Home");
-  const [customLabel, setCustomLabel] = useState("");
+  const [locationName, setLocationName] = useState("");
   const [mainArea, setMainArea] = useState("");
   const [customMain, setCustomMain] = useState("");
   const [subArea, setSubArea] = useState("");
+  const [customSubArea, setCustomSubArea] = useState("");
   const [road, setRoad] = useState("");
   const [house, setHouse] = useState("");
   const [flat, setFlat] = useState("");
@@ -379,16 +378,23 @@ export function CartDrawer({
   /**
    * Compact add-address form → POST /api/customer/addresses. Same Area →
    * sub-area model as the address book: a custom main area ("+ Add your Own")
-   * disables the sub-area select and stores custom_area instead.
+   * disables the sub-area select and stores custom_area instead; a custom
+   * SUB-area ("+ Add your Own" within a real main area) stores its own text
+   * the same way.
    */
   async function submitNewAddress() {
-    const isCustom = mainArea === CUSTOM_VALUE;
-    const areaName = isCustom ? customMain.trim() : mainArea.trim();
+    const isCustomMain = mainArea === CUSTOM_VALUE;
+    const isCustomSub = !isCustomMain && subArea === CUSTOM_VALUE;
+    const areaName = isCustomMain ? customMain.trim() : mainArea.trim();
     if (!areaName) {
-      setAddressError(isCustom ? t("home.order.errCustomAreaRequired") : t("home.order.errAreaRequired"));
+      setAddressError(isCustomMain ? t("home.order.errCustomAreaRequired") : t("home.order.errAreaRequired"));
       return;
     }
-    if (labelChoice === "Others" && !customLabel.trim()) {
+    if (isCustomSub && !customSubArea.trim()) {
+      setAddressError(t("home.order.errCustomAreaRequired"));
+      return;
+    }
+    if (!locationName.trim()) {
       setAddressError(t("home.order.errCustomLabelRequired"));
       return;
     }
@@ -404,17 +410,21 @@ export function CartDrawer({
       if (house.trim()) parts.push(`House/Plot ${house.trim()}`);
       if (flat.trim()) parts.push(`Flat ${flat.trim()}`);
       if (road.trim()) parts.push(road.trim());
-      if (!isCustom && subArea.trim()) parts.push(subArea.trim());
+      if (isCustomSub && customSubArea.trim()) parts.push(customSubArea.trim());
+      else if (!isCustomMain && subArea.trim()) parts.push(subArea.trim());
       parts.push(areaName, "Dhaka");
       const res = await fetch("/api/customer/addresses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          label: labelChoice,
-          ...(labelChoice === "Others" ? { custom_label: customLabel.trim() } : {}),
+          label: locationName.trim(),
           address: parts.join(", "),
           main_area: areaName,
-          ...(isCustom ? { custom_area: areaName } : { sub_area: subArea.trim() }),
+          ...(isCustomMain
+            ? { custom_area: areaName }
+            : isCustomSub
+              ? { sub_area: "", custom_area: customSubArea.trim() }
+              : { sub_area: subArea.trim() }),
           road_lane: road.trim(),
           house_plot: house.trim(),
           flat_number: flat.trim(),
@@ -556,7 +566,7 @@ export function CartDrawer({
       setAddressError(t("home.order.mapLocationRequired"));
       return;
     }
-    if (labelChoice === "Others" && !customLabel.trim()) {
+    if (!locationName.trim()) {
       setAddressError(t("home.order.errCustomLabelRequired"));
       return;
     }
@@ -567,8 +577,7 @@ export function CartDrawer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          label: labelChoice,
-          ...(labelChoice === "Others" ? { custom_label: customLabel.trim() } : {}),
+          label: locationName.trim(),
           address: mapPoint.address || [mapPoint.area, mapPoint.city || "Dhaka"].filter(Boolean).join(", "),
           ...(mapPoint.area ? { area: mapPoint.area } : {}),
           city: mapPoint.city || "Dhaka",
@@ -966,36 +975,21 @@ export function CartDrawer({
                   data-testid="drawer-add-address-form"
                 >
                   <p className="text-[0.8rem] font-bold text-white">{t("home.order.addNewAddress")}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={labelChoice}
-                      onChange={(e) => setLabelChoice(e.target.value)}
-                      className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
-                      aria-label={t("addresses.selectLabel")}
-                    >
-                      <option value="Home">{t("addresses.preset_home")}</option>
-                      <option value="Home-2">{t("addresses.preset_home2")}</option>
-                      <option value="Home-3">{t("addresses.preset_home3")}</option>
-                      <option value="Office">{t("addresses.preset_office")}</option>
-                      <option value="Others">{t("addresses.preset_others")}</option>
-                    </select>
-                    {labelChoice === "Others" ? (
-                      <input
-                        value={customLabel}
-                        onChange={(e) => setCustomLabel(e.target.value)}
-                        placeholder={t("addresses.customLabelPlaceholder")}
-                        maxLength={40}
-                        className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
-                        aria-label={t("addresses.selectLabel")}
-                      />
-                    ) : null}
-                  </div>
+                  <input
+                    value={locationName}
+                    onChange={(e) => setLocationName(e.target.value)}
+                    placeholder={t("addresses.locationNamePlaceholder")}
+                    maxLength={40}
+                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                    aria-label={t("addresses.locationNameField")}
+                  />
                   <select
                     value={mainArea}
                     onChange={(e) => {
                       setMainArea(e.target.value);
                       setSubArea("");
                       setCustomMain("");
+                      setCustomSubArea("");
                     }}
                     className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
                     aria-label={t("addresses.selectYourArea")}
@@ -1018,34 +1012,45 @@ export function CartDrawer({
                       aria-label={t("addresses.enterYourAreaName")}
                     />
                   ) : mainArea ? (
-                    <select
-                      value={subArea}
-                      onChange={(e) => setSubArea(e.target.value)}
-                      className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
-                      aria-label={t("addresses.selectYourAreaName")}
-                    >
-                      <option value="">{t("addresses.selectYourAreaName")}</option>
-                      {subAreasFor(mainArea).map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
+                    <>
+                      <select
+                        value={subArea}
+                        onChange={(e) => {
+                          setSubArea(e.target.value);
+                          setCustomSubArea("");
+                        }}
+                        className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
+                        aria-label={t("addresses.selectYourAreaName")}
+                      >
+                        <option value="">{t("addresses.selectYourAreaName")}</option>
+                        {subAreasFor(mainArea).map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                        <option value={CUSTOM_VALUE}>{t("addresses.addYourOwn")}</option>
+                      </select>
+                      {subArea === CUSTOM_VALUE ? (
+                        <input
+                          value={customSubArea}
+                          onChange={(e) => setCustomSubArea(e.target.value)}
+                          placeholder={t("addresses.enterAreaName")}
+                          maxLength={80}
+                          className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                          aria-label={t("addresses.enterAreaName")}
+                        />
+                      ) : null}
+                    </>
                   ) : null}
                   <div className="grid grid-cols-2 gap-2">
-                    <select
+                    <input
                       value={road}
                       onChange={(e) => setRoad(e.target.value)}
-                      className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
-                      aria-label={t("addresses.selectRoadLane")}
-                    >
-                      <option value="">{t("addresses.selectRoadLane")}</option>
-                      {ROAD_LANE_OPTIONS.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
+                      placeholder={t("addresses.roadLanePlaceholder")}
+                      maxLength={80}
+                      className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                      aria-label={t("addresses.enterRoadLane")}
+                    />
                     <input
                       value={house}
                       onChange={(e) => setHouse(e.target.value)}
@@ -1160,30 +1165,14 @@ export function CartDrawer({
                     searchPlaceholder={t("addresses.mapSearchPlaceholder")}
                     testId="drawer-map"
                   />
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={labelChoice}
-                      onChange={(e) => setLabelChoice(e.target.value)}
-                      className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
-                      aria-label={t("addresses.selectLabel")}
-                    >
-                      <option value="Home">{t("addresses.preset_home")}</option>
-                      <option value="Home-2">{t("addresses.preset_home2")}</option>
-                      <option value="Home-3">{t("addresses.preset_home3")}</option>
-                      <option value="Office">{t("addresses.preset_office")}</option>
-                      <option value="Others">{t("addresses.preset_others")}</option>
-                    </select>
-                    {labelChoice === "Others" ? (
-                      <input
-                        value={customLabel}
-                        onChange={(e) => setCustomLabel(e.target.value)}
-                        placeholder={t("addresses.customLabelPlaceholder")}
-                        maxLength={40}
-                        className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
-                        aria-label={t("addresses.selectLabel")}
-                      />
-                    ) : null}
-                  </div>
+                  <input
+                    value={locationName}
+                    onChange={(e) => setLocationName(e.target.value)}
+                    placeholder={t("addresses.locationNamePlaceholder")}
+                    maxLength={40}
+                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                    aria-label={t("addresses.locationNameField")}
+                  />
                   {mapPoint?.address ? (
                     <p className="break-words text-[0.72rem] text-[#a0a0b0]">📍 {mapPoint.address}</p>
                   ) : null}

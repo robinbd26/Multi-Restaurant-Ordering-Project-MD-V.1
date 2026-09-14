@@ -2542,6 +2542,8 @@
     "rejectDesc": "The withdrawal of {amount} will be rejected. Give the rider a reason."
   },
   "addresses": {
+    "locationNameField": "Location Name",
+    "locationNamePlaceholder": "e.g. Home, Office, Mom's House",
     "subtitle": "Save multiple addresses (Home, Office, etc.)",
     "add": "New Address",
     "saved": "Address saved",
