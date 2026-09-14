@@ -10,6 +10,7 @@ import {
   CUSTOMER_SETTABLE,
   DELAY_MAX_MINUTES,
   DELAY_MIN_MINUTES,
+  PICKUP_MIN_LEAD_MINUTES,
   RIDER_SETTABLE,
 } from "@/lib/constants/orders";
 import { createNotification, notifyBranchManagers } from "@/lib/services/notifications";
@@ -463,6 +464,10 @@ export async function createOrder(input: {
    *  Taka value is read from the voucher ROW server-side, never from the client. */
   rewardCode?: string | null;
   fulfillmentType?: string; // "delivery" (default) | "pickup"
+  /** Self Pickup — the customer's requested pickup time (ISO string). Required
+   *  for pickup orders; ignored for delivery. Must be at least 30 minutes out
+   *  from the SERVER's clock — never trusts the client's notion of "now". */
+  pickupTime?: string | null;
   lat?: number | null;
   lng?: number | null;
   deliveryAreaId?: number | null; // #1/#13 — selected named delivery area
@@ -538,6 +543,25 @@ export async function createOrder(input: {
   const branch = resolved.branch;
   const deliveryLat = resolved.lat != null ? new Prisma.Decimal(resolved.lat.toFixed(7)) : null;
   const deliveryLng = resolved.lng != null ? new Prisma.Decimal(resolved.lng.toFixed(7)) : null;
+  // Self Pickup — a requested time is OPTIONAL (some pickup orders are placed
+  // without scheduling one), but whenever one is given it must parse and sit
+  // at least PICKUP_MIN_LEAD_MINUTES out from the SERVER's clock, never the
+  // client's.
+  let requestedPickupAt: Date | null = null;
+  const rawPickupTime = (input.pickupTime ?? "").trim();
+  if (fulfillmentType === "pickup" && rawPickupTime) {
+    const parsed = new Date(rawPickupTime);
+    if (Number.isNaN(parsed.getTime())) {
+      throw validationError({ pickup_time: sk("errors.orders.pickupTimeRequired") });
+    }
+    const minAllowed = Date.now() + PICKUP_MIN_LEAD_MINUTES * 60_000;
+    if (parsed.getTime() < minAllowed) {
+      throw validationError({
+        pickup_time: sk("errors.orders.pickupTimeTooSoon", { minutes: PICKUP_MIN_LEAD_MINUTES }),
+      });
+    }
+    requestedPickupAt = parsed;
+  }
   // #1/#13 — resolve the selected delivery area (delivery only). A held/inactive
   // area or one from another branch is rejected here; its name/charge/estimate
   // are snapshotted IMMUTABLY onto the order so later area edits never change it.
@@ -589,6 +613,7 @@ export async function createOrder(input: {
         deliveryAddress: input.deliveryAddress,
         foodNotes: input.foodNotes ?? "",
         fulfillmentType,
+        requestedPickupAt,
         deliveryLat,
         deliveryLng,
         // WS-4.2 — how much the server can vouch for that coordinate, and the

@@ -641,7 +641,20 @@
       "labelLandmark": "ল্যান্ডমার্ক",
       "mapLocationRequired": "অনুগ্রহ করে প্রথমে ম্যাপে একটি লোকেশন নির্বাচন করুন।",
       "orderStatusLabel": "অর্ডার স্ট্যাটাস",
-      "addressLoadError": "সাশ্রয়ের ঠিকানাগুলো লোড করতে সমস্যা হচ্ছে। আবার চেষ্টা করুন।"
+      "addressLoadError": "সাশ্রয়ের ঠিকানাগুলো লোড করতে সমস্যা হচ্ছে। আবার চেষ্টা করুন।",
+      "selfPickup": "সেলফ পিকআপ",
+      "pickupConfirmQuestion": "আপনি কি নিশ্চিত যে আপনি {branch} থেকে পিকআপ করতে চান?",
+      "confirmPickup": "পিকআপ নিশ্চিত করুন",
+      "changePickupLocation": "পেছনে",
+      "backToPickupConfirm": "পিকআপ নিশ্চিতকরণ",
+      "pickupBranchLoadError": "এই শাখার পিকআপ তথ্য লোড করা যায়নি। আবার চেষ্টা করুন।",
+      "pickupUnavailableAtBranch": "এই মুহূর্তে এই শাখায় সেলফ পিকআপ উপলব্ধ নেই।",
+      "pickupTime": "পিকআপের সময়",
+      "pickupTimeHint": "এখন থেকে সর্বনিম্ন ৩০ মিনিট।",
+      "pickupTimeOptionLabel": "{time} ({minutes} মিনিটে)",
+      "pickupLocation": "পিকআপ লোকেশন",
+      "freePickup": "ফ্রি (পিকআপ)",
+      "errPickupBranchRequired": "পিকআপের তথ্য লোড হচ্ছে। অনুগ্রহ করে একটু অপেক্ষা করুন।"
     }
   },
   "superAdmin": {
@@ -1717,6 +1730,8 @@
       "variationUnavailable": "নির্বাচিত একটি অপশন উপলব্ধ নয়।",
       "outOfCoverage": "এই ঠিকানা ডেলিভারি কভারেজের বাইরে।",
       "pickupUnavailable": "এই ব্রাঞ্চে পিকআপ উপলব্ধ নয়।",
+      "pickupTimeRequired": "অনুগ্রহ করে একটি পিকআপ সময় নির্বাচন করুন।",
+      "pickupTimeTooSoon": "পিকআপ সময় অবশ্যই এখন থেকে কমপক্ষে {minutes} মিনিট পরে হতে হবে।",
       "locationRequired": "একটি বৈধ ডেলিভারি অবস্থান প্রয়োজন। আপনার ঠিকানার জন্য কভারেজ যাচাই করুন।",
       "riderNotOnBranchDuty": "রাইডার এই ব্রাঞ্চের জন্য সক্রিয় ডিউটি সেশনে নেই।",
       "invalidCoordinates": "অবৈধ স্থানাঙ্ক।",
@@ -2527,6 +2542,8 @@
     "rejectDesc": "{amount} উত্তোলনটি প্রত্যাখ্যান করা হবে। রাইডারকে একটি কারণ জানান।"
   },
   "addresses": {
+    "locationNameField": "লোকেশনের নাম",
+    "locationNamePlaceholder": "যেমন: বাসা, অফিস, মায়ের বাসা",
     "subtitle": "একাধিক ঠিকানা সংরক্ষণ করুন (বাসা, অফিস ইত্যাদি)",
     "add": "নতুন ঠিকানা",
     "saved": "ঠিকানা সংরক্ষিত হয়েছে",

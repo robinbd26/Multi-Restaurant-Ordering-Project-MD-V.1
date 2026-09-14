@@ -9,7 +9,6 @@ import { CUSTOMER_PAYMENT_METHODS, paymentMethodDef } from "@/lib/constants";
 import {
   CUSTOM_VALUE,
   MAIN_AREA_NAMES,
-  ROAD_LANE_OPTIONS,
   subAreasFor,
 } from "@/lib/constants/area-data";
 import { useTranslation } from "@/lib/i18n/use-translation";
@@ -19,7 +18,23 @@ import type { PaymentMethod } from "@/types";
 
 /* Task 3 — the drawer's checkout state machine. Every step renders INSIDE this
    drawer; nothing navigates to /customer/checkout anymore. */
-type CheckoutStep = "cart" | "address" | "payment" | "overview" | "success";
+type CheckoutStep = "cart" | "pickup-confirm" | "address" | "payment" | "overview" | "success";
+
+/** Preset pickup-time offsets (minutes from now); the smallest is the 30-minute
+    floor the branch needs to prepare a pickup order. */
+const PICKUP_TIME_OFFSETS = [30, 45, 60, 90, 120] as const;
+
+/** Self Pickup — the cart's own branch, fetched once the customer confirms
+    intent. A cart is locked to one branch's product catalog (see
+    BranchSwitchDialog), so pickup is never a location CHOICE — it is a
+    confirmation of the one branch that can actually fulfil this cart. */
+interface DrawerPickupBranch {
+  id: number;
+  name: string;
+  pickupEnabled: boolean;
+  pickupAddress: string;
+  pickupPhone: string;
+}
 
 /** Serialized CustomerAddress as returned by /api/customer/addresses. */
 interface DrawerSavedAddress {
@@ -58,6 +73,8 @@ interface DrawerOrderResult {
   subtotal: number;
   deliveryFee: number;
   grandTotal: number;
+  fulfillmentType: "delivery" | "pickup";
+  pickupTimeLabel?: string;
 }
 
 /** The card title for a saved address (preset label or the custom name). */
@@ -105,6 +122,15 @@ export function CartDrawer({
 
   /* ── Task 3 — same-screen checkout state (everything renders in-drawer) ── */
   const [step, setStep] = useState<CheckoutStep>("cart");
+  const [fulfillmentType, setFulfillmentType] = useState<"delivery" | "pickup">("delivery");
+  const [pickupBranch, setPickupBranch] = useState<DrawerPickupBranch | null>(null);
+  const [loadingPickupBranch, setLoadingPickupBranch] = useState(false);
+  const [pickupBranchError, setPickupBranchError] = useState<string | null>(null);
+  const [pickupTimeMinutes, setPickupTimeMinutes] = useState<number>(PICKUP_TIME_OFFSETS[0]);
+  // Captured once when Self Pickup starts (an event handler, not render) so the
+  // preset clock times shown to the customer stay stable across re-renders
+  // instead of drifting with Date.now() on every paint (react-hooks/purity).
+  const [pickupTimeBase, setPickupTimeBase] = useState<number>(0);
   const [addresses, setAddresses] = useState<DrawerSavedAddress[]>([]);
   const [addressId, setAddressId] = useState("");
   const [loadingAddresses, setLoadingAddresses] = useState(false);
@@ -112,11 +138,11 @@ export function CartDrawer({
   const [savingAddress, setSavingAddress] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
   // Compact add-address form — the same Area → sub-area model as the address book.
-  const [labelChoice, setLabelChoice] = useState("Home");
-  const [customLabel, setCustomLabel] = useState("");
+  const [locationName, setLocationName] = useState("");
   const [mainArea, setMainArea] = useState("");
   const [customMain, setCustomMain] = useState("");
   const [subArea, setSubArea] = useState("");
+  const [customSubArea, setCustomSubArea] = useState("");
   const [road, setRoad] = useState("");
   const [house, setHouse] = useState("");
   const [flat, setFlat] = useState("");
@@ -176,6 +202,9 @@ export function CartDrawer({
   function handleClose() {
     closeCart();
     setStep("cart");
+    setFulfillmentType("delivery");
+    setPickupBranch(null);
+    setPickupBranchError(null);
     setShowAddForm(false);
     setShowMapForm(false);
     setMapPoint(null);
@@ -189,6 +218,9 @@ export function CartDrawer({
 
   function goBackToCart() {
     setStep("cart");
+    setFulfillmentType("delivery");
+    setPickupBranch(null);
+    setPickupBranchError(null);
     setShowAddForm(false);
     setShowMapForm(false);
     setMapPoint(null);
@@ -279,19 +311,90 @@ export function CartDrawer({
     });
   }
 
+  /** Fetches the cart's own branch's pickup details — never a list, since a
+      cart's products belong to exactly one branch (§ orderableProductWhere). */
+  async function loadPickupBranch(branchId: number) {
+    setLoadingPickupBranch(true);
+    setPickupBranchError(null);
+    try {
+      const res = await fetch(`/api/branches/${branchId}`, {
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      const data: unknown = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPickupBranch(null);
+        setPickupBranchError(t("home.order.pickupBranchLoadError"));
+        return;
+      }
+      const b = data as {
+        id: number;
+        name: string;
+        pickup_enabled?: boolean;
+        pickup_address?: string;
+        pickup_phone?: string;
+      };
+      if (!b.pickup_enabled) {
+        setPickupBranch(null);
+        setPickupBranchError(t("home.order.pickupUnavailableAtBranch"));
+        return;
+      }
+      setPickupBranch({
+        id: b.id,
+        name: b.name,
+        pickupEnabled: true,
+        pickupAddress: b.pickup_address ?? "",
+        pickupPhone: b.pickup_phone ?? "",
+      });
+    } catch {
+      setPickupBranch(null);
+      setPickupBranchError(t("home.order.pickupBranchLoadError"));
+    } finally {
+      setLoadingPickupBranch(false);
+    }
+  }
+
+  /** "Self Pickup" — goes straight to confirming the cart's own branch; there
+      is never a location LIST (see DrawerPickupBranch doc comment). */
+  function startPickupCheckout() {
+    if (cartBranchId == null || lines.length === 0) return;
+    rotateAttemptKey();
+    setPlaceError(null);
+    setQuoteError(null);
+    setPickupBranchError(null);
+    setPickupTimeMinutes(PICKUP_TIME_OFFSETS[0]);
+    setPickupTimeBase(Date.now());
+    setFulfillmentType("pickup");
+    setStep("pickup-confirm");
+    void loadPickupBranch(cartBranchId);
+  }
+
+  function goPickupPayment() {
+    if (!pickupBranch) return;
+    setPlaceError(null);
+    setStep("payment");
+  }
+
   /**
    * Compact add-address form → POST /api/customer/addresses. Same Area →
    * sub-area model as the address book: a custom main area ("+ Add your Own")
-   * disables the sub-area select and stores custom_area instead.
+   * disables the sub-area select and stores custom_area instead; a custom
+   * SUB-area ("+ Add your Own" within a real main area) stores its own text
+   * the same way.
    */
   async function submitNewAddress() {
-    const isCustom = mainArea === CUSTOM_VALUE;
-    const areaName = isCustom ? customMain.trim() : mainArea.trim();
+    const isCustomMain = mainArea === CUSTOM_VALUE;
+    const isCustomSub = !isCustomMain && subArea === CUSTOM_VALUE;
+    const areaName = isCustomMain ? customMain.trim() : mainArea.trim();
     if (!areaName) {
-      setAddressError(isCustom ? t("home.order.errCustomAreaRequired") : t("home.order.errAreaRequired"));
+      setAddressError(isCustomMain ? t("home.order.errCustomAreaRequired") : t("home.order.errAreaRequired"));
       return;
     }
-    if (labelChoice === "Others" && !customLabel.trim()) {
+    if (isCustomSub && !customSubArea.trim()) {
+      setAddressError(t("home.order.errCustomAreaRequired"));
+      return;
+    }
+    if (!locationName.trim()) {
       setAddressError(t("home.order.errCustomLabelRequired"));
       return;
     }
@@ -307,17 +410,21 @@ export function CartDrawer({
       if (house.trim()) parts.push(`House/Plot ${house.trim()}`);
       if (flat.trim()) parts.push(`Flat ${flat.trim()}`);
       if (road.trim()) parts.push(road.trim());
-      if (!isCustom && subArea.trim()) parts.push(subArea.trim());
+      if (isCustomSub && customSubArea.trim()) parts.push(customSubArea.trim());
+      else if (!isCustomMain && subArea.trim()) parts.push(subArea.trim());
       parts.push(areaName, "Dhaka");
       const res = await fetch("/api/customer/addresses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          label: labelChoice,
-          ...(labelChoice === "Others" ? { custom_label: customLabel.trim() } : {}),
+          label: locationName.trim(),
           address: parts.join(", "),
           main_area: areaName,
-          ...(isCustom ? { custom_area: areaName } : { sub_area: subArea.trim() }),
+          ...(isCustomMain
+            ? { custom_area: areaName }
+            : isCustomSub
+              ? { sub_area: "", custom_area: customSubArea.trim() }
+              : { sub_area: subArea.trim() }),
           road_lane: road.trim(),
           house_plot: house.trim(),
           flat_number: flat.trim(),
@@ -353,22 +460,37 @@ export function CartDrawer({
    * sends, so what the customer sees is what gets stored.
    */
   async function fetchQuote() {
-    if (!chosenAddress || cartBranchId == null) return;
+    if (cartBranchId == null) return;
+    if (fulfillmentType === "pickup") {
+      if (!pickupBranch) return;
+    } else if (!chosenAddress) {
+      return;
+    }
     setQuoteError(null);
     setQuoting(true);
     try {
-      const lat = chosenAddress.latitude != null ? Number(chosenAddress.latitude) : undefined;
-      const lng = chosenAddress.longitude != null ? Number(chosenAddress.longitude) : undefined;
-      const hasCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
+      const body =
+        fulfillmentType === "pickup"
+          ? {
+              branch_id: pickupBranch!.id,
+              fulfillment_type: "pickup",
+              items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty })),
+            }
+          : (() => {
+              const lat = chosenAddress!.latitude != null ? Number(chosenAddress!.latitude) : undefined;
+              const lng = chosenAddress!.longitude != null ? Number(chosenAddress!.longitude) : undefined;
+              const hasCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
+              return {
+                branch_id: cartBranchId,
+                fulfillment_type: "delivery",
+                ...(hasCoords ? { lat, lng } : {}),
+                items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty })),
+              };
+            })();
       const res = await fetch("/api/delivery/quote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          branch_id: cartBranchId,
-          fulfillment_type: "delivery",
-          ...(hasCoords ? { lat, lng } : {}),
-          items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty })),
-        }),
+        body: JSON.stringify(body),
       });
       const data: unknown = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -407,6 +529,16 @@ export function CartDrawer({
     setPlaceError(null);
   }
 
+  /** Payment step's "back" — returns to pickup confirmation for a pickup
+      order, or the address step for a delivery order. */
+  function goBackFromPayment() {
+    if (fulfillmentType === "pickup") {
+      setStep("pickup-confirm");
+    } else {
+      goBackToAddress();
+    }
+  }
+
   /** Overview entry — the quote is (re)fetched here so the final review always
       shows fresh server-priced totals right before the one order-creating tap. */
   function goOverview() {
@@ -434,7 +566,7 @@ export function CartDrawer({
       setAddressError(t("home.order.mapLocationRequired"));
       return;
     }
-    if (labelChoice === "Others" && !customLabel.trim()) {
+    if (!locationName.trim()) {
       setAddressError(t("home.order.errCustomLabelRequired"));
       return;
     }
@@ -445,8 +577,7 @@ export function CartDrawer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          label: labelChoice,
-          ...(labelChoice === "Others" ? { custom_label: customLabel.trim() } : {}),
+          label: locationName.trim(),
           address: mapPoint.address || [mapPoint.area, mapPoint.city || "Dhaka"].filter(Boolean).join(", "),
           ...(mapPoint.area ? { area: mapPoint.area } : {}),
           city: mapPoint.city || "Dhaka",
@@ -485,26 +616,42 @@ export function CartDrawer({
    * the truth). On success the cart empties and the receipt panel takes over.
    */
   async function confirmOrder() {
-    if (!chosenAddress || !quote || placing) return;
+    if (!quote || placing) return;
+    if (fulfillmentType === "pickup" ? !pickupBranch : !chosenAddress) return;
     if (!attemptKeyRef.current) rotateAttemptKey();
     setPlacing(true);
     setPlaceError(null);
     try {
-      const lat = chosenAddress.latitude != null ? Number(chosenAddress.latitude) : undefined;
-      const lng = chosenAddress.longitude != null ? Number(chosenAddress.longitude) : undefined;
-      const hasCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
-      const result = await placeOrderAction({
-        branch_id: quote.branch.id,
-        idempotency_key: attemptKeyRef.current,
-        payment_method: payment,
-        delivery_address: chosenAddress.address,
-        food_notes: "",
-        fulfillment_type: "delivery",
-        ...(hasCoords ? { lat, lng } : {}),
-        customer_address_id: chosenAddress.id,
-        coord_source: "saved_address",
-        items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
-      });
+      const payload =
+        fulfillmentType === "pickup"
+          ? {
+              branch_id: quote.branch.id,
+              idempotency_key: attemptKeyRef.current,
+              payment_method: payment,
+              delivery_address: pickupBranch!.pickupAddress || pickupBranch!.name,
+              food_notes: "",
+              fulfillment_type: "pickup" as const,
+              pickup_time: new Date(pickupTimeBase + pickupTimeMinutes * 60000).toISOString(),
+              items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
+            }
+          : (() => {
+              const lat = chosenAddress!.latitude != null ? Number(chosenAddress!.latitude) : undefined;
+              const lng = chosenAddress!.longitude != null ? Number(chosenAddress!.longitude) : undefined;
+              const hasCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
+              return {
+                branch_id: quote.branch.id,
+                idempotency_key: attemptKeyRef.current,
+                payment_method: payment,
+                delivery_address: chosenAddress!.address,
+                food_notes: "",
+                fulfillment_type: "delivery" as const,
+                ...(hasCoords ? { lat, lng } : {}),
+                customer_address_id: chosenAddress!.id,
+                coord_source: "saved_address",
+                items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
+              };
+            })();
+      const result = await placeOrderAction(payload);
       if (result.error || result.orderId == null) {
         rotateAttemptKey();
         setPlaceError(result.error ?? t("home.order.orderFailed"));
@@ -516,11 +663,22 @@ export function CartDrawer({
         branchName: quote.branch.name,
         paymentLabel: def ? t(def.labelKey) : payment,
         needsVerification: payment !== "cash",
-        addressText: chosenAddress.address,
+        addressText:
+          fulfillmentType === "pickup"
+            ? `${pickupBranch!.pickupAddress || pickupBranch!.name}${pickupBranch!.pickupPhone ? ` · ${pickupBranch!.pickupPhone}` : ""}`
+            : chosenAddress!.address,
         items: count,
         subtotal: quote.subtotal,
         deliveryFee: quote.delivery_charge,
         grandTotal: quote.total,
+        fulfillmentType,
+        pickupTimeLabel:
+          fulfillmentType === "pickup"
+            ? new Date(pickupTimeBase + pickupTimeMinutes * 60000).toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit",
+              })
+            : undefined,
       });
       clear(); // ordered — the drawer cart empties (orderResult holds the receipt)
       setStep("success");
@@ -615,9 +773,17 @@ export function CartDrawer({
                   </span>
                 </div>
                 <div className="border-b border-white/6 px-3.5 py-2.5">
-                  <span className="text-[#a0a0b0]">{t("home.order.deliveryAddress")}</span>
+                  <span className="text-[#a0a0b0]">
+                    {orderResult.fulfillmentType === "pickup" ? t("home.order.pickupLocation") : t("home.order.deliveryAddress")}
+                  </span>
                   <p className="mt-0.5 break-words text-white">{orderResult.addressText}</p>
                 </div>
+                {orderResult.fulfillmentType === "pickup" && orderResult.pickupTimeLabel ? (
+                  <div className="flex items-center justify-between border-b border-white/6 px-3.5 py-2.5">
+                    <span className="text-[#a0a0b0]">{t("home.order.pickupTime")}</span>
+                    <span className="font-semibold text-white">{orderResult.pickupTimeLabel}</span>
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between border-b border-white/6 px-3.5 py-2.5">
                   <span className="text-[#a0a0b0]">{t("home.order.items")}</span>
                   <span className="font-semibold text-white">{fmt.num(orderResult.items)}</span>
@@ -629,7 +795,9 @@ export function CartDrawer({
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-[#a0a0b0]">{t("home.order.deliveryFee")}</span>
-                    <span className="text-white">{fmt.money(orderResult.deliveryFee)}</span>
+                    <span className="text-white">
+                      {orderResult.fulfillmentType === "pickup" ? t("home.order.freePickup") : fmt.money(orderResult.deliveryFee)}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between border-t border-white/8 pt-1.5">
                     <span className="font-bold text-white">{t("home.order.grandTotal")}</span>
@@ -640,14 +808,18 @@ export function CartDrawer({
                 </div>
               </div>
               {/* req #18 — estimated delivery expectation. Worded as an
-                  EXPECTATION, never a guaranteed exact time. */}
-              <div className="rounded-[10px] border border-white/8 bg-surface-dark p-3" data-testid="drawer-delivery-estimate">
-                <p className="text-[0.68rem] font-bold uppercase tracking-wide text-[#606070]">
-                  {t("home.order.deliveryTimeTitle")}
-                </p>
-                <p className="mt-1 text-[0.78rem] text-[#a0a0b0]">{t("home.order.receivedByBranch")}</p>
-                <p className="mt-1 text-[0.78rem] text-white">{t("home.order.deliveryTimeEstimate")}</p>
-              </div>
+                  EXPECTATION, never a guaranteed exact time. Pickup orders
+                  already show their own pickup time above, so this delivery-
+                  specific block is skipped for them. */}
+              {orderResult.fulfillmentType === "delivery" ? (
+                <div className="rounded-[10px] border border-white/8 bg-surface-dark p-3" data-testid="drawer-delivery-estimate">
+                  <p className="text-[0.68rem] font-bold uppercase tracking-wide text-[#606070]">
+                    {t("home.order.deliveryTimeTitle")}
+                  </p>
+                  <p className="mt-1 text-[0.78rem] text-[#a0a0b0]">{t("home.order.receivedByBranch")}</p>
+                  <p className="mt-1 text-[0.78rem] text-white">{t("home.order.deliveryTimeEstimate")}</p>
+                </div>
+              ) : null}
               {orderResult.needsVerification ? (
                 <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-center text-[0.75rem] text-amber-300">
                   {t("home.order.paymentPendingNote")}
@@ -661,6 +833,40 @@ export function CartDrawer({
               <a href="#menu-section" onClick={closeCart} className="text-sm font-semibold text-brand-400 hover:underline">
                 {t("home.cart.browseMenu")}
               </a>
+            </div>
+          ) : view === "pickup-confirm" ? (
+            /* Self Pickup — there is never a location LIST (a cart's items
+                belong to exactly one branch), only a confirmation of the
+                branch that cart is already locked to. */
+            <div className="space-y-3 pb-2" data-testid="drawer-pickup-confirm-step">
+              {loadingPickupBranch ? (
+                <p className="py-6 text-center text-[0.8rem] text-[#606070]">{t("common.loading")}</p>
+              ) : pickupBranchError ? (
+                <div className="rounded-[10px] border border-red-500/30 bg-red-500/10 p-3 text-center" role="alert">
+                  <p className="text-[0.82rem] font-bold text-red-300">{pickupBranchError}</p>
+                  {cartBranchId != null ? (
+                    <button
+                      type="button"
+                      onClick={() => void loadPickupBranch(cartBranchId)}
+                      className="mt-2 text-[0.72rem] font-bold text-brand-400 hover:text-brand-300"
+                    >
+                      {t("home.order.retry")}
+                    </button>
+                  ) : null}
+                </div>
+              ) : pickupBranch ? (
+                <div className="rounded-[10px] border border-brand-500/30 bg-brand-500/10 p-4 text-center">
+                  <p className="text-[0.9rem] font-bold text-white">
+                    {t("home.order.pickupConfirmQuestion", { branch: pickupBranch.name })}
+                  </p>
+                  {pickupBranch.pickupAddress ? (
+                    <p className="mt-1.5 break-words text-[0.78rem] text-[#a0a0b0]">📍 {pickupBranch.pickupAddress}</p>
+                  ) : null}
+                  {pickupBranch.pickupPhone ? (
+                    <p className="mt-0.5 text-[0.78rem] text-[#a0a0b0]">☎ {pickupBranch.pickupPhone}</p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : view === "address" ? (
             <div className="space-y-2.5 pb-2" data-testid="drawer-checkout-address-step">
@@ -769,36 +975,21 @@ export function CartDrawer({
                   data-testid="drawer-add-address-form"
                 >
                   <p className="text-[0.8rem] font-bold text-white">{t("home.order.addNewAddress")}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={labelChoice}
-                      onChange={(e) => setLabelChoice(e.target.value)}
-                      className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
-                      aria-label={t("addresses.selectLabel")}
-                    >
-                      <option value="Home">{t("addresses.preset_home")}</option>
-                      <option value="Home-2">{t("addresses.preset_home2")}</option>
-                      <option value="Home-3">{t("addresses.preset_home3")}</option>
-                      <option value="Office">{t("addresses.preset_office")}</option>
-                      <option value="Others">{t("addresses.preset_others")}</option>
-                    </select>
-                    {labelChoice === "Others" ? (
-                      <input
-                        value={customLabel}
-                        onChange={(e) => setCustomLabel(e.target.value)}
-                        placeholder={t("addresses.customLabelPlaceholder")}
-                        maxLength={40}
-                        className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
-                        aria-label={t("addresses.selectLabel")}
-                      />
-                    ) : null}
-                  </div>
+                  <input
+                    value={locationName}
+                    onChange={(e) => setLocationName(e.target.value)}
+                    placeholder={t("addresses.locationNamePlaceholder")}
+                    maxLength={40}
+                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                    aria-label={t("addresses.locationNameField")}
+                  />
                   <select
                     value={mainArea}
                     onChange={(e) => {
                       setMainArea(e.target.value);
                       setSubArea("");
                       setCustomMain("");
+                      setCustomSubArea("");
                     }}
                     className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
                     aria-label={t("addresses.selectYourArea")}
@@ -821,34 +1012,45 @@ export function CartDrawer({
                       aria-label={t("addresses.enterYourAreaName")}
                     />
                   ) : mainArea ? (
-                    <select
-                      value={subArea}
-                      onChange={(e) => setSubArea(e.target.value)}
-                      className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
-                      aria-label={t("addresses.selectYourAreaName")}
-                    >
-                      <option value="">{t("addresses.selectYourAreaName")}</option>
-                      {subAreasFor(mainArea).map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
+                    <>
+                      <select
+                        value={subArea}
+                        onChange={(e) => {
+                          setSubArea(e.target.value);
+                          setCustomSubArea("");
+                        }}
+                        className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
+                        aria-label={t("addresses.selectYourAreaName")}
+                      >
+                        <option value="">{t("addresses.selectYourAreaName")}</option>
+                        {subAreasFor(mainArea).map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                        <option value={CUSTOM_VALUE}>{t("addresses.addYourOwn")}</option>
+                      </select>
+                      {subArea === CUSTOM_VALUE ? (
+                        <input
+                          value={customSubArea}
+                          onChange={(e) => setCustomSubArea(e.target.value)}
+                          placeholder={t("addresses.enterAreaName")}
+                          maxLength={80}
+                          className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                          aria-label={t("addresses.enterAreaName")}
+                        />
+                      ) : null}
+                    </>
                   ) : null}
                   <div className="grid grid-cols-2 gap-2">
-                    <select
+                    <input
                       value={road}
                       onChange={(e) => setRoad(e.target.value)}
-                      className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
-                      aria-label={t("addresses.selectRoadLane")}
-                    >
-                      <option value="">{t("addresses.selectRoadLane")}</option>
-                      {ROAD_LANE_OPTIONS.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
+                      placeholder={t("addresses.roadLanePlaceholder")}
+                      maxLength={80}
+                      className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                      aria-label={t("addresses.enterRoadLane")}
+                    />
                     <input
                       value={house}
                       onChange={(e) => setHouse(e.target.value)}
@@ -963,30 +1165,14 @@ export function CartDrawer({
                     searchPlaceholder={t("addresses.mapSearchPlaceholder")}
                     testId="drawer-map"
                   />
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={labelChoice}
-                      onChange={(e) => setLabelChoice(e.target.value)}
-                      className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
-                      aria-label={t("addresses.selectLabel")}
-                    >
-                      <option value="Home">{t("addresses.preset_home")}</option>
-                      <option value="Home-2">{t("addresses.preset_home2")}</option>
-                      <option value="Home-3">{t("addresses.preset_home3")}</option>
-                      <option value="Office">{t("addresses.preset_office")}</option>
-                      <option value="Others">{t("addresses.preset_others")}</option>
-                    </select>
-                    {labelChoice === "Others" ? (
-                      <input
-                        value={customLabel}
-                        onChange={(e) => setCustomLabel(e.target.value)}
-                        placeholder={t("addresses.customLabelPlaceholder")}
-                        maxLength={40}
-                        className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
-                        aria-label={t("addresses.selectLabel")}
-                      />
-                    ) : null}
-                  </div>
+                  <input
+                    value={locationName}
+                    onChange={(e) => setLocationName(e.target.value)}
+                    placeholder={t("addresses.locationNamePlaceholder")}
+                    maxLength={40}
+                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                    aria-label={t("addresses.locationNameField")}
+                  />
                   {mapPoint?.address ? (
                     <p className="break-words text-[0.72rem] text-[#a0a0b0]">📍 {mapPoint.address}</p>
                   ) : null}
@@ -1067,15 +1253,67 @@ export function CartDrawer({
                   );
                 })}
               </div>
+              {fulfillmentType === "pickup" ? (
+                <div className="space-y-1.5 rounded-lg border border-white/10 bg-[#23232e] p-3">
+                  <label htmlFor="drawer-pickup-time" className="block text-[0.78rem] font-bold text-white">
+                    {t("home.order.pickupTime")}
+                  </label>
+                  <select
+                    id="drawer-pickup-time"
+                    value={pickupTimeMinutes}
+                    onChange={(e) => setPickupTimeMinutes(Number(e.target.value))}
+                    className="h-9 w-full rounded-lg border border-white/10 bg-[#17171d] px-2 text-[0.78rem] text-white"
+                    data-testid="drawer-pickup-time"
+                  >
+                    {PICKUP_TIME_OFFSETS.map((minutes) => {
+                      const at = new Date(pickupTimeBase + minutes * 60000);
+                      const clock = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+                      return (
+                        <option key={minutes} value={minutes}>
+                          {t("home.order.pickupTimeOptionLabel", { time: clock, minutes })}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <p className="text-[0.68rem] text-[#a0a0b0]">{t("home.order.pickupTimeHint")}</p>
+                </div>
+              ) : null}
               <p className="rounded-lg bg-white/4 px-3 py-2 text-center text-[0.72rem] text-[#a0a0b0]">
-                {t("home.order.deliverTo")}: {chosenAddress ? addressCardLabel(chosenAddress) : "—"}
+                {fulfillmentType === "pickup"
+                  ? `${t("home.order.pickupLocation")}: ${pickupBranch?.name ?? "—"}`
+                  : `${t("home.order.deliverTo")}: ${chosenAddress ? addressCardLabel(chosenAddress) : "—"}`}
               </p>
             </div>
           ) : view === "overview" ? (
             <div className="space-y-2.5 pb-2" data-testid="drawer-checkout-overview-step">
-              {/* deliver-to recap — the saved address whose coordinates price
-                  and route this order */}
-              {chosenAddress ? (
+              {/* deliver-to / pickup-location recap */}
+              {fulfillmentType === "pickup" ? (
+                pickupBranch ? (
+                  <div className="rounded-[10px] border border-white/8 bg-surface-dark px-3.5 py-2.5">
+                    <p className="text-[0.68rem] font-bold uppercase tracking-wide text-[#606070]">
+                      {t("home.order.pickupLocation")}
+                    </p>
+                    <p className="mt-0.5 truncate text-[0.82rem] font-bold text-white">📍 {pickupBranch.name}</p>
+                    {pickupBranch.pickupAddress ? (
+                      <p className="mt-0.5 break-words text-[0.75rem] text-[#a0a0b0]">{pickupBranch.pickupAddress}</p>
+                    ) : null}
+                    <p className="mt-1.5 text-[0.75rem] text-[#a0a0b0]">
+                      {t("home.order.pickupTime")}:{" "}
+                      {new Date(pickupTimeBase + pickupTimeMinutes * 60000).toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setStep("payment")}
+                      className="mt-1.5 text-[0.7rem] font-bold text-brand-400 hover:underline"
+                    >
+                      {t("common.edit")}
+                    </button>
+                  </div>
+                ) : null
+              ) : chosenAddress ? (
                 <div className="rounded-[10px] border border-white/8 bg-surface-dark px-3.5 py-2.5">
                   <p className="text-[0.68rem] font-bold uppercase tracking-wide text-[#606070]">
                     {t("home.order.deliverTo")}
@@ -1133,7 +1371,9 @@ export function CartDrawer({
                   <div className="flex items-center justify-between">
                     <dt className="text-[0.85rem] text-[#a0a0b0]">{t("home.order.deliveryFee")}</dt>
                     <dd className="text-[0.8rem] text-white">
-                      {quote ? (
+                      {fulfillmentType === "pickup" ? (
+                        t("home.order.freePickup")
+                      ) : quote ? (
                         fmt.money(quote.delivery_charge)
                       ) : quoting ? (
                         <span className="inline-flex items-center gap-1.5 text-[#a0a0b0]">
@@ -1357,19 +1597,34 @@ export function CartDrawer({
           </dl>
 
           {signedIn ? (
-            /* req #4 — ONE primary action, carrying the grand total. */
-            <button
-              type="button"
-              onClick={() => void startCheckout()}
-              disabled={cartBranchId == null || lines.length === 0}
-              data-testid="place-an-order"
-              className={cn(
-                "flex w-full items-center justify-center gap-2 rounded-[10px] bg-brand-500 py-3.25 text-[0.95rem] font-extrabold text-white transition-colors hover:bg-brand-600",
-                (cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
-              )}
-            >
-              {t("home.order.placeAnOrder")} · {fmt.money(total)}
-            </button>
+            /* req #4 — ONE primary action, carrying the grand total, plus the
+                Self Pickup alternative underneath. */
+            <>
+              <button
+                type="button"
+                onClick={() => void startCheckout()}
+                disabled={cartBranchId == null || lines.length === 0}
+                data-testid="place-an-order"
+                className={cn(
+                  "flex w-full items-center justify-center gap-2 rounded-[10px] bg-brand-500 py-3.25 text-[0.95rem] font-extrabold text-white transition-colors hover:bg-brand-600",
+                  (cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
+                )}
+              >
+                {t("home.order.placeAnOrder")} · {fmt.money(total)}
+              </button>
+              <button
+                type="button"
+                onClick={startPickupCheckout}
+                disabled={cartBranchId == null || lines.length === 0}
+                data-testid="self-pickup"
+                className={cn(
+                  "mt-2 flex w-full items-center justify-center gap-2 rounded-[10px] border border-brand-500/40 py-2.75 text-[0.85rem] font-extrabold text-brand-400 transition-colors hover:bg-brand-500/10",
+                  (cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
+                )}
+              >
+                🏬 {t("home.order.selfPickup")}
+              </button>
+            </>
           ) : (
             /* req #6 — not logged in: the flow STOPS here with a clear message
                 and the two account actions. The cart survives the login
@@ -1398,6 +1653,28 @@ export function CartDrawer({
             </div>
           )}
             </>
+          ) : view === "pickup-confirm" ? (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={goBackToCart}
+                className="flex items-center justify-center rounded-[10px] border border-white/12 py-3 text-[0.85rem] font-extrabold text-white hover:border-brand-500"
+              >
+                ← {t("home.order.backToCart")}
+              </button>
+              <button
+                type="button"
+                onClick={goPickupPayment}
+                disabled={!pickupBranch || loadingPickupBranch}
+                data-testid="drawer-confirm-pickup-branch"
+                className={cn(
+                  "flex items-center justify-center gap-2 rounded-[10px] bg-brand-500 py-3 text-[0.85rem] font-extrabold text-white hover:bg-brand-600",
+                  (!pickupBranch || loadingPickupBranch) && "cursor-not-allowed opacity-50",
+                )}
+              >
+                {t("home.order.confirmPickup")} →
+              </button>
+            </div>
           ) : view === "address" ? (
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -1424,10 +1701,10 @@ export function CartDrawer({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={goBackToAddress}
+                onClick={goBackFromPayment}
                 className="flex items-center justify-center rounded-[10px] border border-white/12 py-3 text-[0.75rem] font-extrabold text-white hover:border-brand-500"
               >
-                ← {t("home.order.selectDeliveryAddress")}
+                ← {fulfillmentType === "pickup" ? t("home.order.backToPickupConfirm") : t("home.order.selectDeliveryAddress")}
               </button>
               <button
                 type="button"

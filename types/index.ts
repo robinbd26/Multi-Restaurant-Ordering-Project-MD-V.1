@@ -183,6 +183,8 @@ export interface Order {
   delivery_lat?: number | null;
   delivery_lng?: number | null;
   fulfillment_type?: string;
+  /** Self Pickup — the customer's requested pickup time (null for delivery). */
+  pickup_time?: string | null;
   prep_time_snapshot?: number | null;
   delivery_area?: number | null;
   delivery_area_name?: string;

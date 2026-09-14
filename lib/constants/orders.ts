@@ -59,5 +59,9 @@ export const CUSTOMER_SETTABLE: OrderStatus[] = ["cancelled"];
 export const DELAY_MIN_MINUTES = 5;
 export const DELAY_MAX_MINUTES = 240;
 
+/** Self Pickup — a requested pickup time must be at least this far out from
+    the server's clock, so the branch always has time to prepare the order. */
+export const PICKUP_MIN_LEAD_MINUTES = 30;
+
 /** Quick-pick extra-time options offered in the rider UI (minutes). */
 export const DELAY_MINUTE_OPTIONS = [10, 15, 20, 30, 45, 60] as const;

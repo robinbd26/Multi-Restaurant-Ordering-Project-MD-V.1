@@ -2,9 +2,10 @@ import { test, expect } from "@playwright/test";
 import { newSession } from "./helpers";
 
 /**
- * Customer Address Book — compact two-column flow ("Select Your Area" / custom
- * area / dynamic "Select Area" / optional Road+Lane & House-Plot / right-side
- * preview / "What Kind of Address is This?" modal / "Others" custom label).
+ * Customer Address Book — compact two-column flow (free-text "Location Name" /
+ * "Select Your Area" / custom area / dynamic "Select Area" with its own
+ * "+ Add your Own" / optional free-text Road+Lane & House-Plot / right-side
+ * preview / direct save, no intermediate address-type modal).
  */
 test.describe("Customer address book (English locale)", () => {
   test("dropdown spec: + Add your Own first, custom area input, dynamic sub-areas, Basundhara", async ({
@@ -78,24 +79,31 @@ test.describe("Customer address book (English locale)", () => {
     expect(subForCustom).toEqual(["Select Area"]);
     expect(await page.getByTestId("addr-custom-area").count()).toBe(0);
 
-    // Basundhara → "+ Add your Own" first, then only its three sub-areas.
+    // Basundhara → its three sub-areas, then its own "+ Add your Own" at the end.
     await mainSelect.selectOption("Basundhara");
     await expect(customArea).toBeHidden();
     await expect(subSelect).toBeEnabled();
     await expect
       .poll(async () => (await subSelect.locator("option").allTextContents()).map((s) => s.trim()).slice(1))
-      .toEqual(["Basundhara ALL", "Nikunju-1", "Nikunju-2"]);
+      .toEqual(["Basundhara ALL", "Nikunju-1", "Nikunju-2", "+ Add your Own"]);
 
-    // Banani → only Banani-related sub-areas, never another area's.
+    // Banani → only Banani-related sub-areas, never another area's, plus its
+    // own "+ Add your Own" at the end (same sentinel the main area offers).
     await mainSelect.selectOption("Banani");
     const bananiSubs = (await subSelect.locator("option").allTextContents()).map((s) => s.trim());
-    expect(bananiSubs.slice(1)).toContain("All Over Banani");
+    expect(bananiSubs.slice(1, -1)).toContain("All Over Banani");
     expect(bananiSubs).not.toContain("Gulshan-1");
     expect(bananiSubs).not.toContain("Mirpur -1");
     expect(bananiSubs).not.toContain("Sector -1");
+    expect(bananiSubs.at(-1)).toBe("+ Add your Own");
 
-    // The sub-area dropdown never offers an "Enter Area Name" choice.
-    expect(await page.getByRole("option", { name: "Enter Area Name" }).count()).toBe(0);
+    // Selecting "+ Add your Own" on the SUB-area reveals its own "Enter Area
+    // Name" free-text input (req: every area's sub-area list gets this).
+    await subSelect.selectOption({ value: "__custom__" });
+    const customSubArea = page.getByLabel("Enter Area Name");
+    await expect(customSubArea).toBeVisible();
+    await customSubArea.fill("New Custom Sub-Area");
+    await expect(page.getByTestId("preview-sub-area")).toContainText("New Custom Sub-Area");
 
     // "Select Area *" label (old "Select Your Area Name" wording gone).
     await expect(page.getByLabel("Select Area")).toBeAttached();
@@ -111,11 +119,16 @@ test.describe("Customer address book (English locale)", () => {
     await expect(form).toBeHidden();
   });
 
-  test("save flow: address-type modal, Others custom name saved on the right", async ({ browser }) => {
+  test("save flow: Location Name input, direct save with no address-type modal", async ({ browser }) => {
     const { page } = await newSession(browser, "customer");
     await page.goto("/customer/addresses");
     await page.getByTestId("add-address").click();
     await page.getByTestId("mode-manual").click();
+
+    // Location Name is a free-text input, not a preset dropdown/modal.
+    const locationName = page.getByTestId("addr-location-name");
+    await expect(locationName).toBeVisible();
+    await locationName.fill("Parents' House");
 
     await page.getByTestId("addr-main-area").selectOption("Banani");
     await page.getByTestId("addr-sub-area").selectOption("All Over Banani");
@@ -124,35 +137,22 @@ test.describe("Customer address book (English locale)", () => {
     await page.getByTestId("addr-flat-number").fill("3A");
     await page.getByTestId("addr-landmark").fill("Near Banani Lake");
 
-    // Save (right-side preview button) opens the address-type modal — no save yet.
+    // Save submits directly — no intermediate "What Kind of Address is This?" step.
     await page.getByTestId("save-address").click();
-    const modal = page.getByTestId("address-type-modal");
-    await expect(modal).toBeVisible();
-    await expect(modal.getByText("What Kind of Address is This?")).toBeVisible();
-    for (const type of ["Home", "Home-2", "Home-3", "Office", "Others"]) {
-      await expect(modal.getByTestId(`type-${type.toLowerCase()}`)).toBeVisible();
-    }
+    await expect(page.getByTestId("address-form")).toBeHidden();
 
-    // Others → custom address name.
-    await modal.getByTestId("type-others").click();
-    const customName = page.getByTestId("addr-custom-type-name");
-    await expect(customName).toBeVisible();
-    await expect(customName).toHaveAttribute("placeholder", /Parents' House|Friend's House/);
-    await customName.fill("Parents' House");
-    await page.getByTestId("confirm-address-type").click();
-
-    // Modal closes and the saved card appears with the CUSTOM label, not "Others".
-    await expect(modal).toBeHidden();
     const savedCard = page.locator('[data-testid^="saved-address-"]', { hasText: "Parents' House" }).first();
     await expect(savedCard).toBeVisible();
     await expect(savedCard).toContainText("All Over Banani");
 
-    // Edit round-trips every field back into the form. No coordinates were
-    // picked, so the address reopens in MANUAL mode with no map section.
+    // Edit round-trips every field back into the form, including the typed
+    // Location Name. No coordinates were picked, so the address reopens in
+    // MANUAL mode with no map section.
     await savedCard.getByRole("button", { name: "Edit" }).click();
     await expect(page.getByTestId("address-form")).toBeVisible();
     await expect(page.getByTestId("mode-manual")).toHaveClass(/border-brand-500/);
     await expect(page.getByTestId("map-mode-section")).toHaveCount(0);
+    await expect(page.getByTestId("addr-location-name")).toHaveValue("Parents' House");
     await expect(page.getByTestId("addr-main-area")).toHaveValue("Banani");
     await expect(page.getByTestId("addr-sub-area")).toHaveValue("All Over Banani");
     await expect(page.getByTestId("addr-road-lane")).toHaveValue("Lane 5");

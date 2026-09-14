@@ -1281,6 +1281,10 @@ model Order {
   prepTimeSnapshot         Int?
   // B1: delivery vs pickup + the delivery coordinates coverage was checked against.
   fulfillmentType          String              @default("delivery") // delivery | pickup
+  // Self Pickup — the customer-requested pickup time (pickup orders only; null
+  // for delivery). Validated server-side to be at least 30 minutes out at the
+  // time the order is placed.
+  requestedPickupAt        DateTime?
   deliveryLat              Decimal?
   deliveryLng              Decimal?
   // WS-4.2 — provenance of the coordinates above. Delivery charge and coverage

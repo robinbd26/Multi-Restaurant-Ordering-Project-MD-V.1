@@ -641,7 +641,20 @@
       "labelLandmark": "Landmark",
       "mapLocationRequired": "Please choose a location on the map first.",
       "orderStatusLabel": "Order Status",
-      "addressLoadError": "Could not load your saved addresses. Please try again."
+      "addressLoadError": "Could not load your saved addresses. Please try again.",
+      "selfPickup": "Self Pickup",
+      "pickupConfirmQuestion": "Are you sure you want to pick up from {branch}?",
+      "confirmPickup": "Confirm Pickup",
+      "changePickupLocation": "Back",
+      "backToPickupConfirm": "Pickup Confirmation",
+      "pickupBranchLoadError": "Could not load pickup details for this branch. Please try again.",
+      "pickupUnavailableAtBranch": "Self Pickup is not available at this branch right now.",
+      "pickupTime": "Pickup Time",
+      "pickupTimeHint": "Minimum 30 minutes from now.",
+      "pickupTimeOptionLabel": "{time} (in {minutes} min)",
+      "pickupLocation": "Pickup Location",
+      "freePickup": "Free (Pickup)",
+      "errPickupBranchRequired": "Pickup details are still loading. Please wait a moment."
     }
   },
   "superAdmin": {
@@ -1717,6 +1730,8 @@
       "variationUnavailable": "A selected option is unavailable.",
       "outOfCoverage": "This address is outside the delivery coverage area.",
       "pickupUnavailable": "Pickup is not available at this branch.",
+      "pickupTimeRequired": "Please choose a pickup time.",
+      "pickupTimeTooSoon": "Pickup time must be at least {minutes} minutes from now.",
       "locationRequired": "A valid delivery location is required. Please check delivery coverage for your address.",
       "riderNotOnBranchDuty": "The rider is not on an active duty session for this branch.",
       "invalidCoordinates": "Invalid coordinates.",
@@ -2527,6 +2542,8 @@
     "rejectDesc": "The withdrawal of {amount} will be rejected. Give the rider a reason."
   },
   "addresses": {
+    "locationNameField": "Location Name",
+    "locationNamePlaceholder": "e.g. Home, Office, Mom's House",
     "subtitle": "Save multiple addresses (Home, Office, etc.)",
     "add": "New Address",
     "saved": "Address saved",

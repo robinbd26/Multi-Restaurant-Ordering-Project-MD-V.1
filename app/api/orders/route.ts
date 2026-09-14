@@ -49,6 +49,8 @@ export const POST = handle(async (req: Request) => {
     reward_code?: string;
     items?: OrderItemInput[];
     fulfillment_type?: string;
+    // Self Pickup — the customer's requested pickup time (ISO string).
+    pickup_time?: string;
     lat?: number;
     lng?: number;
     // WS-4.2 — a saved address the customer chose. The SERVER reads that row's
@@ -78,6 +80,7 @@ export const POST = handle(async (req: Request) => {
     couponCode: body.coupon_code,
     rewardCode: body.reward_code ?? null,
     fulfillmentType: body.fulfillment_type,
+    pickupTime: body.pickup_time ?? null,
     lat: body.lat ?? null,
     lng: body.lng ?? null,
     customerAddressId: body.customer_address_id ?? null,

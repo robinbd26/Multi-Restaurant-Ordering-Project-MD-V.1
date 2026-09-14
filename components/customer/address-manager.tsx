@@ -23,17 +23,6 @@ import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-va
 import { MAIN_AREA_NAMES, subAreasFor, CUSTOM_VALUE } from "@/lib/constants/area-data";
 import { cn } from "@/lib/utils";
 
-const ADDRESS_TYPES = ["Home", "Home-2", "Home-3", "Office", "Others"] as const;
-const PRESET_TYPES = ["Home", "Home-2", "Home-3", "Office"] as const;
-
-const TYPE_EMOJI: Record<string, string> = {
-  Home: "🏠",
-  "Home-2": "🏠",
-  "Home-3": "🏠",
-  Office: "🏢",
-  Others: "✏",
-};
-
 function coord(value: number | null | undefined): string {
   return value != null && Number.isFinite(value) ? value.toFixed(6) : "";
 }
@@ -143,6 +132,7 @@ function buildAddress(parts: {
 }
 
 const RULES: FieldRules = {
+  location_name: [required, maxLength(40)],
   main_area: [required],
   custom_main_area: [maxLength(80)],
   sub_area: [maxLength(80)],
@@ -163,14 +153,11 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
 
   const [editing, setEditing] = useState<AddressT | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [showTypeModal, setShowTypeModal] = useState(false);
   // Foodpanda-style entry: map-first pin picking, with "Add Manually" as a
   // first-class alternative that never requires coordinates.
   const [entryMode, setEntryMode] = useState<"map" | "manual">("map");
   const [locationConfirmed, setLocationConfirmed] = useState(false);
-  const [selectedType, setSelectedType] = useState("");
-  const [customTypeName, setCustomTypeName] = useState("");
-  const [typeModalError, setTypeModalError] = useState<string | null>(null);
+  const [locationName, setLocationName] = useState("");
   const [mainArea, setMainArea] = useState("");
   const [customMainArea, setCustomMainArea] = useState("");
   const [subArea, setSubArea] = useState("");
@@ -264,13 +251,10 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
     setCountry("");
     setInstructions("");
     setIsDefault(addresses.length === 0);
-    setSelectedType("");
-    setCustomTypeName("");
-    setTypeModalError(null);
+    setLocationName("");
     setError(null);
     setServerErrors({});
     resetErrors();
-    setShowTypeModal(false);
     setLocationConfirmed(false);
     setEntryMode("map");
     setShowForm(true);
@@ -326,23 +310,11 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
     setInstructions(a.instructions ?? "");
     setIsDefault(a.is_default);
 
-    const isPreset = (PRESET_TYPES as readonly string[]).includes(a.label);
-    if (a.label === "Others") {
-      setSelectedType("Others");
-      setCustomTypeName(a.custom_label ?? a.label);
-    } else if (!isPreset) {
-      setSelectedType("Others");
-      setCustomTypeName(a.label);
-    } else {
-      setSelectedType(a.label);
-      setCustomTypeName("");
-    }
+    setLocationName(a.label === "Others" && a.custom_label ? a.custom_label : a.label);
 
-    setTypeModalError(null);
     setError(null);
     setServerErrors({});
     resetErrors();
-    setShowTypeModal(false);
     // An address with stored coordinates reopens in map mode (already trusted);
     // a manual-only address reopens in manual mode with no map required.
     const hasSavedCoords = a.latitude != null && a.longitude != null;
@@ -374,33 +346,7 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
 
   const handleFormValid = useCallback((event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSelectedType(editing ? (selectedType || "") : "");
-    if (!editing) setCustomTypeName("");
-    setTypeModalError(null);
-    setShowTypeModal(true);
-  }, [editing, selectedType]);
-
-  const handleTypeSelect = useCallback((type: string) => {
-    setSelectedType(type);
-    if (type !== "Others") setCustomTypeName("");
-    setTypeModalError(null);
-  }, []);
-
-  const handleSaveWithType = useCallback(() => {
-    if (!selectedType) {
-      setTypeModalError(t("addresses.errAddressType"));
-      return;
-    }
-    if (selectedType === "Others" && !customTypeName.trim()) {
-      setTypeModalError(t("addresses.errCustomLabel"));
-      return;
-    }
-
-    setTypeModalError(null);
     setError(null);
-
-    const isOthers = selectedType === "Others";
-    const finalLabel = isOthers ? customTypeName.trim() : selectedType;
 
     const hasCoords =
       lat.trim() !== "" && lng.trim() !== "" && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
@@ -417,7 +363,7 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
 
     start(async () => {
       const res = await saveAddressAction(editing?.id ?? null, {
-        label: finalLabel,
+        label: locationName.trim(),
         custom_label: "",
         address: fullAddress || mapAddress.trim() || addressText.trim(),
         area: area.trim(),
@@ -444,18 +390,16 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
       setServerErrors(res.fieldErrors ?? {});
       if (res.error || Object.keys(res.fieldErrors ?? {}).length > 0) {
         setError(res.error);
-        setShowTypeModal(false);
         return;
       }
-      setShowTypeModal(false);
       setShowForm(false);
       router.refresh();
     });
   }, [
-    selectedType, customTypeName, editing, lat, lng, housePlot, flatNumber,
+    locationName, editing, lat, lng, housePlot, flatNumber,
     resolvedRoadLane, subArea, customArea, mainArea, resolvedMainArea, customMainArea,
     roadLane, area, city, postalCode, country, instructions, addressText,
-    isDefault, router, landmark, t, mapAddress, placeId,
+    isDefault, router, landmark, mapAddress, placeId,
   ]);
 
   const { errors, formProps, reset: resetErrors } = useFormValidation(RULES, {
@@ -625,6 +569,17 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
                 </div>
               </div>
 
+              <Field label={t("addresses.locationNameField")} name="location_name" required error={errors.location_name}>
+                <Input
+                  name="location_name"
+                  value={locationName}
+                  onChange={(e) => setLocationName(e.target.value)}
+                  maxLength={40}
+                  placeholder={t("addresses.locationNamePlaceholder")}
+                  data-testid="addr-location-name"
+                />
+              </Field>
+
               <Field label={t("addresses.selectYourArea")} name="main_area" required error={errors.main_area}>
                 <Select
                   name="main_area"
@@ -679,6 +634,9 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
                   {subArea && subArea !== CUSTOM_VALUE && !subAreasFor(mainArea).includes(subArea) ? (
                     // Legacy: a stored sub-area that is not on the current list.
                     <option value={subArea}>{subArea}</option>
+                  ) : null}
+                  {mainArea && mainArea !== CUSTOM_VALUE ? (
+                    <option value={CUSTOM_VALUE}>{t("addresses.addYourOwn")}</option>
                   ) : null}
                 </Select>
               </Field>
@@ -804,12 +762,8 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
               <CardContent className="pt-3">
                 <h3 className="mb-3 text-sm font-semibold text-fg-base">{t("addresses.addressPreview")}</h3>
                 <div className="space-y-3" data-testid="address-preview">
-                  {selectedType ? (
-                    <p className="font-semibold text-fg-base">
-                      {selectedType === "Others" && customTypeName.trim()
-                        ? customTypeName.trim()
-                        : selectedType}
-                    </p>
+                  {locationName.trim() ? (
+                    <p className="font-semibold text-fg-base">{locationName.trim()}</p>
                   ) : null}
                   {/* Address Details — every value carries its field label, so
                       "76" is never mistaken for a house number (req #1/#2).
@@ -976,77 +930,6 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
             ) : null}
           </div>
         </form>
-      )}
-
-      {showTypeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="max-w-md w-full rounded-2xl border border-border-base bg-surface-card p-6 shadow-xl" data-testid="address-type-modal">
-            <h3 className="text-lg font-semibold text-fg-base">{t("addresses.addressTypeTitle")}</h3>
-            <div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                {ADDRESS_TYPES.map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => handleTypeSelect(type)}
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-2 rounded-xl border p-4 text-center transition-all",
-                      selectedType === type
-                        ? "border-brand-500 bg-brand-50"
-                        : "border-border-strong hover:border-brand-300",
-                    )}
-                    data-testid={`type-${type.toLowerCase()}`}
-                  >
-                    <span className="text-2xl" aria-hidden="true">
-                      {TYPE_EMOJI[type]}
-                    </span>
-                    <span className="text-sm font-medium">{type}</span>
-                  </button>
-                ))}
-              </div>
-
-              {selectedType === "Others" ? (
-                <div className="mt-4">
-                  <label className="mb-1.5 block text-sm font-medium text-fg-base">
-                    {t("addresses.enterAddressName")}
-                  </label>
-                  <Input
-                    value={customTypeName}
-                    onChange={(e) => setCustomTypeName(e.target.value)}
-                    maxLength={40}
-                    placeholder={t("addresses.enterAddressNamePlaceholder")}
-                    data-testid="addr-custom-type-name"
-                  />
-                </div>
-              ) : null}
-
-              {typeModalError ? (
-                <p className="mt-3 text-sm font-medium text-red-600" role="alert">
-                  {typeModalError}
-                </p>
-              ) : null}
-
-              <div className="mt-6 flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowTypeModal(false)}
-                  data-testid="cancel-address-type"
-                >
-                  {t("common.cancel")}
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={pending}
-                  onClick={handleSaveWithType}
-                  data-testid="confirm-address-type"
-                >
-                  {pending ? t("common.saving") : t("addresses.saveAddress")}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
