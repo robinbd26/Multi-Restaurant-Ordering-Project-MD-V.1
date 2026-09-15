@@ -813,26 +813,71 @@ model BranchDeliveryZone {
 // NEW delivery orders. Duplicate normalized names per branch are prevented by
 // the unique index.
 model BranchDeliveryArea {
-  id                       Int      @id @default(autoincrement())
+  id                       Int               @id @default(autoincrement())
   branchId                 Int
-  branch                   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branch                   Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
   name                     String
-  normalizedName           String   @default("")
-  isActive                 Boolean  @default(true)
-  isHeld                   Boolean  @default(false) // hold blocks NEW delivery orders only
-  holdReason               String   @default("")
-  estimatedDeliveryMinutes Int      @default(45)
-  deliveryCharge           Decimal  @default(0)
+  normalizedName           String            @default("")
+  isActive                 Boolean           @default(true)
+  isHeld                   Boolean           @default(false) // hold blocks NEW delivery orders only
+  holdReason               String            @default("")
+  estimatedDeliveryMinutes Int               @default(45)
+  deliveryCharge           Decimal           @default(0)
   centerLat                Decimal? // optional centroid for distance/coverage
   centerLng                Decimal?
+  // Phase 2 — the master locality this coverage row stands for. Null on legacy
+  // free-text rows a branch manager typed before the master list existed.
+  localityId               Int?
+  locality                 DeliveryLocality? @relation(fields: [localityId], references: [id], onDelete: SetNull)
+  // Which shift this row applies to: "day" | "night" | "both" (COVERAGE_WINDOWS).
+  // "both" is the safe default, so every row that existed before this field keeps
+  // covering around the clock exactly as it did.
+  coverageWindow           String            @default("both")
   updatedById              Int? // audit: who last changed it (app-level SetNull)
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
 
   orders Order[] @relation("OrderDeliveryArea")
 
-  @@unique([branchId, normalizedName])
+  // A branch may cover the same locality in BOTH windows with different charges,
+  // so the window is part of the key — otherwise the night list could never
+  // repeat a day locality.
+  @@unique([branchId, normalizedName, coverageWindow])
   @@index([branchId])
+  @@index([localityId])
+}
+
+// ── Phase 2 · MASTER zone / locality list (super admin owned) ─────────────
+// The places that exist, named once for the whole platform. Coverage is NOT
+// decided here: a branch ticks the localities it delivers to (BranchDeliveryArea),
+// per time window. Customer addresses point at a locality by name, which is what
+// lets coverage be answered without a map pin on every address.
+model DeliveryZone {
+  id             Int                @id @default(autoincrement())
+  name           String
+  normalizedName String             @unique
+  isActive       Boolean            @default(true)
+  // Display order in the address form; ties break by name.
+  sortOrder      Int                @default(0)
+  localities     DeliveryLocality[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+}
+
+model DeliveryLocality {
+  id             Int                  @id @default(autoincrement())
+  zoneId         Int
+  zone           DeliveryZone         @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  name           String
+  normalizedName String
+  isActive       Boolean              @default(true)
+  sortOrder      Int                  @default(0)
+  coverage       BranchDeliveryArea[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([zoneId, normalizedName])
+  @@index([zoneId])
 }
 
 // ── req #6/#13: Rider order-assignment offer + response ──────────────────
