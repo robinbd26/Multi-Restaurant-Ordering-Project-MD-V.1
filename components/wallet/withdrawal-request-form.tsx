@@ -9,11 +9,18 @@ import { requestWithdrawalAction } from "@/lib/api/actions";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { Field, Input } from "@/components/ui/input";
 import type { FieldErrors } from "@/lib/validation/contract";
-import { money, positive, required } from "@/lib/validation/rules";
+import { money, positive } from "@/lib/validation/rules";
 import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-validation";
 
 const RULES: FieldRules = {
-  amount: [required, money, positive],
+  // A bespoke first rule gives the empty case a clear "Enter an amount"
+  // message (instead of the generic "This field is required"); money/positive
+  // then cover malformed or non-positive values.
+  amount: [
+    (v) => (v.trim() ? null : { key: "wallet.errAmountRequired" }),
+    money,
+    positive,
+  ],
   note: [],
 };
 

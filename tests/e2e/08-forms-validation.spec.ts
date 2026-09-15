@@ -19,7 +19,7 @@ test.describe("Forms & JS validation (English locale)", () => {
     await page.fill('input[name="identifier"]', "!!");
     await page.locator('input[name="password"]').click(); // blur → touched
     await expect(page.locator('.field[data-field="identifier"]')).toHaveClass(/is-invalid/);
-    await expect(page.getByText(/valid mobile number or username/i)).toBeVisible();
+    await expect(page.getByText(/valid mobile number/i)).toBeVisible();
     // The submit button renders auth.loginButton ("Sign In"), not "Log in".
     await expect(page.getByRole("button", { name: /sign in/i })).toBeDisabled();
   });
@@ -68,8 +68,8 @@ test.describe("Forms & JS validation (English locale)", () => {
     await expect(page.locator("form")).toBeVisible();
     await page.getByRole("button", { name: /submit complaint/i }).click();
     await expect(page).toHaveURL(/\/complaints\/new/);
-    // an inline validation error (red text) appears — not the <option> placeholder
-    await expect(page.locator("p.text-red-600").first()).toBeVisible();
+    // an inline validation error (red role=alert text) appears — not the <option> placeholder
+    await expect(page.locator('[role="alert"].text-red-600').first()).toBeVisible();
   });
 
   test("checkout page renders (cart or empty state, no crash)", async ({ page }) => {
