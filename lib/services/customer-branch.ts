@@ -2,7 +2,8 @@ import "server-only";
 
 import { prisma } from "@/lib/db";
 import { GPS_SCOPE, type BrowseScope } from "@/lib/browse-scope/config";
-import { effectiveDeliveryFor } from "@/lib/services/delivery";
+import { coverageFor, effectiveDeliveryFor } from "@/lib/services/delivery";
+import { isValidLatLng } from "@/lib/services/geo";
 import {
   isBranchCoveredForCustomer,
   nearestEligibleBranch,
@@ -187,6 +188,50 @@ export interface HomeBranchContext extends CustomerBranchContext {
   browseOnly: boolean;
   /** The saved address this page is priced for, when one was chosen. */
   deliverToLabel: string | null;
+  /**
+   * When browse-only: a saved address of theirs that this branch CAN reach, so
+   * the bar can offer the one-click fix instead of a dead end. Null when they
+   * have none — the honest answer is then pickup, or nothing.
+   */
+  coveredAddress: { id: number; label: string } | null;
+}
+
+/**
+ * The first saved address of theirs that a given branch can actually reach.
+ *
+ * This is the one-click answer to "I am in Banani, ordering for someone in
+ * Mirpur": the branch on screen cannot deliver to where the phone is, but it may
+ * very well cover an address they have already saved. Offering that beats the
+ * dead end, and it is not a loophole — picking it sets the deliver-to point to a
+ * real row the customer owns, which is exactly what checkout would have priced
+ * anyway (resolveDeliveryCoordinate treats a chosen address as authoritative).
+ *
+ * Default first, so the most likely answer is the one offered. Stops at the
+ * first match: the bar has room for one suggestion, not a list.
+ */
+async function coveredSavedAddress(
+  userId: number,
+  branch: { id: number } & Parameters<typeof coverageFor>[0],
+): Promise<{ id: number; label: string } | null> {
+  const rows = await prisma.customerAddress.findMany({
+    where: { userId, isActive: true, latitude: { not: null }, longitude: { not: null } },
+    select: { id: true, label: true, customLabel: true, latitude: true, longitude: true },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+  });
+  if (rows.length === 0) return null;
+  const zones = await prisma.branchDeliveryZone.findMany({
+    where: { branchId: branch.id, isActive: true },
+  });
+  for (const a of rows) {
+    if (a.latitude == null || a.longitude == null) continue;
+    const lat = Number(a.latitude);
+    const lng = Number(a.longitude);
+    if (!isValidLatLng(lat, lng)) continue;
+    if (coverageFor(branch, zones, { lat, lng }).covered) {
+      return { id: a.id, label: addressLabel(a) };
+    }
+  }
+  return null;
 }
 
 /** display_label, without paying for a full serializer. */
@@ -223,6 +268,7 @@ export async function resolveHomeBranch(
         selection: scope,
         browseOnly: false,
         deliverToLabel: addressLabel(address),
+        coveredAddress: null,
       };
     }
     return withGpsScope(await resolveCustomerBranch(userId));
@@ -241,7 +287,13 @@ export async function resolveHomeBranch(
     if (covered) {
       const context = await resolveCustomerBranch(userId, branch.id);
       if (context.branchId === branch.id) {
-        return { ...context, selection: scope, browseOnly: false, deliverToLabel: null };
+        return {
+          ...context,
+          selection: scope,
+          browseOnly: false,
+          deliverToLabel: null,
+          coveredAddress: null,
+        };
       }
     }
 
@@ -268,6 +320,7 @@ export async function resolveHomeBranch(
       selection: scope,
       browseOnly: true,
       deliverToLabel: null,
+      coveredAddress: await coveredSavedAddress(userId, branch),
     };
   }
 
@@ -275,5 +328,11 @@ export async function resolveHomeBranch(
 }
 
 function withGpsScope(context: CustomerBranchContext): HomeBranchContext {
-  return { ...context, selection: GPS_SCOPE, browseOnly: false, deliverToLabel: null };
+  return {
+    ...context,
+    selection: GPS_SCOPE,
+    browseOnly: false,
+    deliverToLabel: null,
+    coveredAddress: null,
+  };
 }

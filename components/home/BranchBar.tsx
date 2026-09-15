@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import {
   DeliverToPicker,
@@ -8,6 +9,7 @@ import {
   type DeliverToBranch,
 } from "@/components/home/DeliverToPicker";
 import { NearestPickupCallout } from "@/components/maps/nearest-pickup-callout";
+import { clearBrowseScope, writeBrowseScope } from "@/lib/browse-scope/client";
 import type { BrowseScope } from "@/lib/browse-scope/config";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { useLocationRequest } from "@/lib/hooks/use-location-request";
@@ -30,6 +32,8 @@ export interface BranchBarContext {
   browseOnly: boolean;
   /** The saved address this page is priced for, when one was chosen. */
   deliverToLabel: string | null;
+  /** A saved address the browsed branch CAN reach, offered as the one-click fix. */
+  coveredAddress: { id: number; label: string } | null;
 }
 
 /**
@@ -61,6 +65,7 @@ export function BranchBar({
   branches: DeliverToBranch[];
 }) {
   const { t, fmt } = useTranslation();
+  const router = useRouter();
   // Same shared live-location flow the location card uses — no second location
   // system, no client-side distance maths. The server re-derives the nearest
   // branch on the refresh the hook performs.
@@ -217,6 +222,50 @@ export function BranchBar({
           </>
         ) : null}
       </div>
+
+      {/* The honest second line. A branch the customer chose to look at may not
+          be able to deliver to them — that is the point of being allowed to look
+          — so say it plainly instead of letting them build a cart that checkout
+          would refuse, and offer the two things that DO work: self-pickup from
+          this branch, or delivering to a saved address this branch can reach. */}
+      {context.browseOnly ? (
+        <div
+          className="mx-auto mt-2 flex max-w-300 flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-[0.78rem]"
+          data-testid="home-browse-only"
+        >
+          <span className="font-semibold text-amber-300">{t("nearestHome.browseOnlyTitle")}</span>
+          <span className="text-[#c8c8d4]">
+            {t("nearestHome.browseOnlyBody", { branch: context.branchName ?? "" })}
+            {context.pickupEnabled ? ` ${t("nearestHome.browseOnlyPickup")}` : ""}
+          </span>
+          <span className="ms-auto flex flex-wrap items-center gap-2">
+            {context.coveredAddress ? (
+              <button
+                type="button"
+                data-testid="home-deliver-to-covered"
+                onClick={() => {
+                  writeBrowseScope({ mode: "address", addressId: context.coveredAddress!.id });
+                  router.refresh();
+                }}
+                className={action}
+              >
+                {t("nearestHome.deliverToInstead", { label: context.coveredAddress.label })}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              data-testid="home-back-to-location"
+              onClick={() => {
+                clearBrowseScope();
+                router.refresh();
+              }}
+              className={action}
+            >
+              {t("nearestHome.backToMyLocation")}
+            </button>
+          </span>
+        </div>
+      ) : null}
 
       {/* WS-4.4 — the strip states the problem; this states the alternative. The
           nearest pickup branch is named with its distance and a route link,

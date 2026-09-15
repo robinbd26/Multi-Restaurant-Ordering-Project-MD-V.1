@@ -157,6 +157,7 @@ export default async function HomePage() {
         selection: branchContext.selection,
         browseOnly: branchContext.browseOnly,
         deliverToLabel: branchContext.deliverToLabel,
+        coveredAddress: branchContext.coveredAddress,
       }
     : null;
 

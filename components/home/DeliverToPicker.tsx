@@ -4,13 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import {
-  BROWSE_SCOPE_COOKIE,
-  BROWSE_SCOPE_MAX_AGE,
-  formatBrowseScope,
-  sameBrowseScope,
-  type BrowseScope,
-} from "@/lib/browse-scope/config";
+import { clearBrowseScope, writeBrowseScope } from "@/lib/browse-scope/client";
+import { sameBrowseScope, type BrowseScope } from "@/lib/browse-scope/config";
 import { useTranslation } from "@/lib/i18n/use-translation";
 
 /** A saved address, reduced to what the picker draws. */
@@ -92,8 +87,7 @@ export function DeliverToPicker({
 
   function choose(scope: BrowseScope) {
     setOpen(false);
-    // eslint-disable-next-line react-hooks/immutability
-    document.cookie = `${BROWSE_SCOPE_COOKIE}=${formatBrowseScope(scope)}; path=/; max-age=${BROWSE_SCOPE_MAX_AGE}; samesite=lax`;
+    writeBrowseScope(scope);
     router.refresh();
   }
 
@@ -101,7 +95,7 @@ export function DeliverToPicker({
     setOpen(false);
     // Clear the scope FIRST: the hook refreshes on its own once the fix is saved,
     // and a stale cookie would otherwise pin the page to the old choice.
-    document.cookie = `${BROWSE_SCOPE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+    clearBrowseScope();
     onUseCurrentLocation();
     router.refresh();
   }
