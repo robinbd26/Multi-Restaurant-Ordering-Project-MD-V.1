@@ -603,7 +603,7 @@ test.describe("Full page audit — shared authenticated pages", () => {
     ).toEqual([]);
 
     await page.getByRole("button", { name: /submit complaint/i }).click();
-    await expect(page.locator("p.text-red-600")).toHaveCount(4);
+    await expect(page.locator('[role="alert"].text-red-600')).toHaveCount(4);
     expect(new URL(page.url()).pathname).toBe("/complaints/new");
 
     const subject = `Audit complaint ${Date.now()}`;

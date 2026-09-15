@@ -2487,6 +2487,7 @@
     "feeLabel": "Commission per delivery (৳)",
     "feeHint": "Riders receive this amount for every completed delivery",
     "errAmount": "Enter a valid amount",
+    "errAmountRequired": "Enter an amount",
     "errExceedsBalance": "Insufficient balance. Available: {balance}",
     "errReason": "Enter a rejection reason",
     "amountLabel": "Amount (৳)",

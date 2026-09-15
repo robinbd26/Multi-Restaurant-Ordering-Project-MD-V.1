@@ -602,11 +602,29 @@ async function main() {
   console.log("✔ Reward rules + coin value");
 
   if (!(await prisma.customerAddress.findFirst({ where: { userId: customer.id } }))) {
+    // Coordinates are mandatory for delivery (server coverage/product listing
+    // resolve the customer's point from the DEFAULT address lat/lng). These sit
+    // inside the seeded branches' ~8 km radius so the seeded customer can
+    // actually browse products and place a delivery order in the test suite.
     await prisma.customerAddress.create({
-      data: { userId: customer.id, label: "বাসা", address: "House 12, Road 5, Dhanmondi, Dhaka", isDefault: true },
+      data: {
+        userId: customer.id,
+        label: "বাসা",
+        address: "House 12, Road 5, Dhanmondi, Dhaka",
+        isDefault: true,
+        latitude: new Prisma.Decimal("23.7808000"),
+        longitude: new Prisma.Decimal("90.4074000"),
+      },
     });
     await prisma.customerAddress.create({
-      data: { userId: customer.id, label: "অফিস", address: "Level 4, Gulshan Avenue, Dhaka", isDefault: false },
+      data: {
+        userId: customer.id,
+        label: "অফিস",
+        address: "Level 4, Gulshan Avenue, Dhaka",
+        isDefault: false,
+        latitude: new Prisma.Decimal("23.7927000"),
+        longitude: new Prisma.Decimal("90.4074000"),
+      },
     });
     console.log("✔ Seeded 2 customer addresses");
   }

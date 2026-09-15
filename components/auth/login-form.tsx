@@ -60,6 +60,14 @@ export function LoginForm({
     pending,
   });
 
+  // The submit button is enabled only once BOTH controls are valid — the exact
+  // same `required`/`identifierShape` rules above. Empty or malformed values
+  // leave it disabled, so an accidental empty submit can never fire; the inline
+  // errors still appear live on blur/change. (E2E helper relies on this:
+  // `disabled={!canSubmit || pending}`.)
+  const canSubmit =
+    !required(identifier, {}) && !identifierShape(identifier, {}) && !required(password, {});
+
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
   function showToast(message: string) {
@@ -181,10 +189,11 @@ export function LoginForm({
         <button
           type="submit"
           className={`btn-primary${pending ? " is-loading" : ""}`}
-          // Disabled ONLY while the request is in flight (prevents a double
-          // submit). An incomplete form still submits, so the user is told what
-          // is wrong instead of facing a dead button with no explanation.
-          disabled={pending}
+          // Disabled until both controls are valid (canSubmit) — an incomplete
+          // form is never submitted; while a request is in flight `pending`
+          // additionally blocks a double submit. Live validation messages still
+          // appear as the user blurs/edits, so there's no "dead button".
+          disabled={!canSubmit || pending}
           onClick={ripple}
         >
           <span className="btn-primary__label">{t("auth.loginButton")}</span>
