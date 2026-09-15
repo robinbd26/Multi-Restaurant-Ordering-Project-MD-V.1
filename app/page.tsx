@@ -19,7 +19,8 @@ import { getT } from "@/lib/i18n/server";
 import type { Brand } from "@/lib/home/types";
 import { getCompanyLogoUrl } from "@/lib/services/settings";
 import { BranchBar, type BranchBarContext } from "@/components/home/BranchBar";
-import { browsesWithoutLocation, resolveCustomerBranch } from "@/lib/services/customer-branch";
+import { readBrowseScope } from "@/lib/browse-scope/server";
+import { browsesWithoutLocation, resolveHomeBranch } from "@/lib/services/customer-branch";
 import { branchMenu, publicMenu } from "@/lib/services/public-catalog";
 import { publicHomeBranches } from "@/lib/selectors";
 import { siteOrigin } from "@/lib/seo/site";
@@ -66,12 +67,21 @@ export default async function HomePage() {
   // req #8 — real branches from the database (no hardcoded demo branches). An
   // empty result renders an empty state rather than fabricated data.
   const branches = await publicHomeBranches();
-  // BRANCH SCOPE. An authenticated CUSTOMER orders from exactly one branch — the
-  // nearest eligible one, resolved server-side from their own trusted GPS fix or
-  // default saved address. The catalogue is scoped to it, so every section (cards,
-  // category tabs, nav search) is drawn from the same single-branch query and no
-  // section can show a product the customer cannot buy. Resolution is per request
-  // and never cached: it depends on one customer's private coordinates.
+  // BRANCH SCOPE. An authenticated CUSTOMER browses exactly one branch at a time.
+  // By default that is the nearest eligible one, resolved server-side from their
+  // own trusted GPS fix or default saved address; they may also point the page at
+  // a saved address of theirs (which reprices the whole page against that point)
+  // or at any live branch they want to look at. The catalogue is scoped to
+  // whichever branch that resolves to, so every section (cards, category tabs,
+  // nav search) is drawn from the same single-branch query. Resolution is per
+  // request and never cached: it depends on one customer's private coordinates.
+  //
+  // The SELECTION IS A VIEW SCOPE, NOT AN AUTHORISATION ONE. Browsing a branch
+  // that cannot reach the customer is allowed and honest — the bar marks it
+  // browse-only and self-pickup still works — but it buys nothing extra: a
+  // delivery order still has its branch, coverage and fee derived server-side
+  // from the trusted coordinate, with the client's branch_id ignored. Nothing
+  // outside this page reads the scope.
   //
   // Guests keep the existing all-branches showcase. WS-8.14 — a customer with
   // NO usable location at all browses that SAME showcase (a signed-in customer
@@ -96,7 +106,9 @@ export default async function HomePage() {
   // stay in the admin product pages.
   const isCustomer = user?.role === "customer";
   const catalogueMode = isCustomer ? "customer_nearest_branch" : "all_branches";
-  const branchContext = isCustomer ? await resolveCustomerBranch(user.id) : null;
+  // What the customer chose to look at — a saved address, or any live branch —
+  // rides in a cookie. Absent or invalid, this resolves exactly as it did before.
+  const branchContext = isCustomer ? await resolveHomeBranch(user.id, await readBrowseScope()) : null;
   const menu =
     catalogueMode === "customer_nearest_branch"
       ? branchContext?.branchId != null
