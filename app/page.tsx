@@ -20,6 +20,8 @@ import type { Brand } from "@/lib/home/types";
 import { getCompanyLogoUrl } from "@/lib/services/settings";
 import { BranchBar, type BranchBarContext } from "@/components/home/BranchBar";
 import { readBrowseScope } from "@/lib/browse-scope/server";
+import { isBranchOpenNow } from "@/lib/services/branch-hours";
+import { savedAddressOptions } from "@/lib/services/addresses";
 import { browsesWithoutLocation, resolveHomeBranch } from "@/lib/services/customer-branch";
 import { branchMenu, publicMenu } from "@/lib/services/public-catalog";
 import { publicHomeBranches } from "@/lib/selectors";
@@ -152,8 +154,25 @@ export default async function HomePage() {
         prepTimeMinutes: branchContext.branch?.prepTimeMinutes ?? null,
         open: branchContext.open,
         opensAt: branchContext.opensAt,
+        selection: branchContext.selection,
+        browseOnly: branchContext.browseOnly,
+        deliverToLabel: branchContext.deliverToLabel,
       }
     : null;
+
+  // The picker's two lists, both rendered server-side into props so the bar makes
+  // no client fetch. The branches are the SAME publicHomeBranches() rows the
+  // coverage and hours sections below already use — the real, super-admin-managed,
+  // active and unarchived set — so a branch created or archived in the admin shows
+  // up or disappears here with no code change. Open-now comes from the one shared
+  // hours decision, not a second reading of the clock.
+  const pickerAddresses = isCustomer ? await savedAddressOptions(user.id) : [];
+  const pickerBranches = branches.map((b) => ({
+    id: b.id,
+    name: b.name,
+    brandType: b.brandType,
+    open: isBranchOpenNow(b).orderable,
+  }));
   const origin = await siteOrigin();
 
   // PHASE B — structured data built from the REAL branch rows, so what search
@@ -192,7 +211,9 @@ export default async function HomePage() {
           <HeroSection />
           {/* One slim band, in the storefront's own palette — branch context for
               a signed-in customer without a new dashboard section. */}
-          {branchBar ? <BranchBar context={branchBar} /> : null}
+          {branchBar ? (
+            <BranchBar context={branchBar} addresses={pickerAddresses} branches={pickerBranches} />
+          ) : null}
           <MenuSection
             branchCount={branches.length}
             categories={menu.categories}

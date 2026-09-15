@@ -2,6 +2,9 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import type { CustomerAddress } from "@prisma/client";
 
+import { prisma } from "@/lib/db";
+import { isValidLatLng } from "@/lib/services/geo";
+
 
 /** Serialize a customer address (req #17). */
 export function serializeAddress(a: CustomerAddress) {
@@ -52,4 +55,47 @@ export async function ensureRegistrationAddress(
   await tx.customerAddress.create({
     data: { userId, label: "Home", address: trimmed, isDefault: true, isActive: true },
   });
+}
+
+/** One row of the storefront deliver-to picker. */
+export interface SavedAddressOption {
+  id: number;
+  label: string;
+  address: string;
+  isDefault: boolean;
+  /** False when the row has no usable map pin, so it cannot resolve a branch. */
+  hasCoordinates: boolean;
+}
+
+/**
+ * The customer's active addresses, reduced to what the homepage picker
+ * draws. Deliberately NOT serializeAddress(): the bar needs four fields and
+ * renders on every homepage load for every signed-in customer, so it should not
+ * carry twenty-five columns of address detail through the RSC payload.
+ *
+ * Ordered the way the address book orders them — default first, then oldest —
+ * so the list reads the same in both places.
+ */
+export async function savedAddressOptions(userId: number): Promise<SavedAddressOption[]> {
+  const rows = await prisma.customerAddress.findMany({
+    where: { userId, isActive: true },
+    select: {
+      id: true,
+      label: true,
+      customLabel: true,
+      address: true,
+      isDefault: true,
+      latitude: true,
+      longitude: true,
+    },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+  });
+  return rows.map((a) => ({
+    id: a.id,
+    label: a.label === "Others" && a.customLabel ? a.customLabel : a.label,
+    address: a.address,
+    isDefault: a.isDefault,
+    hasCoordinates:
+      a.latitude != null && a.longitude != null && isValidLatLng(Number(a.latitude), Number(a.longitude)),
+  }));
 }
