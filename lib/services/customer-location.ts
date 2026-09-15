@@ -159,6 +159,42 @@ export async function trustedCustomerPointDetailed(userId: number): Promise<Trus
   return null;
 }
 
+/**
+ * The point of ONE saved address the customer picked, for the storefront's
+ * deliver-to selector.
+ *
+ * The function above answers "where is this customer?" and deliberately knows
+ * only two sources, the newest of which wins. This one answers a different
+ * question — "where did they SAY to deliver?" — so it reads the chosen row
+ * directly and does not fall through to the GPS fix: a customer ordering to
+ * their office is not corrected by the fact that their phone is at home.
+ *
+ * Scoped to THIS customer's own addresses, so an address id lifted from another
+ * account (or from a cookie left behind on a shared browser) resolves to null
+ * and the caller falls back to the ordinary trusted point. Coordinates are
+ * re-validated, so a row saved without a map pin cannot resolve a wrong branch.
+ */
+export async function pointForCustomerAddress(
+  userId: number,
+  addressId: number,
+): Promise<TrustedPoint | null> {
+  if (!Number.isSafeInteger(addressId) || addressId <= 0) return null;
+  const addr = await prisma.customerAddress.findFirst({
+    where: {
+      id: addressId,
+      userId,
+      isActive: true,
+      latitude: { not: null },
+      longitude: { not: null },
+    },
+  });
+  if (addr?.latitude == null || addr.longitude == null) return null;
+  const lat = Number(addr.latitude);
+  const lng = Number(addr.longitude);
+  if (!isValidLatLng(lat, lng)) return null;
+  return { lat, lng, source: "address", deviceGps: false };
+}
+
 // ── WS-4.2 · provenance of an order's delivery coordinate ───────────────
 
 /** Mirrors Order.deliveryCoordSource. "" on a row means legacy/unknown. */
@@ -386,7 +422,17 @@ export async function nearestEligibleBranchForPoint(
   return covered[0] ? { id: covered[0].id, distanceKm: roundKm(covered[0].dist) } : null;
 }
 
-export async function nearestEligibleBranch(userId: number): Promise<{
+/**
+ * @param pointOverride A deliver-to point the CUSTOMER chose (a saved address
+ *   picked in the storefront selector), used in place of their trusted point.
+ *   Callers must have resolved it from a row they own — pointForCustomerAddress()
+ *   is the only supported producer. Omitted by every ordering path, which keeps
+ *   deriving the point from the customer's own record.
+ */
+export async function nearestEligibleBranch(
+  userId: number,
+  pointOverride?: TrustedPoint | null,
+): Promise<{
   point: LatLng | null;
   /** Which source the point came from, for UI wording. Null when unresolved. */
   pointSource: PointSource | null;
@@ -395,7 +441,7 @@ export async function nearestEligibleBranch(userId: number): Promise<{
   /** True when covered branches exist but every one of them is closed right now. */
   allCoveredClosed: boolean;
 }> {
-  const point = await trustedCustomerPointDetailed(userId);
+  const point = pointOverride ?? (await trustedCustomerPointDetailed(userId));
   const branches = await prisma.branch.findMany({
     where: { isActive: true, isArchived: false },
     orderBy: { name: "asc" },

@@ -1,8 +1,15 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { GPS_SCOPE, type BrowseScope } from "@/lib/browse-scope/config";
 import { effectiveDeliveryFor } from "@/lib/services/delivery";
-import { isBranchCoveredForCustomer, nearestEligibleBranch } from "@/lib/services/customer-location";
+import {
+  isBranchCoveredForCustomer,
+  nearestEligibleBranch,
+  pointForCustomerAddress,
+  type TrustedPoint,
+} from "@/lib/services/customer-location";
+import { isBranchOpenNow } from "@/lib/services/branch-hours";
 
 export { isBranchCoveredForCustomer };
 
@@ -57,9 +64,18 @@ const EMPTY: CustomerBranchContext = {
 
 /**
  * Resolve the customer's delivery branch (supports preferred covered branch or nearest covered branch).
+ *
+ * @param pointOverride A deliver-to point the customer chose — a saved address of
+ *   their own, resolved by pointForCustomerAddress(). Everything downstream
+ *   (coverage, the serving branch, the quoted fee) is then computed against THAT
+ *   point instead of where their phone is. Ordering paths never pass it.
  */
-export async function resolveCustomerBranch(userId: number, preferredBranchId?: number | null): Promise<CustomerBranchContext> {
-  const nearest = await nearestEligibleBranch(userId);
+export async function resolveCustomerBranch(
+  userId: number,
+  preferredBranchId?: number | null,
+  pointOverride?: TrustedPoint | null,
+): Promise<CustomerBranchContext> {
+  const nearest = await nearestEligibleBranch(userId, pointOverride);
   if (!nearest.point) return EMPTY;
 
   let targetBranchId: number | null = null;
@@ -150,4 +166,114 @@ export async function resolvedBranchIdFor(userId: number, preferredBranchId?: nu
  */
 export function browsesWithoutLocation(context: Pick<CustomerBranchContext, "state">): boolean {
   return context.state === "no-location";
+}
+
+// ── Storefront deliver-to selection ─────────────────────────────────────────
+
+export interface HomeBranchContext extends CustomerBranchContext {
+  /**
+   * The scope actually IN FORCE, after validation. It can differ from the cookie
+   * the browser sent — an address that is not theirs, or a branch that has since
+   * been archived, degrades to "gps" here — so the picker highlights what the
+   * page really did, never what was merely asked for.
+   */
+  selection: BrowseScope;
+  /**
+   * True when the customer is looking at a branch that cannot deliver to their
+   * deliver-to point. The menu is real and self-pickup still works; delivery
+   * from here does not, and the bar has to say so rather than let them build a
+   * cart that checkout will refuse.
+   */
+  browseOnly: boolean;
+  /** The saved address this page is priced for, when one was chosen. */
+  deliverToLabel: string | null;
+}
+
+/** display_label, without paying for a full serializer. */
+function addressLabel(a: { label: string; customLabel: string | null }): string {
+  return a.label === "Others" && a.customLabel ? a.customLabel : a.label;
+}
+
+/**
+ * THE homepage branch resolution: today's nearest-branch logic, plus the two
+ * choices the customer is now allowed to make.
+ *
+ * Deliberately the only entry point that reads a browse scope. Every other
+ * consumer of resolveCustomerBranch — the products API, the category selector,
+ * the per-branch menu page, order placement — is untouched and still resolves
+ * from the customer's own trusted point alone. That asymmetry is the design: the
+ * scope is a view lens on ONE page, not a change to what the customer may buy.
+ */
+export async function resolveHomeBranch(
+  userId: number,
+  scope: BrowseScope,
+): Promise<HomeBranchContext> {
+  if (scope.mode === "address") {
+    const address = await prisma.customerAddress.findFirst({
+      where: { id: scope.addressId, userId, isActive: true },
+      select: { id: true, label: true, customLabel: true },
+    });
+    const point = address ? await pointForCustomerAddress(userId, scope.addressId) : null;
+    // A row they do not own, that was deactivated, or that has no map pin: fall
+    // through to the ordinary resolution rather than failing the page.
+    if (address && point) {
+      const context = await resolveCustomerBranch(userId, null, point);
+      return {
+        ...context,
+        selection: scope,
+        browseOnly: false,
+        deliverToLabel: addressLabel(address),
+      };
+    }
+    return withGpsScope(await resolveCustomerBranch(userId));
+  }
+
+  if (scope.mode === "branch") {
+    const branch = await prisma.branch.findFirst({
+      where: { id: scope.branchId, isActive: true, isArchived: false },
+    });
+    if (!branch) return withGpsScope(await resolveCustomerBranch(userId));
+
+    // Covered → this is simply choosing among the branches that can already serve
+    // them (the Foodpanda model resolveCustomerBranch has always supported), so
+    // distance, fee and open-now all come from the normal path.
+    const covered = await isBranchCoveredForCustomer(userId, branch.id);
+    if (covered) {
+      const context = await resolveCustomerBranch(userId, branch.id);
+      if (context.branchId === branch.id) {
+        return { ...context, selection: scope, browseOnly: false, deliverToLabel: null };
+      }
+    }
+
+    // Not covered (or no usable point at all) — show the menu and be honest about
+    // it. No distance and no fee: both are properties of a delivery that cannot
+    // happen from here, and inventing them would be the lie the bar exists to avoid.
+    const hours = isBranchOpenNow(branch);
+    return {
+      state: "ok",
+      branchId: branch.id,
+      branch: {
+        id: branch.id,
+        name: branch.name,
+        brandType: branch.brandType,
+        address: branch.address,
+        pickupEnabled: branch.pickupEnabled,
+        prepTimeMinutes: branch.prepTimeMinutes,
+      },
+      distanceKm: null,
+      deliveryFee: null,
+      pointSource: null,
+      open: hours.orderable,
+      opensAt: hours.orderable ? null : hours.opensAt,
+      selection: scope,
+      browseOnly: true,
+      deliverToLabel: null,
+    };
+  }
+
+  return withGpsScope(await resolveCustomerBranch(userId));
+}
+
+function withGpsScope(context: CustomerBranchContext): HomeBranchContext {
+  return { ...context, selection: GPS_SCOPE, browseOnly: false, deliverToLabel: null };
 }
