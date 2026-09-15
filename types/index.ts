@@ -78,6 +78,8 @@ export interface Branch {
   delivery_radius_km: string;
   brand_type?: string; // cheez | madchef | combined
   bkash_number?: string;
+  // Serialized by `serializeBranch`; drives the "self-pickup available" wording.
+  pickup_enabled?: boolean;
   manager?: number | null;
   manager_name?: string | null;
   is_active?: boolean;

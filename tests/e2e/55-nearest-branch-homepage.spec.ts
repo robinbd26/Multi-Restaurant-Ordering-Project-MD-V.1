@@ -294,7 +294,7 @@ test.describe("Location and coverage states", () => {
       "out-of-zone",
     );
     await expect(customer.page.getByTestId("home-retry-location")).toBeVisible();
-    await expect(customer.page.getByTestId("home-view-branches")).toBeVisible();
+    await expect(customer.page.getByTestId("home-browse-branch")).toBeVisible();
 
     const names = await customer.page.locator("article h4").allInnerTexts();
     expect(names, "no fallback catalogue whatsoever").toEqual([]);
@@ -625,16 +625,37 @@ test.describe("Login behaviour is unchanged", () => {
  *      than honoured.
  */
 test.describe("The homepage follows the customer's deliver-to selection", () => {
+  /** Marks addresses this suite creates, so a later run can clear its own leftovers. */
+  const PROBE_PREFIX = "ScopeProbe Rd";
+  /** Also matches probes written by earlier revisions of this suite. */
+  const PROBE_RE = /^Scope(Probe)? Rd-/;
+
   /** Point a session at a branch or a saved address, the way the picker does. */
   async function setScope(context: BrowserContext, value: string) {
     await context.addCookies([{ name: "mad_scope", value, url: E2E_ORIGIN }]);
   }
 
+  /**
+   * A saved address at a given point.
+   *
+   * Saved addresses are capped (LIMITS.maxSavedAddresses = 5) and the test
+   * database is persistent, so probes left by earlier runs eventually fill the
+   * quota and every later run fails at creation. Clear this suite own probes
+   * first, which keeps the suite idempotent without touching a customer real
+   * addresses.
+   */
   async function makeAddress(req: APIRequestContext, point: { lat: number; lng: number }) {
+    const existing = await (await req.get("/api/customer/addresses/?page_size=100")).json();
+    const rows = (existing.results ?? existing.addresses ?? []) as { id: number; address: string }[];
+    for (const row of rows) {
+      if (typeof row.address === "string" && PROBE_RE.test(row.address)) {
+        await req.delete(`/api/customer/addresses/${row.id}/`);
+      }
+    }
     const res = await req.post("/api/customer/addresses/", {
       data: {
         label: "Office",
-        address: uniq("Scope Rd"),
+        address: uniq(PROBE_PREFIX),
         latitude: String(point.lat),
         longitude: String(point.lng),
       },

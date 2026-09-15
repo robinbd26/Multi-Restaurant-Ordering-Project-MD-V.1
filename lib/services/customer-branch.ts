@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
-import { GPS_SCOPE, type BrowseScope } from "@/lib/browse-scope/config";
+import type { BrowseScope, DeliverTo } from "@/lib/browse-scope/config";
 import { coverageFor, effectiveDeliveryFor } from "@/lib/services/delivery";
 import { isValidLatLng } from "@/lib/services/geo";
 import {
@@ -169,14 +169,14 @@ export function browsesWithoutLocation(context: Pick<CustomerBranchContext, "sta
   return context.state === "no-location";
 }
 
-// ── Storefront deliver-to selection ─────────────────────────────────────────
+// ── Storefront deliver-to + browsing selection ──────────────────────────────
 
 export interface HomeBranchContext extends CustomerBranchContext {
   /**
    * The scope actually IN FORCE, after validation. It can differ from the cookie
    * the browser sent — an address that is not theirs, or a branch that has since
-   * been archived, degrades to "gps" here — so the picker highlights what the
-   * page really did, never what was merely asked for.
+   * been archived, is dropped here — so the controls highlight what the page
+   * really did, never what was merely asked for.
    */
   selection: BrowseScope;
   /**
@@ -200,11 +200,12 @@ export interface HomeBranchContext extends CustomerBranchContext {
  * The first saved address of theirs that a given branch can actually reach.
  *
  * This is the one-click answer to "I am in Banani, ordering for someone in
- * Mirpur": the branch on screen cannot deliver to where the phone is, but it may
- * very well cover an address they have already saved. Offering that beats the
- * dead end, and it is not a loophole — picking it sets the deliver-to point to a
- * real row the customer owns, which is exactly what checkout would have priced
- * anyway (resolveDeliveryCoordinate treats a chosen address as authoritative).
+ * Mirpur": the branch on screen cannot deliver to the current deliver-to point,
+ * but it may very well cover an address they have already saved. Offering that
+ * beats the dead end, and it is not a loophole — picking it sets the deliver-to
+ * point to a real row the customer owns, which is exactly what checkout would
+ * have priced anyway (resolveDeliveryCoordinate treats a chosen address as
+ * authoritative).
  *
  * Default first, so the most likely answer is the one offered. Stops at the
  * first match: the bar has room for one suggestion, not a list.
@@ -240,99 +241,106 @@ function addressLabel(a: { label: string; customLabel: string | null }): string 
 }
 
 /**
- * THE homepage branch resolution: today's nearest-branch logic, plus the two
- * choices the customer is now allowed to make.
+ * Resolve the deliver-to half of a scope into a point.
  *
- * Deliberately the only entry point that reads a browse scope. Every other
- * consumer of resolveCustomerBranch — the products API, the category selector,
- * the per-branch menu page, order placement — is untouched and still resolves
- * from the customer's own trusted point alone. That asymmetry is the design: the
- * scope is a view lens on ONE page, not a change to what the customer may buy.
+ * Returns the validated choice alongside the point, so a rejected address (not
+ * theirs, deactivated, or saved without a map pin) comes back as "gps" and the
+ * controls never show a selection the page did not honour. Shared by the
+ * homepage and the dashboard Restaurants page, so both judge coverage from the
+ * same point.
+ */
+export async function resolveDeliverTo(
+  userId: number,
+  deliverTo: DeliverTo,
+): Promise<{ deliverTo: DeliverTo; point: TrustedPoint | null; label: string | null }> {
+  if (deliverTo.mode === "address") {
+    const address = await prisma.customerAddress.findFirst({
+      where: { id: deliverTo.addressId, userId, isActive: true },
+      select: { id: true, label: true, customLabel: true },
+    });
+    const point = address ? await pointForCustomerAddress(userId, address.id) : null;
+    if (address && point) return { deliverTo, point, label: addressLabel(address) };
+  }
+  // A null point means "use the customer's own trusted point", which every
+  // resolver below already derives when no override is passed.
+  return { deliverTo: { mode: "gps" }, point: null, label: null };
+}
+
+/**
+ * THE homepage branch resolution: today's nearest-branch logic, plus the two
+ * independent choices the customer is now allowed to make.
+ *
+ *   1. deliverTo fixes the point every coverage and price decision is made from.
+ *   2. branchId, when set, picks the menu. If that branch covers the point, this
+ *      is simply choosing among the branches that can already serve them (the
+ *      Foodpanda model resolveCustomerBranch has always supported), with real
+ *      distance, fee and open-now. If it does not, the menu is still shown and
+ *      the context is marked browseOnly.
+ *
+ * Every consumer of resolveCustomerBranch that places or prices an order — the
+ * products API, the category selector, the per-branch menu page, order
+ * placement — is untouched and still resolves from the customer's own trusted
+ * point alone. The scope is a view lens, not a change to what they may buy.
  */
 export async function resolveHomeBranch(
   userId: number,
   scope: BrowseScope,
 ): Promise<HomeBranchContext> {
-  if (scope.mode === "address") {
-    const address = await prisma.customerAddress.findFirst({
-      where: { id: scope.addressId, userId, isActive: true },
-      select: { id: true, label: true, customLabel: true },
-    });
-    const point = address ? await pointForCustomerAddress(userId, scope.addressId) : null;
-    // A row they do not own, that was deactivated, or that has no map pin: fall
-    // through to the ordinary resolution rather than failing the page.
-    if (address && point) {
-      const context = await resolveCustomerBranch(userId, null, point);
-      return {
-        ...context,
-        selection: scope,
-        browseOnly: false,
-        deliverToLabel: addressLabel(address),
-        coveredAddress: null,
-      };
-    }
-    return withGpsScope(await resolveCustomerBranch(userId));
-  }
+  const target = await resolveDeliverTo(userId, scope.deliverTo);
 
-  if (scope.mode === "branch") {
+  if (scope.branchId != null) {
     const branch = await prisma.branch.findFirst({
       where: { id: scope.branchId, isActive: true, isArchived: false },
     });
-    if (!branch) return withGpsScope(await resolveCustomerBranch(userId));
-
-    // Covered → this is simply choosing among the branches that can already serve
-    // them (the Foodpanda model resolveCustomerBranch has always supported), so
-    // distance, fee and open-now all come from the normal path.
-    const covered = await isBranchCoveredForCustomer(userId, branch.id);
-    if (covered) {
-      const context = await resolveCustomerBranch(userId, branch.id);
+    if (branch) {
+      const selection: BrowseScope = { deliverTo: target.deliverTo, branchId: branch.id };
+      // resolveCustomerBranch honours a preferred branch only when it covers the
+      // point, and otherwise falls back to the nearest covering one — so landing
+      // on a DIFFERENT branch id is precisely "the browsed branch cannot reach".
+      const context = await resolveCustomerBranch(userId, branch.id, target.point);
       if (context.branchId === branch.id) {
         return {
           ...context,
-          selection: scope,
+          selection,
           browseOnly: false,
-          deliverToLabel: null,
+          deliverToLabel: target.label,
           coveredAddress: null,
         };
       }
-    }
 
-    // Not covered (or no usable point at all) — show the menu and be honest about
-    // it. No distance and no fee: both are properties of a delivery that cannot
-    // happen from here, and inventing them would be the lie the bar exists to avoid.
-    const hours = isBranchOpenNow(branch);
-    return {
-      state: "ok",
-      branchId: branch.id,
-      branch: {
-        id: branch.id,
-        name: branch.name,
-        brandType: branch.brandType,
-        address: branch.address,
-        pickupEnabled: branch.pickupEnabled,
-        prepTimeMinutes: branch.prepTimeMinutes,
-      },
-      distanceKm: null,
-      deliveryFee: null,
-      pointSource: null,
-      open: hours.orderable,
-      opensAt: hours.orderable ? null : hours.opensAt,
-      selection: scope,
-      browseOnly: true,
-      deliverToLabel: null,
-      coveredAddress: await coveredSavedAddress(userId, branch),
-    };
+      // No distance and no fee: both are properties of a delivery that cannot
+      // happen from here, and inventing them would be the lie the bar exists to avoid.
+      const hours = isBranchOpenNow(branch);
+      return {
+        state: "ok",
+        branchId: branch.id,
+        branch: {
+          id: branch.id,
+          name: branch.name,
+          brandType: branch.brandType,
+          address: branch.address,
+          pickupEnabled: branch.pickupEnabled,
+          prepTimeMinutes: branch.prepTimeMinutes,
+        },
+        distanceKm: null,
+        deliveryFee: null,
+        pointSource: context.pointSource,
+        open: hours.orderable,
+        opensAt: hours.orderable ? null : hours.opensAt,
+        selection,
+        browseOnly: true,
+        deliverToLabel: target.label,
+        coveredAddress: await coveredSavedAddress(userId, branch),
+      };
+    }
   }
 
-  return withGpsScope(await resolveCustomerBranch(userId));
-}
-
-function withGpsScope(context: CustomerBranchContext): HomeBranchContext {
+  const context = await resolveCustomerBranch(userId, null, target.point);
   return {
     ...context,
-    selection: GPS_SCOPE,
+    selection: { deliverTo: target.deliverTo, branchId: null },
     browseOnly: false,
-    deliverToLabel: null,
+    deliverToLabel: target.label,
     coveredAddress: null,
   };
 }
