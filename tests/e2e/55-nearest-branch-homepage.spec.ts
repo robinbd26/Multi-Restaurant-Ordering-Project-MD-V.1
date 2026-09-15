@@ -1,5 +1,11 @@
-import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
-import { newSession, setLocale, ROLE_HOME, atPath, login } from "./helpers";
+import {
+  test,
+  expect,
+  type APIRequestContext,
+  type BrowserContext,
+  type Page,
+} from "@playwright/test";
+import { newSession, setLocale, ROLE_HOME, atPath, login, E2E_ORIGIN } from "./helpers";
 
 /**
  * NEAREST-BRANCH HOMEPAGE — an authenticated customer sees, and can order, the
@@ -605,4 +611,198 @@ test.describe("Login behaviour is unchanged", () => {
       expect(new URL(page.url()).pathname).toBe(ROLE_HOME[role]);
     });
   }
+});
+
+/**
+ * DELIVER-TO SELECTION — the customer may now point the homepage at one of their
+ * own saved addresses, or at any live branch, through the "mad_scope" cookie.
+ *
+ * The two things these tests hold down are opposites, and both matter:
+ *   1. the selection really does move the catalogue, including to a branch that
+ *      cannot reach the customer (the whole reason the feature exists);
+ *   2. it is a VIEW scope and nothing more — it never widens what the APIs
+ *      return, and a scope the customer is not entitled to is ignored rather
+ *      than honoured.
+ */
+test.describe("The homepage follows the customer's deliver-to selection", () => {
+  /** Point a session at a branch or a saved address, the way the picker does. */
+  async function setScope(context: BrowserContext, value: string) {
+    await context.addCookies([{ name: "mad_scope", value, url: E2E_ORIGIN }]);
+  }
+
+  async function makeAddress(req: APIRequestContext, point: { lat: number; lng: number }) {
+    const res = await req.post("/api/customer/addresses/", {
+      data: {
+        label: "Office",
+        address: uniq("Scope Rd"),
+        latitude: String(point.lat),
+        longitude: String(point.lng),
+      },
+    });
+    expect(res.status(), "address created").toBe(201);
+    return (await res.json()) as { id: number };
+  }
+
+  test("browsing another branch swaps the catalogue and says it cannot deliver", async ({
+    browser,
+  }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+
+    // Standing at A, deliberately looking at B — "I will be there at five".
+    await setScope(customer.context, `b:${world.branchB.id}`);
+    const names = await homeNames(customer.page);
+
+    expect(names, "the chosen branch's products").toContain(world.bProduct.name);
+    expect(names, "not the branch they are standing in").not.toContain(world.aProduct.name);
+
+    const bar = customer.page.getByTestId("home-branch-bar");
+    await expect(bar).toHaveAttribute("data-branch-state", "ok");
+    await expect(bar).toHaveAttribute("data-browse-only", "true");
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText(world.branchB.name);
+    await expect(customer.page.getByTestId("home-browse-only")).toBeVisible();
+    // No distance and no fee: both describe a delivery that cannot happen here.
+    await expect(customer.page.getByTestId("home-branch-distance")).toHaveCount(0);
+    await expect(customer.page.getByTestId("home-branch-fee")).toHaveCount(0);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
+
+  test("a saved address near another branch reprices, it does not merely browse", async ({
+    browser,
+  }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+
+    // The "ordering for someone across town" case: the destination is a real row.
+    const address = await makeAddress(customer.req, world.pointB);
+    await setScope(customer.context, `a:${address.id}`);
+    const names = await homeNames(customer.page);
+
+    expect(names, "the address's branch").toContain(world.bProduct.name);
+    expect(names, "not the phone's branch").not.toContain(world.aProduct.name);
+
+    const bar = customer.page.getByTestId("home-branch-bar");
+    await expect(bar).toHaveAttribute("data-browse-only", "false");
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText(world.branchB.name);
+    // A real destination, so the delivery facts are real too.
+    await expect(customer.page.getByTestId("home-branch-distance")).toBeVisible();
+
+    await admin.context.close();
+    await customer.context.close();
+  });
+
+  test("another customer's address id is ignored", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+
+    const other = await newSession(browser, "qa_upload_1");
+    const stolen = await makeAddress(other.req, world.pointB);
+
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+    await setScope(customer.context, `a:${stolen.id}`);
+    const names = await homeNames(customer.page);
+
+    // Falls back to their own point rather than honouring a row they do not own.
+    expect(names, "their own branch").toContain(world.aProduct.name);
+    expect(names, "never the other customer's branch").not.toContain(world.bProduct.name);
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText(world.branchA.name);
+
+    await admin.context.close();
+    await other.context.close();
+    await customer.context.close();
+  });
+
+  test("an archived branch id is ignored", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+    const doomed = await makeBranch(admin.req);
+    expect((await admin.req.delete(`/api/branches/${doomed.id}/`)).status()).toBe(200);
+
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+    await setScope(customer.context, `b:${doomed.id}`);
+
+    await customer.page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText(world.branchA.name);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
+
+  test("a malformed scope cookie resolves normally", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+    await setScope(customer.context, "b:not-a-number");
+
+    await customer.page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText(world.branchA.name);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
+
+  test("the scope is a view lens, never an authorisation change", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+    // Browsing B in the strongest possible sense — and it must buy nothing.
+    await setScope(customer.context, `b:${world.branchB.id}`);
+
+    const list = await customer.req.get(`/api/products/?branch_id=${world.branchB.id}&page_size=200`);
+    expect(list.status()).toBe(200);
+    const names = ((await list.json()).results as { name: string }[]).map((p) => p.name);
+    expect(names, "the API still answers for the RESOLVED branch").not.toContain(
+      world.bProduct.name,
+    );
+    expect(names).toContain(world.aProduct.name);
+
+    expect(
+      (await customer.req.get(`/api/products/${world.bProduct.id}/`)).status(),
+      "the browsed branch's product detail is still not readable",
+    ).toBe(404);
+
+    expect(
+      (await customer.req.get(`/api/orders/`, { failOnStatusCode: false })).status(),
+      "sanity: the session is live",
+    ).toBe(200);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
+
+  test("ordering the browsed branch's product for DELIVERY is still refused", async ({
+    browser,
+  }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+    await setScope(customer.context, `b:${world.branchB.id}`);
+
+    const res = await customer.req.post("/api/orders/", {
+      data: {
+        branch_id: world.branchB.id,
+        items: [{ product_id: world.bProduct.id, quantity: 1 }],
+        payment_method: "cash_on_delivery",
+        delivery_address: "Scope test",
+        fulfillment_type: "delivery",
+        lat: world.pointA.lat,
+        lng: world.pointA.lng,
+      },
+    });
+    expect(res.status(), "coverage is enforced from the trusted point, not the cookie").toBe(400);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
 });
