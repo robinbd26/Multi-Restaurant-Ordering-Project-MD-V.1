@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { DeliveryAreaForm } from "@/components/delivery/delivery-area-form";
+import { activeZonesWithLocalities } from "@/lib/services/area-master";
 import { getSessionUser } from "@/lib/auth/current-user";
 import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
@@ -33,9 +34,13 @@ export default async function AdminEditDeliveryAreaPage({
     throw error;
   }
 
+  // The master list the branch ticks its coverage from.
+  const zones = await activeZonesWithLocalities();
+
   return (
     <DeliveryAreaForm
       mode="edit"
+      zones={zones}
       listPath="/admin/delivery-areas"
       isSuperAdmin
       initial={serializeArea(area)}

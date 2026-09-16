@@ -271,7 +271,12 @@ test.describe("Location and coverage states", () => {
     if (state === "no-location") {
       await expect(customer.page.getByTestId("home-use-location")).toBeVisible();
       await expect(customer.page.getByTestId("home-select-address")).toBeVisible();
-      expect(names, "no products without a location").toEqual([]);
+      // WS-8.14 — a signed-in customer with NO location browses the SAME guest
+      // showcase, because seeing less than a logged-out visitor is backwards.
+      // The location strip is the invitation; ordering still enforces coverage
+      // server-side. This used to assert an empty grid, which stopped being true
+      // when that rule shipped and left the test failing against real behaviour.
+      expect(names.length, "browsing is open without a location").toBeGreaterThan(0);
     }
     expect(
       names.includes(world.aProduct.name) && names.includes(world.bProduct.name),

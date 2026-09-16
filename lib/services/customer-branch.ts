@@ -11,6 +11,8 @@ import {
   type TrustedPoint,
 } from "@/lib/services/customer-location";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
+import { findLocality } from "@/lib/services/area-master";
+import { branchCoversLocality } from "@/lib/services/locality-coverage";
 
 export { isBranchCoveredForCustomer };
 
@@ -75,9 +77,14 @@ export async function resolveCustomerBranch(
   userId: number,
   preferredBranchId?: number | null,
   pointOverride?: TrustedPoint | null,
+  /** The master locality the deliver-to address names, when it names one. */
+  localityId?: number | null,
 ): Promise<CustomerBranchContext> {
-  const nearest = await nearestEligibleBranch(userId, pointOverride);
-  if (!nearest.point) return EMPTY;
+  const nearest = await nearestEligibleBranch(userId, pointOverride, localityId);
+  // A named locality can resolve a branch with no coordinates at all, so the
+  // absence of a point is only "no location" when nothing covers them either.
+  const coveredByName = nearest.branches.some((b) => b.covered);
+  if (!nearest.point && !coveredByName) return EMPTY;
 
   let targetBranchId: number | null = null;
   let targetDistance: number | null = null;
@@ -114,7 +121,13 @@ export async function resolveCustomerBranch(
     prisma.branchDeliveryZone.findMany({ where: { branchId: branch.id, isActive: true } }),
     prisma.branchDeliveryArea.findMany({ where: { branchId: branch.id, isActive: true } }),
   ]);
-  const coverage = effectiveDeliveryFor(branch, zones, areas, nearest.point);
+  // With a point, the shared geometry resolver prices it exactly as the order
+  // write path will. Without one, the named-area row that granted coverage
+  // carries its own charge, which is the only honest figure available.
+  const coverage = nearest.point ? effectiveDeliveryFor(branch, zones, areas, nearest.point) : null;
+  const listedRow = nearest.point == null && localityId != null
+    ? await branchCoversLocality(branch.id, localityId)
+    : null;
 
   // Open-now state comes from the SAME server decision used everywhere else
   // (nearestEligibleBranch already computed it per branch). Surfaced so the
@@ -135,7 +148,9 @@ export async function resolveCustomerBranch(
       prepTimeMinutes: branch.prepTimeMinutes,
     },
     distanceKm: targetDistance,
-    deliveryFee: coverage.covered ? Number(coverage.charge.toFixed(2)) : null,
+    deliveryFee: coverage
+      ? (coverage.covered ? Number(coverage.charge.toFixed(2)) : null)
+      : (listedRow?.charge ?? null),
     pointSource: nearest.pointSource,
     open,
     opensAt: open ? null : elig?.opens_at ?? null,
@@ -252,18 +267,39 @@ function addressLabel(a: { label: string; customLabel: string | null }): string 
 export async function resolveDeliverTo(
   userId: number,
   deliverTo: DeliverTo,
-): Promise<{ deliverTo: DeliverTo; point: TrustedPoint | null; label: string | null }> {
+): Promise<{
+  deliverTo: DeliverTo;
+  point: TrustedPoint | null;
+  label: string | null;
+  /** The master locality this address names, when it names one. */
+  localityId: number | null;
+  localityName: string | null;
+}> {
   if (deliverTo.mode === "address") {
     const address = await prisma.customerAddress.findFirst({
       where: { id: deliverTo.addressId, userId, isActive: true },
-      select: { id: true, label: true, customLabel: true },
+      select: { id: true, label: true, customLabel: true, mainArea: true, subArea: true },
     });
     const point = address ? await pointForCustomerAddress(userId, address.id) : null;
-    if (address && point) return { deliverTo, point, label: addressLabel(address) };
+    // Only a zone + locality pair that exists on the MASTER list counts. A
+    // custom-typed area resolves to nothing, so it stays uncovered until a
+    // branch manager adds it — the rule that keeps the coverage list meaningful.
+    const locality = address ? await findLocality(address.mainArea, address.subArea) : null;
+    // An address with no map pin is still usable when it names a covered
+    // locality: that is exactly what named-area coverage is for.
+    if (address && (point || locality)) {
+      return {
+        deliverTo,
+        point,
+        label: addressLabel(address),
+        localityId: locality?.id ?? null,
+        localityName: locality?.name ?? null,
+      };
+    }
   }
   // A null point means "use the customer's own trusted point", which every
   // resolver below already derives when no override is passed.
-  return { deliverTo: { mode: "gps" }, point: null, label: null };
+  return { deliverTo: { mode: "gps" }, point: null, label: null, localityId: null, localityName: null };
 }
 
 /**
@@ -297,7 +333,7 @@ export async function resolveHomeBranch(
       // resolveCustomerBranch honours a preferred branch only when it covers the
       // point, and otherwise falls back to the nearest covering one — so landing
       // on a DIFFERENT branch id is precisely "the browsed branch cannot reach".
-      const context = await resolveCustomerBranch(userId, branch.id, target.point);
+      const context = await resolveCustomerBranch(userId, branch.id, target.point, target.localityId);
       if (context.branchId === branch.id) {
         return {
           ...context,
@@ -335,7 +371,7 @@ export async function resolveHomeBranch(
     }
   }
 
-  const context = await resolveCustomerBranch(userId, null, target.point);
+  const context = await resolveCustomerBranch(userId, null, target.point, target.localityId);
   return {
     ...context,
     selection: { deliverTo: target.deliverTo, branchId: null },

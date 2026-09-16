@@ -1964,7 +1964,9 @@
       "inactive": "That delivery area is inactive.",
       "held": "Delivery to this area is on hold right now.",
       "pointNotCovered": "This location is outside every delivery area for this branch.",
-      "notForPoint": "The selected area does not cover this location. Choose the area your address falls in."
+      "notForPoint": "The selected area does not cover this location. Choose the area your address falls in.",
+      "invalidWindow": "Choose a valid delivery shift.",
+      "localityNotFound": "That area is not on the master list."
     },
     "branchSettings": {
       "invalidNumber": "Enter a valid number.",
@@ -3714,7 +3716,17 @@
     "updated": "Delivery area updated.",
     "resumed": "Delivery resumed for this area.",
     "held": "Delivery held for this area.",
-    "errNameRequired": "Please enter an area name."
+    "errNameRequired": "Please enter an area name.",
+    "coverageWindow": "Shift",
+    "windowDay": "Day",
+    "windowNight": "Night",
+    "windowBoth": "All day",
+    "filterWindow": "Shift",
+    "allWindows": "All shifts",
+    "locality": "Area on master list",
+    "noLocality": "Not linked",
+    "coverageWindowHint": "Day runs 11:00 to 22:45, night 22:45 to 04:00. All day covers both shifts.",
+    "localityHint": "Link this row to the master list so an address in that area is matched automatically."
   },
   "assignment": {
     "newOrderTitle": "New order assigned",

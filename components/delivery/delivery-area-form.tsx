@@ -34,6 +34,13 @@ export interface DeliveryAreaBranchOption {
   name: string;
 }
 
+/** A zone from the master list, with the localities a branch can tick. */
+export interface DeliveryAreaZoneOption {
+  id: number;
+  name: string;
+  localities: { id: number; name: string }[];
+}
+
 const BASE_RULES: FieldRules = {
   name: [
     required,
@@ -68,6 +75,7 @@ export function DeliveryAreaForm({
   listPath,
   isSuperAdmin,
   branches = [],
+  zones = [],
   assignedBranch,
   initial = null,
   returnTo,
@@ -76,6 +84,7 @@ export function DeliveryAreaForm({
   listPath: string;
   isSuperAdmin: boolean;
   branches?: DeliveryAreaBranchOption[];
+  zones?: DeliveryAreaZoneOption[];
   assignedBranch?: DeliveryAreaBranchOption | null;
   initial?: DeliveryAreaRow | null;
   returnTo?: string;
@@ -92,6 +101,14 @@ export function DeliveryAreaForm({
     initial ? String(initial.branch) : "",
   );
   const [isActive, setIsActive] = useState(initial?.is_active ?? true);
+  // Which shift this row covers. "both" keeps the pre-window behaviour, which is
+  // what every row created before shifts existed already does.
+  const [coverageWindow, setCoverageWindow] = useState(initial?.coverage_window ?? "both");
+  // The master locality this row stands for. Optional: a free-text area is still
+  // allowed, and by policy nothing covers it until it is added to the master list.
+  const [localityId, setLocalityId] = useState(
+    initial?.locality_id != null ? String(initial.locality_id) : "",
+  );
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [submissionId, setSubmissionId] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
@@ -118,6 +135,8 @@ export function DeliveryAreaForm({
               estimated_delivery_minutes: minutes,
               delivery_charge: charge,
               is_active: isActive,
+              coverage_window: coverageWindow,
+              locality_id: localityId === "" ? null : Number(localityId),
               ...(isSuperAdmin && !editing
                 ? { branch_id: Number(branchId) }
                 : {}),
@@ -153,8 +172,10 @@ export function DeliveryAreaForm({
       branchId,
       cancelHref,
       charge,
+      coverageWindow,
       initial,
       isActive,
+      localityId,
       isSuperAdmin,
       listPath,
       minutes,
@@ -249,6 +270,49 @@ export function DeliveryAreaForm({
                 </p>
               </div>
             )}
+
+            <Field
+              label={t("deliveryArea.coverageWindow")}
+              name="coverage_window"
+              hint={t("deliveryArea.coverageWindowHint")}
+            >
+              <Select
+                name="coverage_window"
+                value={coverageWindow}
+                onChange={(event) => setCoverageWindow(event.target.value)}
+                data-testid="area-coverage-window"
+              >
+                <option value="both">{t("deliveryArea.windowBoth")}</option>
+                <option value="day">{t("deliveryArea.windowDay")}</option>
+                <option value="night">{t("deliveryArea.windowNight")}</option>
+              </Select>
+            </Field>
+
+            {zones.length > 0 ? (
+              <Field
+                label={t("deliveryArea.locality")}
+                name="locality_id"
+                hint={t("deliveryArea.localityHint")}
+              >
+                <Select
+                  name="locality_id"
+                  value={localityId}
+                  onChange={(event) => setLocalityId(event.target.value)}
+                  data-testid="area-locality"
+                >
+                  <option value="">{t("deliveryArea.noLocality")}</option>
+                  {zones.map((zone) => (
+                    <optgroup key={zone.id} label={zone.name}>
+                      {zone.localities.map((locality) => (
+                        <option key={locality.id} value={locality.id}>
+                          {locality.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
 
             {isEdit && initial ? (
               <div className="flex flex-wrap items-center gap-2">

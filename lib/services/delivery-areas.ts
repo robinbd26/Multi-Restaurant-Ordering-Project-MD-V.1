@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import type { BranchDeliveryArea, User } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { COVERAGE_WINDOW_DEFAULT, isCoverageWindow } from "@/lib/constants/enums";
 import type {
   DeliveryAreaListQuery,
   DeliveryAreaListResult,
@@ -29,7 +30,14 @@ type SerializableArea = BranchDeliveryArea & {
     address?: string;
     brandType?: string;
   } | null;
+  locality?: { name: string; zone: { name: string } } | null;
 };
+
+/** Everything serializeArea needs, in one place so no read forgets the names. */
+export const AREA_INCLUDE = {
+  branch: { select: { name: true, address: true, brandType: true } },
+  locality: { select: { name: true, zone: { select: { name: true } } } },
+} as const;
 
 export function serializeArea(a: SerializableArea): DeliveryAreaRow {
   return {
@@ -46,6 +54,10 @@ export function serializeArea(a: SerializableArea): DeliveryAreaRow {
     delivery_charge: (a.deliveryCharge instanceof Prisma.Decimal ? a.deliveryCharge : new Prisma.Decimal(a.deliveryCharge)).toFixed(2),
     center_lat: a.centerLat != null ? Number(a.centerLat) : null,
     center_lng: a.centerLng != null ? Number(a.centerLng) : null,
+    coverage_window: a.coverageWindow,
+    locality_id: a.localityId,
+    locality_name: a.locality?.name ?? null,
+    zone_name: a.locality?.zone?.name ?? null,
     created_at: a.createdAt.toISOString(),
     updated_at: a.updatedAt.toISOString(),
   };
@@ -79,11 +91,7 @@ export async function resolveAreaBranch(user: User, submittedBranchId?: number) 
 export async function areaForManage(user: User, areaId: number) {
   const area = await prisma.branchDeliveryArea.findUnique({
     where: { id: areaId },
-    include: {
-      branch: {
-        select: { name: true, address: true, brandType: true },
-      },
-    },
+    include: AREA_INCLUDE,
   });
   if (!area) throw notFound(sk("errors.deliveryArea.notFound"));
   if (user.role === "super_admin") return area;
@@ -140,6 +148,8 @@ export interface AreaInput {
   centerLat?: unknown;
   centerLng?: unknown;
   isActive?: unknown;
+  coverageWindow?: unknown;
+  localityId?: unknown;
 }
 
 function validatedName(value: unknown): string {
@@ -156,6 +166,39 @@ function validatedName(value: unknown): string {
   return name;
 }
 
+/** Which shift a coverage row applies to. Absent means the all-day default. */
+function parseWindow(value: unknown): string {
+  if (value === undefined || value === null || value === "") return COVERAGE_WINDOW_DEFAULT;
+  const raw = String(value).trim();
+  if (!isCoverageWindow(raw)) {
+    throw validationError({ coverage_window: sk("errors.deliveryArea.invalidWindow") });
+  }
+  return raw;
+}
+
+/**
+ * The master locality this coverage row stands for.
+ *
+ * Optional on purpose: a branch manager may still type a free-text area, and by
+ * policy nothing covers that until it is added to the master list. A supplied id
+ * must name a live locality in a live zone.
+ */
+async function parseLocality(value: unknown): Promise<number | null> {
+  if (value === undefined || value === null || value === "") return null;
+  const id = Number(value);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw validationError({ locality_id: sk("errors.deliveryArea.localityNotFound") });
+  }
+  const locality = await prisma.deliveryLocality.findFirst({
+    where: { id, isActive: true, zone: { isActive: true } },
+    select: { id: true },
+  });
+  if (!locality) {
+    throw validationError({ locality_id: sk("errors.deliveryArea.localityNotFound") });
+  }
+  return locality.id;
+}
+
 function parseActive(value: unknown): boolean {
   if (value === true || value === "true") return true;
   if (value === false || value === "false") return false;
@@ -169,7 +212,13 @@ export async function createArea(user: User, input: AreaInput) {
   }
   const name = validatedName(input.name);
   const normalizedName = normalizeAreaName(name);
-  const clash = await prisma.branchDeliveryArea.findFirst({ where: { branchId: branch.id, normalizedName } });
+  const coverageWindow = parseWindow(input.coverageWindow);
+  const localityId = await parseLocality(input.localityId);
+  // The same locality on the day AND night list is legitimate — the charges
+  // differ per shift — so only a same-name row in the SAME window is a clash.
+  const clash = await prisma.branchDeliveryArea.findFirst({
+    where: { branchId: branch.id, normalizedName, coverageWindow },
+  });
   if (clash) throw validationError({ name: sk("errors.deliveryArea.duplicate") });
   const coords = parseCoords(input.centerLat, input.centerLng);
   return prisma.branchDeliveryArea.create({
@@ -182,20 +231,36 @@ export async function createArea(user: User, input: AreaInput) {
       isActive: input.isActive === undefined ? true : parseActive(input.isActive),
       centerLat: coords?.lat ?? null,
       centerLng: coords?.lng ?? null,
+      coverageWindow,
+      localityId,
       updatedById: user.id,
     },
-    include: { branch: { select: { name: true } } },
+    include: AREA_INCLUDE,
   });
 }
 
 export async function updateArea(user: User, areaId: number, input: Partial<AreaInput>) {
   const area = await areaForManage(user, areaId);
   const data: Prisma.BranchDeliveryAreaUpdateInput = { updatedById: user.id };
-  if (input.name !== undefined) {
-    const name = validatedName(input.name);
+  const nextWindow =
+    input.coverageWindow !== undefined ? parseWindow(input.coverageWindow) : area.coverageWindow;
+  if (input.coverageWindow !== undefined) data.coverageWindow = nextWindow;
+  if (input.localityId !== undefined) {
+    const localityId = await parseLocality(input.localityId);
+    data.locality = localityId ? { connect: { id: localityId } } : { disconnect: true };
+  }
+  // Renaming OR moving to another shift can collide with an existing row, so
+  // both re-check against the window the row will actually end up in.
+  if (input.name !== undefined || input.coverageWindow !== undefined) {
+    const name = input.name !== undefined ? validatedName(input.name) : area.name;
     const normalizedName = normalizeAreaName(name);
     const clash = await prisma.branchDeliveryArea.findFirst({
-      where: { branchId: area.branchId, normalizedName, id: { not: areaId } },
+      where: {
+        branchId: area.branchId,
+        normalizedName,
+        coverageWindow: nextWindow,
+        id: { not: areaId },
+      },
     });
     if (clash) throw validationError({ name: sk("errors.deliveryArea.duplicate") });
     data.name = name;
@@ -212,7 +277,7 @@ export async function updateArea(user: User, areaId: number, input: Partial<Area
   return prisma.branchDeliveryArea.update({
     where: { id: areaId },
     data,
-    include: { branch: { select: { name: true } } },
+    include: AREA_INCLUDE,
   });
 }
 
@@ -222,7 +287,7 @@ export async function setAreaHold(user: User, areaId: number, held: boolean, rea
   return prisma.branchDeliveryArea.update({
     where: { id: areaId },
     data: { isHeld: held, holdReason: held ? String(reason ?? "") : "", updatedById: user.id },
-    include: { branch: { select: { name: true } } },
+    include: AREA_INCLUDE,
   });
 }
 
@@ -244,7 +309,7 @@ export async function areasForUser(
   else if (opts.status === "active") where = { ...where, isHeld: false, isActive: true };
   return prisma.branchDeliveryArea.findMany({
     where,
-    include: { branch: { select: { name: true } } },
+    include: AREA_INCLUDE,
     orderBy: [{ branchId: "asc" }, { name: "asc" }],
   });
 }
@@ -291,6 +356,7 @@ export async function deliveryAreaListForUser(
   }
   if (query.activeStatus) filters.push({ isActive: query.activeStatus === "active" });
   if (query.deliveryState) filters.push({ isHeld: query.deliveryState === "held" });
+  if (query.coverageWindow) filters.push({ coverageWindow: query.coverageWindow });
   if (query.search) {
     filters.push({
       OR: [
@@ -309,11 +375,7 @@ export async function deliveryAreaListForUser(
   const [rows, total, active, held, inactive, covered] = await Promise.all([
     prisma.branchDeliveryArea.findMany({
       where,
-      include: {
-        branch: {
-          select: { name: true, address: true, brandType: true },
-        },
-      },
+      include: AREA_INCLUDE,
       orderBy: listOrderBy(query),
       skip: (page - 1) * query.pageSize,
       take: query.pageSize,
