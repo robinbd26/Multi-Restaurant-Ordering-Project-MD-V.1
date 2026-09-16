@@ -835,18 +835,30 @@ export async function deleteCampaignAction(campaignId: number): Promise<ActionSt
   }
 }
 
+/**
+ * PHASE 5 — the one coupon form is used from two screens. The list to return to
+ * comes from the client, so it is checked against the known lists rather than
+ * trusted as a redirect target.
+ */
+const COUPON_LIST_PATHS = ["/marketing/coupons", "/admin/coupons", "/branch-manager/coupons"] as const;
+function couponListPath(requested: string | undefined): string {
+  return COUPON_LIST_PATHS.find((p) => p === requested) ?? COUPON_LIST_PATHS[0];
+}
+
 export async function saveCouponAction(
   couponId: number | null,
   payload: Record<string, unknown>,
+  listPath?: string,
 ): Promise<ActionState> {
+  const back = couponListPath(listPath);
   try {
     if (couponId === null) await sendJSON("/marketing/coupons/", "POST", payload);
     else await sendJSON(`/marketing/coupons/${couponId}/`, "PATCH", payload);
   } catch (err) {
     return await errorState(err);
   }
-  revalidatePath("/marketing/coupons");
-  redirect("/marketing/coupons");
+  revalidatePath(back);
+  redirect(back);
 }
 
 /**
@@ -854,7 +866,7 @@ export async function saveCouponAction(
  * delete would null couponId on historical orders) and deletes an unused one.
  * The verdict is reported back verbatim, never assumed client-side.
  */
-export async function deleteCouponAction(couponId: number): Promise<ActionState> {
+export async function deleteCouponAction(couponId: number, listPath?: string): Promise<ActionState> {
   let archived = false;
   try {
     const res = await sendJSON<{ action?: string }>(`/marketing/coupons/${couponId}/`, "DELETE");
@@ -862,7 +874,7 @@ export async function deleteCouponAction(couponId: number): Promise<ActionState>
   } catch (err) {
     return await errorState(err);
   }
-  revalidatePath("/marketing/coupons");
+  revalidatePath(couponListPath(listPath));
   return {
     error: null,
     success: await tr(archived ? "marketingX.couponArchivedResult" : "marketingX.couponDeleted"),

@@ -17,21 +17,22 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * /marketing/coupons — every coupon on the platform, platform-wide and
- * branch-scoped alike (PHASE 5), with its scope and live state.
+ * /branch-manager/coupons — PHASE 5. The same coupon system marketing uses,
+ * scoped by the API to this manager's own branch: they see, create and end only
+ * coupons valid at their branch.
  */
-export default async function MarketingCouponsPage() {
+export default async function BranchManagerCouponsPage() {
   const { t } = await getT();
-  await requireRole("marketing", "super_admin");
+  await requireRole("branch_manager");
   const data = await getJSON<Paginated<CouponRowT>>("/marketing/coupons/");
 
   return (
     <>
       <PageHeader
         title={t("pages.couponsTitle")}
-        subtitle={t("marketingX.couponsSub")}
+        subtitle={t("marketingX.branchCouponsSub")}
         action={
-          <ButtonLink href="/marketing/coupons/create">
+          <ButtonLink href="/branch-manager/coupons/create" data-testid="bm-coupon-create">
             <Icon name="plus" className="size-4" /> {t("marketingX.newCoupon")}
           </ButtonLink>
         }
@@ -41,10 +42,14 @@ export default async function MarketingCouponsPage() {
           <EmptyState
             title={t("marketingX.noCoupons")}
             description={t("marketingX.noCouponsDesc")}
-            action={<ButtonLink href="/marketing/coupons/create" size="sm">{t("marketingX.newCoupon")}</ButtonLink>}
+            action={
+              <ButtonLink href="/branch-manager/coupons/create" size="sm">
+                {t("marketingX.newCoupon")}
+              </ButtonLink>
+            }
           />
         ) : (
-          <CouponTable coupons={data.results} editBase="/marketing/coupons" showScope />
+          <CouponTable coupons={data.results} editBase="/branch-manager/coupons" showScope={false} />
         )}
       </Card>
     </>

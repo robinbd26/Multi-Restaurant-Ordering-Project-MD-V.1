@@ -685,6 +685,8 @@ export async function createOrder(input: {
         subtotal: grandTotal.toNumber(),
         customerId: input.customerId,
         orderId: order.id,
+        // PHASE 5 — a branch-scoped coupon only works on its own branch's orders.
+        branchId: order.branchId,
       });
       couponId = claimed.couponId;
       couponDiscount = toPaisa(claimed.discount);

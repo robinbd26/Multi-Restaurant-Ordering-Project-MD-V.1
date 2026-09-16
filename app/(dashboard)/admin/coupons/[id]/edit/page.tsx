@@ -16,10 +16,10 @@ export async function generateMetadata(): Promise<Metadata> {
 
 type Params = { params: Promise<{ id: string }> };
 
-/** /marketing/coupons/[id]/edit — dedicated edit page. */
-export default async function EditCouponPage({ params }: Params) {
+/** /admin/coupons/[id]/edit — dedicated edit page. */
+export default async function AdminEditCouponPage({ params }: Params) {
   const { t } = await getT();
-  await requireRole("marketing", "super_admin");
+  await requireRole("super_admin");
   const { id } = await params;
 
   let coupon: CouponInitial;
@@ -37,14 +37,14 @@ export default async function EditCouponPage({ params }: Params) {
         title={t("marketingX.editCoupon")}
         subtitle={coupon.code}
         breadcrumbs={[
-          { label: t("marketingX.couponsTitle"), href: "/marketing/coupons" },
+          { label: t("marketingX.couponsTitle"), href: "/admin/coupons" },
           { label: coupon.code },
           { label: t("common.edit") },
         ]}
       />
       <Card className="max-w-2xl">
         <CardContent>
-          <CouponForm initial={coupon} branches={branches} />
+          <CouponForm initial={coupon} branches={branches} listPath="/admin/coupons" />
         </CardContent>
       </Card>
     </>

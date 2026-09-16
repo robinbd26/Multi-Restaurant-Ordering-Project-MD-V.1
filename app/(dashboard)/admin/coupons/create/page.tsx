@@ -12,10 +12,10 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("marketingX.newCoupon") };
 }
 
-/** /marketing/coupons/create — a platform-wide or branch-scoped coupon. */
-export default async function CreateCouponPage() {
+/** /admin/coupons/create — a platform-wide or branch-scoped coupon. */
+export default async function AdminCreateCouponPage() {
   const { t } = await getT();
-  await requireRole("marketing", "super_admin");
+  await requireRole("super_admin");
   const branches = await couponBranchOptions();
 
   return (
@@ -24,13 +24,13 @@ export default async function CreateCouponPage() {
         title={t("marketingX.newCoupon")}
         subtitle={t("marketingX.couponsSub")}
         breadcrumbs={[
-          { label: t("marketingX.couponsTitle"), href: "/marketing/coupons" },
+          { label: t("marketingX.couponsTitle"), href: "/admin/coupons" },
           { label: t("marketingX.newCoupon") },
         ]}
       />
       <Card className="max-w-2xl">
         <CardContent>
-          <CouponForm initial={null} branches={branches} />
+          <CouponForm initial={null} branches={branches} listPath="/admin/coupons" />
         </CardContent>
       </Card>
     </>

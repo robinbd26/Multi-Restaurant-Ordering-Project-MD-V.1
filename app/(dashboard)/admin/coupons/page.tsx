@@ -17,12 +17,13 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * /marketing/coupons — every coupon on the platform, platform-wide and
- * branch-scoped alike (PHASE 5), with its scope and live state.
+ * /admin/coupons — PHASE 5. The super admin's own entry to the SAME coupon
+ * system marketing uses (same API, form and table): every coupon on the
+ * platform, platform-wide and branch-scoped alike, with its scope and state.
  */
-export default async function MarketingCouponsPage() {
+export default async function AdminCouponsPage() {
   const { t } = await getT();
-  await requireRole("marketing", "super_admin");
+  await requireRole("super_admin");
   const data = await getJSON<Paginated<CouponRowT>>("/marketing/coupons/");
 
   return (
@@ -31,7 +32,7 @@ export default async function MarketingCouponsPage() {
         title={t("pages.couponsTitle")}
         subtitle={t("marketingX.couponsSub")}
         action={
-          <ButtonLink href="/marketing/coupons/create">
+          <ButtonLink href="/admin/coupons/create">
             <Icon name="plus" className="size-4" /> {t("marketingX.newCoupon")}
           </ButtonLink>
         }
@@ -41,10 +42,10 @@ export default async function MarketingCouponsPage() {
           <EmptyState
             title={t("marketingX.noCoupons")}
             description={t("marketingX.noCouponsDesc")}
-            action={<ButtonLink href="/marketing/coupons/create" size="sm">{t("marketingX.newCoupon")}</ButtonLink>}
+            action={<ButtonLink href="/admin/coupons/create" size="sm">{t("marketingX.newCoupon")}</ButtonLink>}
           />
         ) : (
-          <CouponTable coupons={data.results} editBase="/marketing/coupons" showScope />
+          <CouponTable coupons={data.results} editBase="/admin/coupons" showScope />
         )}
       </Card>
     </>

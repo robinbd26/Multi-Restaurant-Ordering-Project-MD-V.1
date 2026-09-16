@@ -1911,7 +1911,9 @@
       "couponPerCustomerLimit": "You have already used this coupon {limit} time(s).",
       "campaignNotSendable": "This campaign has ended or been archived, so it can no longer be sent.",
       "segmentNotFound": "Segment not found.",
-      "maxAddressesReached": "You can save a maximum of 5 delivery addresses."
+      "maxAddressesReached": "You can save a maximum of 5 delivery addresses.",
+      "couponWrongBranch": "This coupon is not valid at this branch.",
+      "couponScopeForbidden": "You can only manage coupons for your own branch."
     },
     "rider": {
       "selectBranch": "Select a branch to go on duty.",
@@ -3130,7 +3132,25 @@
     "comment": "Comment",
     "campaignsTitle": "Campaigns",
     "couponsTitle": "Coupons & Promos",
-    "couponArchivedResult": "The coupon was archived because it has already been used."
+    "couponArchivedResult": "The coupon was archived because it has already been used.",
+    "scopeLabel": "Applies to",
+    "scopeAll": "All branches (platform-wide)",
+    "scopeBranchOnly": "Only {branch}",
+    "perCustomerLabel": "Uses per customer",
+    "perCustomerHint": "Default 1. Enter 0 for no per-customer limit.",
+    "totalCapHint": "Total uses across all customers. 0 means unlimited.",
+    "scheduleHint": "Leave the end empty to run until you end it manually.",
+    "endNow": "End now",
+    "endNowTitle": "End {code} now?",
+    "endNowBody": "Customers can no longer use this coupon. Orders already placed keep their discount.",
+    "stateLive": "Live",
+    "stateScheduled": "Scheduled",
+    "stateEnded": "Ended",
+    "statePaused": "Paused",
+    "stateArchived": "Archived",
+    "perCustomerShort": "{count} per customer",
+    "perCustomerUnlimited": "No per-customer limit",
+    "branchCouponsSub": "Coupons that apply to your branch only"
   },
   "mgmtReports": {
     "hubSub": "Every business report in one place",

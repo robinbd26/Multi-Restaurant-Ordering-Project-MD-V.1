@@ -1911,7 +1911,9 @@
       "couponPerCustomerLimit": "আপনি এই কুপনটি ইতিমধ্যে {limit} বার ব্যবহার করেছেন।",
       "campaignNotSendable": "এই ক্যাম্পেইন শেষ হয়েছে বা আর্কাইভ করা হয়েছে, তাই আর পাঠানো যাবে না।",
       "segmentNotFound": "সেগমেন্ট পাওয়া যায়নি।",
-      "maxAddressesReached": "আপনি সর্বোচ্চ ৫টি ডেলিভারি ঠিকানা সেভ করতে পারবেন।"
+      "maxAddressesReached": "আপনি সর্বোচ্চ ৫টি ডেলিভারি ঠিকানা সেভ করতে পারবেন।",
+      "couponWrongBranch": "এই কুপন এই শাখায় প্রযোজ্য নয়।",
+      "couponScopeForbidden": "আপনি শুধু নিজের শাখার কুপন পরিচালনা করতে পারেন।"
     },
     "rider": {
       "selectBranch": "ডিউটিতে যেতে একটি ব্রাঞ্চ নির্বাচন করুন।",
@@ -3130,7 +3132,25 @@
     "comment": "মন্তব্য",
     "campaignsTitle": "ক্যাম্পেইন",
     "couponsTitle": "কুপন ও প্রোমো",
-    "couponArchivedResult": "কুপনটি ইতিমধ্যে ব্যবহৃত হওয়ায় আর্কাইভ করা হয়েছে।"
+    "couponArchivedResult": "কুপনটি ইতিমধ্যে ব্যবহৃত হওয়ায় আর্কাইভ করা হয়েছে।",
+    "scopeLabel": "প্রযোজ্য",
+    "scopeAll": "সব শাখা (পুরো প্ল্যাটফর্ম)",
+    "scopeBranchOnly": "শুধু {branch}",
+    "perCustomerLabel": "প্রতি গ্রাহক কতবার ব্যবহার করতে পারবেন",
+    "perCustomerHint": "ডিফল্ট ১। প্রতি গ্রাহকের কোনো সীমা না রাখতে ০ লিখুন।",
+    "totalCapHint": "সব গ্রাহক মিলিয়ে মোট ব্যবহার। ০ মানে সীমাহীন।",
+    "scheduleHint": "নিজে শেষ না করা পর্যন্ত চালু রাখতে শেষ হওয়ার সময় খালি রাখুন।",
+    "endNow": "এখনই শেষ করুন",
+    "endNowTitle": "{code} এখনই শেষ করবেন?",
+    "endNowBody": "গ্রাহকরা আর এই কুপন ব্যবহার করতে পারবেন না। ইতিমধ্যে দেওয়া অর্ডারের ছাড় অপরিবর্তিত থাকবে।",
+    "stateLive": "চালু",
+    "stateScheduled": "নির্ধারিত",
+    "stateEnded": "শেষ",
+    "statePaused": "স্থগিত",
+    "stateArchived": "আর্কাইভ করা",
+    "perCustomerShort": "প্রতি গ্রাহক {count} বার",
+    "perCustomerUnlimited": "প্রতি গ্রাহকের সীমা নেই",
+    "branchCouponsSub": "শুধু আপনার শাখার জন্য প্রযোজ্য কুপন"
   },
   "mgmtReports": {
     "hubSub": "সব ব্যবসায়িক রিপোর্ট এক জায়গায়",

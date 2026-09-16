@@ -506,6 +506,12 @@ model Coupon {
   // A hard delete cascades Order.couponId → null via SetNull, silently erasing why
   // a historical order was discounted. Archived coupons stay joinable forever.
   isArchived       Boolean   @default(false)
+  // PHASE 5 — one coupon system. null = platform-wide (valid at every branch);
+  // set = valid only for orders served by that branch. A branch coupon can only
+  // ever be redeemed on that branch's orders, and a branch with orders is never
+  // hard-deleted, so the cascade cannot erase a redemption history.
+  branchId         Int?
+  branch           Branch?   @relation("BranchCoupons", fields: [branchId], references: [id], onDelete: Cascade)
   createdById      Int?
   createdBy        User?     @relation("CouponCreator", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt        DateTime  @default(now())
@@ -514,6 +520,8 @@ model Coupon {
   campaigns   Campaign[]
   orders      Order[]
   redemptions CouponRedemption[] @relation("CouponRedemptionCoupon")
+
+  @@index([branchId])
 }
 
 // WS-7.2 — one row per (coupon, order) redemption. usedCount alone is a lossy
@@ -780,6 +788,7 @@ model Branch {
   ramadanSlots         RamadanTimeSlot[]
   ramadanMenus         RamadanMenu[]
   ramadanReservations  RamadanReservation[]       @relation("RamadanReservationBranch")
+  coupons              Coupon[]                   @relation("BranchCoupons")
 }
 
 // ── B1: Delivery zones (circular coverage areas) ────────────────────────
