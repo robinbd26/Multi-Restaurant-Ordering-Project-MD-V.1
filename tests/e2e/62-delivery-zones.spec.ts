@@ -49,6 +49,17 @@ async function clearAddresses(req: APIRequestContext) {
   }
 }
 
+/**
+ * Retire a zone a test created.
+ *
+ * Zones have no cap, so a leftover never fails a later run outright — but the
+ * customer address form offers every ACTIVE zone, so without this each run adds
+ * another throwaway name to a real picker in this database.
+ */
+async function retireZone(req: APIRequestContext, zoneId: number) {
+  await req.patch(`${API_BASE}/api/delivery-zones/${zoneId}`, { data: { is_active: false } });
+}
+
 /** A branch placed far from everything, so ONLY a named locality can cover it. */
 async function makeBranch(req: APIRequestContext) {
   const res = await req.post(`${API_BASE}/api/branches/`, {
@@ -115,6 +126,7 @@ test.describe("The master list belongs to the super admin", () => {
     const mine = list.find((z) => z.id === zoneId);
     expect(mine?.localities.map((l) => l.name), "the locality is on the list").toContain(localityName);
 
+    await retireZone(admin.req, zoneId);
     await admin.context.close();
   });
 
@@ -152,6 +164,7 @@ test.describe("The master list belongs to the super admin", () => {
     expect(row, "the row still exists").toBeTruthy();
     expect(row?.isActive, "but is inactive").toBe(false);
 
+    await retireZone(admin.req, zoneId);
     await admin.context.close();
   });
 });
