@@ -655,7 +655,17 @@
       "pickupTimeOptionLabel": "{time} (in {minutes} min)",
       "pickupLocation": "Pickup Location",
       "freePickup": "Free (Pickup)",
-      "errPickupBranchRequired": "Pickup details are still loading. Please wait a moment."
+      "errPickupBranchRequired": "Pickup details are still loading. Please wait a moment.",
+      "outsideAreaTitle": "Outside delivery area — pickup only",
+      "outsideAreaBody": "{branch} does not deliver to this address on the current shift. You can still collect the order yourself.",
+      "switchToPickup": "Switch to self-pickup",
+      "pickupNotOffered": "This branch does not offer self-pickup either.",
+      "checkingCoverage": "Checking delivery…",
+      "deliversHereBadge": "Delivers here",
+      "pickupOnlyBadge": "Pickup only",
+      "coverageCheckFailed": "Could not check delivery for this address. Please try again.",
+      "platformFee": "Platform fee",
+      "freeDelivery": "Free delivery"
     }
   },
   "superAdmin": {
@@ -1748,7 +1758,8 @@
       "notFound": "Order not found.",
       "invalidQuantity": "Quantity must be a whole number between {min} and {max}.",
       "invalidPaymentMethod": "That payment method is not available.",
-      "branchOnHold": "This branch has paused taking new orders. Please try again shortly."
+      "branchOnHold": "This branch has paused taking new orders. Please try again shortly.",
+      "outsideDeliveryArea": "This branch does not deliver to that address. Self-pickup is still available."
     },
     "catalog": {
       "onlyAssignedManagerCanModifyCatalog": "Only the assigned branch manager can modify the catalog.",
@@ -1829,7 +1840,8 @@
       "enterAdjustmentReason": "Enter a reason for the adjustment.",
       "currentPasswordIncorrect": "The current password is incorrect.",
       "enterValidRate": "Enter a valid rate.",
-      "chargeRatesTooHigh": "VAT and service charge together cannot take up the whole price."
+      "chargeRatesTooHigh": "VAT and service charge together cannot take up the whole price.",
+      "invalidPlatformFee": "Enter a platform fee between 0 and {max}."
     },
     "ops": {
       "couponCodeExists": "A coupon with this code already exists.",
@@ -2644,7 +2656,14 @@
     "useCurrentLocation": "Use Current Location",
     "preset_home2": "Home-2",
     "preset_home3": "Home-3",
-    "preset_others": "Others"
+    "preset_others": "Others",
+    "nicknameField": "Save as",
+    "nicknameHome": "Home",
+    "nicknameOffice": "Office",
+    "nicknameCustom": "Custom",
+    "nicknameCustomField": "Custom name",
+    "nicknameCustomPlaceholder": "e.g. Mom's House",
+    "selectMasterArea": "Pick your area from the list"
   },
   "rewards": {
     "title": "Reward Coins",
@@ -4138,7 +4157,8 @@
     "browseOnlyBodyAddress": "{branch} does not deliver to {label}.",
     "backToNearestBranch": "Back to my nearest branch",
     "browseOnlyPickupBadge": "Browsing only — self-pickup available",
-    "viewMenu": "View menu"
+    "viewMenu": "View menu",
+    "freeDelivery": "Free delivery"
   },
   "brandType": {
     "cheez": "Cheez! Pizza",
@@ -4185,5 +4205,21 @@
     "deactivateTitle": "Deactivate {name}?",
     "deactivateBody": "Customers stop seeing it when saving an address, and branches stop covering it. Existing addresses and orders keep their saved text.",
     "masterHint": "Editing here is the authority: a later reseed never renames or removes what you change."
+  },
+  "platformFee": {
+    "title": "Platform Fee",
+    "subtitle": "A flat fee added to every order, delivery and pickup alike",
+    "globalLabel": "Platform fee per order",
+    "globalHint": "Applies to every branch without its own override.",
+    "save": "Save",
+    "saved": "Saved",
+    "branchOverrides": "Branch overrides",
+    "branchOverridesHint": "Leave a branch on Inherit to use the platform-wide fee.",
+    "inherits": "Inherits",
+    "override": "Override",
+    "effective": "Charged now",
+    "setOverride": "Set",
+    "clearOverride": "Inherit",
+    "branch": "Branch"
   }
 }

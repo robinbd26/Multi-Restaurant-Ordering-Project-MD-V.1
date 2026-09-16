@@ -21,9 +21,9 @@ import { claimCouponForOrder, releaseCouponForOrder } from "@/lib/services/marke
 import { allowedCrustChoices } from "@/lib/constants/enums";
 import { isPaymentMethod } from "@/lib/constants";
 import { LIMITS } from "@/lib/validation/limits";
-import { coverageFor } from "@/lib/services/delivery";
 import { resolveDeliveryCoordinate } from "@/lib/services/customer-location";
-import { haversineKm, isValidLatLng } from "@/lib/services/geo";
+import { coverageForAddress, type AddressCoverage } from "@/lib/services/address-coverage";
+import { haversineKm } from "@/lib/services/geo";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
 import { isReceiveConfirmed } from "@/lib/services/rider-duty";
 import { nextOrderNumber } from "@/lib/services/order-number";
@@ -75,72 +75,27 @@ function resolveCrustChoice(policy: string, submitted: string | undefined): stri
  * distances resolve consistently. Throws a translated error when no eligible
  * branch can serve the cart.
  */
-export async function resolveDeliveryBranch(
-  productIds: number[],
-  coords: { lat: number; lng: number },
-) {
-  // Same shared eligibility definition the catalog and the order pipeline use —
-  // an ineligible product must not even be able to nominate a serving branch.
+export 
+/**
+ * The ONE branch that can fill this cart. A cart is a single branch's products
+ * (the menu is branch-scoped), so there is nothing to choose between: either
+ * this branch delivers to the destination, or delivery is not offered — which
+ * is exactly the no-mixed-branch rule. Ineligible products cannot nominate it.
+ */
+async function servingBranchForCart(productIds: number[]) {
   const products = await prisma.product.findMany({
     where: customerProductWhere({ ids: productIds }),
     select: { branchId: true },
   });
   const servingBranchIds = [...new Set(products.map((p) => p.branchId))];
-  // Cart must be a single active branch's products (the menu is branch-scoped).
   if (products.length === 0 || servingBranchIds.length !== 1) {
     throw validationError({ items: sk("errors.orders.someProductsUnavailable") });
   }
-  // Candidate branches that can SERVE this cart (have its products) AND are
-  // active + not archived + cover the point. Pick the nearest (id tiebreak).
-  const candidates = await prisma.branch.findMany({
-    where: { id: { in: servingBranchIds }, isActive: true, isArchived: false },
+  const branch = await prisma.branch.findFirst({
+    where: { id: servingBranchIds[0], isActive: true, isArchived: false },
   });
-  const eligible: { branch: (typeof candidates)[number]; dist: number }[] = [];
-  // A branch that covers the point but is CLOSED right now is tracked separately
-  // so we can return an accurate "branch closed" error instead of the generic
-  // "no branch covers you" (§17). Hours are enforced server-side — the client's
-  // open/closed chip is display-only and never trusted here (§20).
-  let anyCoveredButClosed = false;
-  // Same treatment for a branch its MANAGER has put on hold: it is excluded
-  // from the nearest-branch race here rather than at the end of checkout, so
-  // the customer is told "this branch paused new orders" up front instead of
-  // hitting a confusing generic failure on the last step. A held branch stays
-  // visible in the catalogue — only order INTAKE stops.
-  let anyCoveredButHeld = false;
-  // WS-4.8 — every candidate's zones in ONE query; this used to be a findMany
-  // per branch inside the loop, i.e. an N+1 on every order placement.
-  const zones = await prisma.branchDeliveryZone.findMany({
-    where: { branchId: { in: candidates.map((b) => b.id) }, isActive: true },
-  });
-  const zonesByBranch = new Map<number, typeof zones>();
-  for (const zone of zones) {
-    const list = zonesByBranch.get(zone.branchId);
-    if (list) list.push(zone);
-    else zonesByBranch.set(zone.branchId, [zone]);
-  }
-  for (const b of candidates) {
-    if (b.latitude == null || b.longitude == null) continue;
-    if (!coverageFor(b, zonesByBranch.get(b.id) ?? [], coords).covered) continue;
-    // Checked BEFORE the hours gate: a manager's hold is a deliberate, current
-    // decision, so it is the more accurate thing to tell the customer when a
-    // branch is both held and outside its opening hours.
-    if (b.isOnHold) {
-      anyCoveredButHeld = true;
-      continue;
-    }
-    if (!isBranchOpenNow(b).orderable) {
-      anyCoveredButClosed = true;
-      continue;
-    }
-    eligible.push({ branch: b, dist: haversineKm({ lat: Number(b.latitude), lng: Number(b.longitude) }, coords) });
-  }
-  eligible.sort((a, z) => a.dist - z.dist || a.branch.id - z.branch.id);
-  if (eligible.length === 0) {
-    if (anyCoveredButHeld) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
-    if (anyCoveredButClosed) throw validationError({ branch_id: sk("errors.orders.branchClosed") });
-    throw validationError({ delivery_address: sk("errors.orders.noEligibleBranch") });
-  }
-  return eligible[0].branch;
+  if (!branch) throw validationError({ delivery_address: sk("errors.orders.noEligibleBranch") });
+  return branch;
 }
 
 type PricedProduct = Prisma.ProductGetPayload<{ include: { variations: true } }>;
@@ -310,7 +265,14 @@ async function resolveBranchForCart(input: {
   lng?: number | null;
   /** The ordering customer, so delivery can be pinned to their own branch. */
   customerId?: number;
-}) {
+  /** A saved address of theirs; its own coordinates and locality win. */
+  customerAddressId?: number | null;
+}): Promise<{
+  branch: Awaited<ReturnType<typeof servingBranchForCart>>;
+  lat: number | null;
+  lng: number | null;
+  coverage: AddressCoverage | null;
+}> {
   if (input.fulfillmentType === "pickup") {
     const picked = await prisma.branch.findFirst({
       where: { id: input.branchId, isActive: true, isArchived: false },
@@ -323,25 +285,56 @@ async function resolveBranchForCart(input: {
     // A branch outside its opening hours cannot take a pickup order either (§17).
     if (!isBranchOpenNow(picked).orderable) throw validationError({ branch_id: sk("errors.orders.branchClosed") });
     if (!picked.pickupEnabled) throw validationError({ fulfillment_type: sk("errors.orders.pickupUnavailable") });
-    return { branch: picked, lat: null as number | null, lng: null as number | null };
+    return { branch: picked, lat: null, lng: null, coverage: null };
   }
-  if (input.lat == null || input.lng == null || !isValidLatLng(input.lat, input.lng)) {
-    throw validationError({ delivery_address: sk("errors.orders.locationRequired") });
+  // PHASE 3 — decided against the cart's own branch through the SAME coverage
+  // function the checkout screen shows live, so the screen and the server can
+  // never disagree. Coverage is geometry OR the branch's locality list for the
+  // shift running now; an address with no map pin can therefore still be
+  // delivered to, by name. The client's branch_id is never trusted for this.
+  const branch = await servingBranchForCart(input.productIds);
+  const coverage = await coverageForAddress(branch, {
+    customerId: input.customerId ?? 0,
+    customerAddressId: input.customerAddressId ?? null,
+    lat: input.lat ?? null,
+    lng: input.lng ?? null,
+  });
+  if (!coverage.covered) {
+    if (coverage.reason === "no_location") {
+      throw validationError({ delivery_address: sk("errors.orders.locationRequired") });
+    }
+    // Measured, and outside. Delivery is simply not offered from this branch —
+    // no other branch is substituted, because the cart belongs to this one.
+    throw validationError({ delivery_address: sk("errors.orders.outsideDeliveryArea") });
   }
-  const branch = await resolveDeliveryBranch(input.productIds, { lat: Number(input.lat), lng: Number(input.lng) });
-  // NOTE — the branch is resolved from the CART plus the delivery coordinates,
-  // server-side, with the client's branch_id ignored (no branch spoofing).
-  //
-  // WS-4.2 — this function does NOT judge where the coordinates came from, and
-  // deliberately does not refuse an order because they sit far from the
-  // customer's stored fix: a delivery destination may legitimately differ from
-  // where the customer is standing, and an earlier hard guard here fired on
-  // perfectly valid carts (recorded in NEAREST_BRANCH_HOMEPAGE_AUDIT.md).
-  // Provenance is now decided one level up, in createOrder, by
-  // resolveDeliveryCoordinate() — a saved address wins outright, and anything
-  // uncorroborated is recorded as "unverified" on the order rather than
-  // rejected. By the time we get here the point is already the trusted one.
-  return { branch, lat: Number(input.lat), lng: Number(input.lng) };
+  // A manager's hold is a deliberate, current decision, so it is reported ahead
+  // of the hours gate — the same order the previous resolver used.
+  if (branch.isOnHold) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
+  if (!isBranchOpenNow(branch).orderable) {
+    throw validationError({ branch_id: sk("errors.orders.branchClosed") });
+  }
+  return {
+    branch,
+    lat: coverage.point?.lat ?? null,
+    lng: coverage.point?.lng ?? null,
+    coverage,
+  };
+}
+
+/**
+ * Which delivery area prices this order. An explicitly chosen area wins (it is
+ * validated against the branch and the point by resolveOrderDeliveryArea);
+ * otherwise, when coverage was granted BY NAME, the branch's own row for that
+ * locality supplies the charge and the estimate — that row is the branch's
+ * declared price for delivering there on this shift.
+ */
+function deliveryAreaIdFor(
+  requested: number | null | undefined,
+  coverage: AddressCoverage | null,
+): number | null {
+  if (requested != null) return requested;
+  if (coverage?.via === "locality" && coverage.localityRow) return coverage.localityRow.areaId;
+  return null;
 }
 
 /**
@@ -361,19 +354,22 @@ export async function quoteOrder(input: {
   deliveryAreaId?: number | null;
   /** Pins a delivery quote to the customer's own resolved branch. */
   customerId?: number;
+  /** The saved address being checked out to, so a pinless address can quote. */
+  customerAddressId?: number | null;
 }) {
   const fulfillmentType = input.fulfillmentType === "pickup" ? "pickup" : "delivery";
   const productIds = input.items.map((i) => i.product_id);
-  const { branch } = await resolveBranchForCart({
+  const { branch, coverage } = await resolveBranchForCart({
     branchId: input.branchId,
     productIds,
     fulfillmentType,
     lat: input.lat,
     lng: input.lng,
     customerId: input.customerId,
+    customerAddressId: input.customerAddressId ?? null,
   });
   const area = fulfillmentType === "delivery"
-    ? await resolveOrderDeliveryArea(branch.id, input.deliveryAreaId)
+    ? await resolveOrderDeliveryArea(branch.id, deliveryAreaIdFor(input.deliveryAreaId, coverage))
     : null;
 
   const products = await prisma.product.findMany({
@@ -539,6 +535,7 @@ export async function createOrder(input: {
     lng: coordinate?.lng ?? input.lng,
     fulfillmentType,
     customerId: input.customerId,
+    customerAddressId: input.customerAddressId ?? null,
   });
   const branch = resolved.branch;
   const deliveryLat = resolved.lat != null ? new Prisma.Decimal(resolved.lat.toFixed(7)) : null;
@@ -566,7 +563,7 @@ export async function createOrder(input: {
   // area or one from another branch is rejected here; its name/charge/estimate
   // are snapshotted IMMUTABLY onto the order so later area edits never change it.
   const area = fulfillmentType === "delivery"
-    ? await resolveOrderDeliveryArea(branch.id, input.deliveryAreaId)
+    ? await resolveOrderDeliveryArea(branch.id, deliveryAreaIdFor(input.deliveryAreaId, resolved.coverage))
     : null;
   // PHASE 11 — the delivery charge is SERVER-derived: a named area supplies its
   // own charge; otherwise the branch-level delivery fee applies. Pickup is free.
@@ -619,8 +616,11 @@ export async function createOrder(input: {
         // WS-4.2 — how much the server can vouch for that coordinate, and the
         // saved address it came from when there was one. Written once, with the
         // order, so a later fee dispute can be traced back to its provenance.
-        deliveryCoordSource: coordinate?.source ?? "",
-        customerAddressId: coordinate?.customerAddressId ?? null,
+        // A pinless address covered BY NAME has no coordinate to vouch for, but
+        // the destination is still a verified row the customer owns.
+        deliveryCoordSource:
+          coordinate?.source ?? (resolved.coverage?.via === "locality" ? "saved_address" : ""),
+        customerAddressId: coordinate?.customerAddressId ?? resolved.coverage?.customerAddressId ?? null,
         prepTimeSnapshot,
         deliveryAreaId: area?.id ?? null,
         deliveryAreaName: area?.name ?? "",

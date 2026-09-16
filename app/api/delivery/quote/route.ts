@@ -19,6 +19,7 @@ export const POST = handle(async (req: Request) => {
     lat?: number | string;
     lng?: number | string;
     delivery_area_id?: number | null;
+    customer_address_id?: number | null;
   };
   const quote = await quoteOrder({
     branchId: Number(body.branch_id),
@@ -30,6 +31,9 @@ export const POST = handle(async (req: Request) => {
     // Pinned to this customer's own resolved branch, exactly as order creation
     // is — a quote priced against a different branch would be a stale total.
     customerId: me.id,
+    // PHASE 3 — the saved address being checked out to. A pinless address can
+    // still be quoted when this branch lists its locality for the current shift.
+    customerAddressId: body.customer_address_id ?? null,
   });
   return json(quote);
 });

@@ -277,11 +277,15 @@ test.describe("Location and coverage states", () => {
       // server-side. This used to assert an empty grid, which stopped being true
       // when that rule shipped and left the test failing against real behaviour.
       expect(names.length, "browsing is open without a location").toBeGreaterThan(0);
+    } else {
+      // A LOCATED customer is scoped to one branch, so a mixed catalogue there
+      // would be the leak this suite guards against. A no-location customer is
+      // deliberately shown every branch (above), so the check only applies here.
+      expect(
+        names.includes(world.aProduct.name) && names.includes(world.bProduct.name),
+        "never both branches at once",
+      ).toBe(false);
     }
-    expect(
-      names.includes(world.aProduct.name) && names.includes(world.bProduct.name),
-      "never both branches at once",
-    ).toBe(false);
 
     await admin.context.close();
     await customer.context.close();

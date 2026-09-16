@@ -21,6 +21,12 @@ import type { FieldErrors } from "@/lib/validation/contract";
 import { maxLength, required } from "@/lib/validation/rules";
 import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-validation";
 import { MAIN_AREA_NAMES, subAreasFor, CUSTOM_VALUE } from "@/lib/constants/area-data";
+import {
+  labelForNickname,
+  nicknameDisplay,
+  nicknameFromLabel,
+  type NicknameKind,
+} from "@/lib/addresses/nickname";
 
 /**
  * A zone from the DATABASE master list (super admin owned). Optional: callers
@@ -144,7 +150,8 @@ function buildAddress(parts: {
 }
 
 const RULES: FieldRules = {
-  location_name: [required, maxLength(40)],
+  nickname: [required],
+  location_name: [maxLength(40)],
   main_area: [required],
   custom_main_area: [maxLength(80)],
   sub_area: [maxLength(80)],
@@ -182,7 +189,16 @@ export function AddressManager({
   // first-class alternative that never requires coordinates.
   const [entryMode, setEntryMode] = useState<"map" | "manual">("map");
   const [locationConfirmed, setLocationConfirmed] = useState(false);
+  // Home / Office / Custom. locationName holds the typed name for Custom only.
+  const [nickname, setNickname] = useState<NicknameKind>("home");
   const [locationName, setLocationName] = useState("");
+  // What the preview shows for the nickname being edited.
+  const nicknameText =
+    nickname === "custom"
+      ? locationName.trim()
+      : nickname === "office"
+        ? t("addresses.nicknameOffice")
+        : t("addresses.nicknameHome");
   const [mainArea, setMainArea] = useState("");
   const [customMainArea, setCustomMainArea] = useState("");
   const [subArea, setSubArea] = useState("");
@@ -216,6 +232,10 @@ export function AddressManager({
   const crossValidate = useCallback(
     (values: Record<string, string>): FieldErrors => {
       const errors: FieldErrors = {};
+      // A Custom nickname needs the name itself; Home and Office do not.
+      if (values.nickname === "custom" && !values.location_name?.trim()) {
+        errors.location_name = t("validation.required");
+      }
       // "+ Add your Own" (custom main area) requires the custom name.
       if (values.main_area === CUSTOM_VALUE && !values.custom_main_area?.trim()) {
         errors.custom_main_area = t("validation.required");
@@ -276,6 +296,7 @@ export function AddressManager({
     setCountry("");
     setInstructions("");
     setIsDefault(addresses.length === 0);
+    setNickname("home");
     setLocationName("");
     setError(null);
     setServerErrors({});
@@ -294,7 +315,8 @@ export function AddressManager({
       setMainArea(canonicalMain);
       setCustomMainArea("");
     } else {
-      setMainArea(savedMain ? CUSTOM_VALUE : "");
+      // Main areas are master-list only now: a legacy custom value must be re-picked.
+      setMainArea("");
       setCustomMainArea(savedMain);
     }
 
@@ -335,7 +357,11 @@ export function AddressManager({
     setInstructions(a.instructions ?? "");
     setIsDefault(a.is_default);
 
-    setLocationName(a.label === "Others" && a.custom_label ? a.custom_label : a.label);
+    // Legacy rows may hold the Bangla words themselves; they still read as
+    // Home / Office rather than as an unexplained custom name.
+    const nick = nicknameFromLabel(a.label, a.custom_label);
+    setNickname(nick.kind);
+    setLocationName(nick.custom);
 
     setError(null);
     setServerErrors({});
@@ -388,8 +414,8 @@ export function AddressManager({
 
     start(async () => {
       const res = await saveAddressAction(editing?.id ?? null, {
-        label: locationName.trim(),
-        custom_label: "",
+        label: labelForNickname(nickname),
+        custom_label: nickname === "custom" ? locationName.trim() : "",
         address: fullAddress || mapAddress.trim() || addressText.trim(),
         area: area.trim(),
         city: city.trim() || "Dhaka",
@@ -421,7 +447,7 @@ export function AddressManager({
       router.refresh();
     });
   }, [
-    locationName, editing, lat, lng, housePlot, flatNumber,
+    nickname, locationName, editing, lat, lng, housePlot, flatNumber,
     resolvedRoadLane, subArea, customArea, mainArea, resolvedMainArea, customMainArea,
     roadLane, area, city, postalCode, country, instructions, addressText,
     isDefault, router, landmark, mapAddress, placeId,
@@ -468,7 +494,7 @@ export function AddressManager({
                           <Icon name={iconForLabel(a.label)} className="size-4" />
                         </span>
                         <span className="font-semibold text-fg-base">
-                          {a.display_label ?? a.label}
+                          {nicknameDisplay(a, t)}
                         </span>
                         {a.is_default ? (
                           <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-600 ring-1 ring-emerald-200" data-testid="addr-default-badge">
@@ -594,16 +620,30 @@ export function AddressManager({
                 </div>
               </div>
 
-              <Field label={t("addresses.locationNameField")} name="location_name" required error={errors.location_name}>
-                <Input
-                  name="location_name"
-                  value={locationName}
-                  onChange={(e) => setLocationName(e.target.value)}
-                  maxLength={40}
-                  placeholder={t("addresses.locationNamePlaceholder")}
-                  data-testid="addr-location-name"
-                />
+              <Field label={t("addresses.nicknameField")} name="nickname" required error={errors.nickname}>
+                <Select
+                  name="nickname"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value as NicknameKind)}
+                  data-testid="addr-nickname"
+                >
+                  <option value="home">{t("addresses.nicknameHome")}</option>
+                  <option value="office">{t("addresses.nicknameOffice")}</option>
+                  <option value="custom">{t("addresses.nicknameCustom")}</option>
+                </Select>
               </Field>
+              {nickname === "custom" ? (
+                <Field label={t("addresses.nicknameCustomField")} name="location_name" required error={errors.location_name}>
+                  <Input
+                    name="location_name"
+                    value={locationName}
+                    onChange={(e) => setLocationName(e.target.value)}
+                    maxLength={40}
+                    placeholder={t("addresses.nicknameCustomPlaceholder")}
+                    data-testid="addr-location-name"
+                  />
+                </Field>
+              ) : null}
 
               <Field label={t("addresses.selectYourArea")} name="main_area" required error={errors.main_area}>
                 <Select
@@ -623,24 +663,11 @@ export function AddressManager({
                   <option value="" hidden>
                     {t("addresses.selectYourArea")}
                   </option>
-                  <option value={CUSTOM_VALUE}>{t("addresses.addYourOwn")}</option>
                   {mainAreaNames.map((name) => (
                     <option key={name} value={name}>{name}</option>
                   ))}
                 </Select>
               </Field>
-              {mainArea === CUSTOM_VALUE ? (
-                <Field label={t("addresses.enterYourAreaName")} name="custom_main_area" error={errors.custom_main_area}>
-                  <Input
-                    name="custom_main_area"
-                    value={customMainArea}
-                    onChange={(e) => setCustomMainArea(e.target.value)}
-                    maxLength={80}
-                    placeholder={t("addresses.enterYourAreaNamePlaceholder")}
-                    data-testid="addr-custom-main-area"
-                  />
-                </Field>
-              ) : null}
 
               <Field label={t("addresses.selectYourAreaName")} name="sub_area" required error={errors.sub_area}>
                 <Select
@@ -787,8 +814,8 @@ export function AddressManager({
               <CardContent className="pt-3">
                 <h3 className="mb-3 text-sm font-semibold text-fg-base">{t("addresses.addressPreview")}</h3>
                 <div className="space-y-3" data-testid="address-preview">
-                  {locationName.trim() ? (
-                    <p className="font-semibold text-fg-base">{locationName.trim()}</p>
+                  {nicknameText ? (
+                    <p className="font-semibold text-fg-base">{nicknameText}</p>
                   ) : null}
                   {/* Address Details — every value carries its field label, so
                       "76" is never mistaken for a house number (req #1/#2).
@@ -888,7 +915,7 @@ export function AddressManager({
                       <div className="flex items-center gap-2">
                         <Icon name={iconForLabel(a.label)} className="size-4 text-brand-600" />
                         <span className="text-sm font-medium text-fg-base">
-                          {a.display_label ?? a.label}
+                          {nicknameDisplay(a, t)}
                         </span>
                         {a.is_default ? (
                           <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">

@@ -22,6 +22,7 @@ import { BranchBar, type BranchBarContext } from "@/components/home/BranchBar";
 import { readBrowseScope } from "@/lib/browse-scope/server";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
 import { savedAddressOptions } from "@/lib/services/addresses";
+import { activeZonesWithLocalities } from "@/lib/services/area-master";
 import { browsesWithoutLocation, resolveHomeBranch } from "@/lib/services/customer-branch";
 import { branchMenu, publicMenu } from "@/lib/services/public-catalog";
 import { publicHomeBranches } from "@/lib/selectors";
@@ -168,6 +169,8 @@ export default async function HomePage() {
   // up or disappears here with no code change. Open-now comes from the one shared
   // hours decision, not a second reading of the clock.
   const pickerAddresses = isCustomer ? await savedAddressOptions(user.id) : [];
+  // The master list the checkout add-address form offers (Phase 3: names only).
+  const checkoutZones = isCustomer ? await activeZonesWithLocalities() : [];
   const pickerBranches = branches.map((b) => ({
     id: b.id,
     name: b.name,
@@ -231,6 +234,7 @@ export default async function HomePage() {
           signedIn={Boolean(user)}
           customerName={user?.full_name ?? null}
           customerPhone={user?.phone ?? null}
+          zones={checkoutZones}
         />
         <CartToast />
         <BranchSwitchDialog />

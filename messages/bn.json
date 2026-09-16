@@ -655,7 +655,17 @@
       "pickupTimeOptionLabel": "{time} ({minutes} মিনিটে)",
       "pickupLocation": "পিকআপ লোকেশন",
       "freePickup": "ফ্রি (পিকআপ)",
-      "errPickupBranchRequired": "পিকআপের তথ্য লোড হচ্ছে। অনুগ্রহ করে একটু অপেক্ষা করুন।"
+      "errPickupBranchRequired": "পিকআপের তথ্য লোড হচ্ছে। অনুগ্রহ করে একটু অপেক্ষা করুন।",
+      "outsideAreaTitle": "ডেলিভারি এলাকার বাইরে — শুধু পিকআপ",
+      "outsideAreaBody": "{branch} বর্তমান শিফটে এই ঠিকানায় ডেলিভারি দেয় না। আপনি নিজে গিয়ে অর্ডার নিতে পারেন।",
+      "switchToPickup": "সেলফ পিকআপে যান",
+      "pickupNotOffered": "এই শাখায় সেলফ পিকআপও নেই।",
+      "checkingCoverage": "ডেলিভারি যাচাই হচ্ছে…",
+      "deliversHereBadge": "এখানে ডেলিভারি হয়",
+      "pickupOnlyBadge": "শুধু পিকআপ",
+      "coverageCheckFailed": "এই ঠিকানার ডেলিভারি যাচাই করা যায়নি। আবার চেষ্টা করুন।",
+      "platformFee": "প্ল্যাটফর্ম ফি",
+      "freeDelivery": "ফ্রি ডেলিভারি"
     }
   },
   "superAdmin": {
@@ -1748,7 +1758,8 @@
       "notFound": "অর্ডার পাওয়া যায়নি।",
       "invalidQuantity": "পরিমাণ {min} থেকে {max} এর মধ্যে পূর্ণসংখ্যা হতে হবে।",
       "invalidPaymentMethod": "এই পেমেন্ট পদ্ধতি উপলব্ধ নয়।",
-      "branchOnHold": "এই শাখা আপাতত নতুন অর্ডার নেওয়া বন্ধ রেখেছে। কিছুক্ষণ পর আবার চেষ্টা করুন।"
+      "branchOnHold": "এই শাখা আপাতত নতুন অর্ডার নেওয়া বন্ধ রেখেছে। কিছুক্ষণ পর আবার চেষ্টা করুন।",
+      "outsideDeliveryArea": "এই শাখা ওই ঠিকানায় ডেলিভারি দেয় না। সেলফ পিকআপ এখনো সম্ভব।"
     },
     "catalog": {
       "onlyAssignedManagerCanModifyCatalog": "শুধুমাত্র নিযুক্ত ব্রাঞ্চ ম্যানেজার ক্যাটালগ পরিবর্তন করতে পারেন।",
@@ -1829,7 +1840,8 @@
       "enterAdjustmentReason": "সমন্বয়ের কারণ লিখুন।",
       "currentPasswordIncorrect": "বর্তমান পাসওয়ার্ড সঠিক নয়।",
       "enterValidRate": "সঠিক হার লিখুন।",
-      "chargeRatesTooHigh": "ভ্যাট ও সার্ভিস চার্জ মিলে পুরো দাম নিয়ে নিতে পারে না।"
+      "chargeRatesTooHigh": "ভ্যাট ও সার্ভিস চার্জ মিলে পুরো দাম নিয়ে নিতে পারে না।",
+      "invalidPlatformFee": "০ থেকে {max}-এর মধ্যে একটি প্ল্যাটফর্ম ফি লিখুন।"
     },
     "ops": {
       "couponCodeExists": "এই কোডের কুপন ইতিমধ্যে আছে।",
@@ -2644,7 +2656,14 @@
     "useCurrentLocation": "বর্তমান অবস্থান ব্যবহার করুন",
     "preset_home2": "বাসা-২",
     "preset_home3": "বাসা-৩",
-    "preset_others": "অন্যান্য"
+    "preset_others": "অন্যান্য",
+    "nicknameField": "যেভাবে সংরক্ষণ করবেন",
+    "nicknameHome": "বাসা",
+    "nicknameOffice": "অফিস",
+    "nicknameCustom": "অন্যান্য",
+    "nicknameCustomField": "নিজের দেওয়া নাম",
+    "nicknameCustomPlaceholder": "যেমন: মায়ের বাসা",
+    "selectMasterArea": "তালিকা থেকে আপনার এলাকা বাছুন"
   },
   "rewards": {
     "title": "রিওয়ার্ড কয়েন",
@@ -4138,7 +4157,8 @@
     "browseOnlyBodyAddress": "{branch} {label}-এ ডেলিভারি দেয় না।",
     "backToNearestBranch": "আমার নিকটতম শাখায় ফিরুন",
     "browseOnlyPickupBadge": "শুধু দেখার জন্য — সেলফ পিকআপ সম্ভব",
-    "viewMenu": "মেনু দেখুন"
+    "viewMenu": "মেনু দেখুন",
+    "freeDelivery": "ফ্রি ডেলিভারি"
   },
   "brandType": {
     "cheez": "চিজ! পিৎজা",
@@ -4185,5 +4205,21 @@
     "deactivateTitle": "{name} নিষ্ক্রিয় করবেন?",
     "deactivateBody": "ঠিকানা সংরক্ষণের সময় গ্রাহকরা এটি আর দেখবেন না, শাখাগুলোও এটি কভার করবে না। বিদ্যমান ঠিকানা ও অর্ডারের সংরক্ষিত লেখা অপরিবর্তিত থাকবে।",
     "masterHint": "এখানে করা পরিবর্তনই চূড়ান্ত: পরবর্তী সিড কখনো আপনার পরিবর্তন মুছবে বা নাম বদলাবে না।"
+  },
+  "platformFee": {
+    "title": "প্ল্যাটফর্ম ফি",
+    "subtitle": "প্রতিটি অর্ডারে যোগ হওয়া একটি নির্দিষ্ট ফি — ডেলিভারি ও পিকআপ দুটোতেই",
+    "globalLabel": "প্রতি অর্ডারে প্ল্যাটফর্ম ফি",
+    "globalHint": "যে শাখার নিজস্ব ফি নেই, সেখানে এটি প্রযোজ্য।",
+    "save": "সংরক্ষণ করুন",
+    "saved": "সংরক্ষিত হয়েছে",
+    "branchOverrides": "শাখাভিত্তিক ফি",
+    "branchOverridesHint": "প্ল্যাটফর্মের সাধারণ ফি ব্যবহার করতে শাখাটিকে সাধারণ ফি-তে রাখুন।",
+    "inherits": "সাধারণ ফি",
+    "override": "নিজস্ব ফি",
+    "effective": "এখন নেওয়া হচ্ছে",
+    "setOverride": "নির্ধারণ",
+    "clearOverride": "সাধারণ ফি-তে ফেরান",
+    "branch": "শাখা"
   }
 }

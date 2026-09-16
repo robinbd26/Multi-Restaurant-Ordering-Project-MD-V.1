@@ -11,6 +11,12 @@ import {
   MAIN_AREA_NAMES,
   subAreasFor,
 } from "@/lib/constants/area-data";
+import type { AddressZoneOption } from "@/components/customer/address-manager";
+import {
+  labelForNickname,
+  nicknameDisplay,
+  type NicknameKind,
+} from "@/lib/addresses/nickname";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { LIMITS } from "@/lib/validation/limits";
 import { cn } from "@/lib/utils";
@@ -54,6 +60,16 @@ interface DrawerSavedAddress {
   is_default: boolean;
 }
 
+/**
+ * The LIVE delivery check for one saved address against the cart's branch, on
+ * the shift running now. Never cached on the address: the same address can be
+ * covered by one branch and not another, or by day and not by night.
+ */
+interface AddressCoverageState {
+  status: "checking" | "covered" | "outside" | "error";
+  pickupEnabled: boolean;
+}
+
 /** /api/delivery/quote response — the subset the drawer renders. */
 interface DrawerQuote {
   branch: { id: number; name: string };
@@ -78,10 +94,8 @@ interface DrawerOrderResult {
 }
 
 /** The card title for a saved address (preset label or the custom name). */
-function addressCardLabel(a: DrawerSavedAddress): string {
-  if (a.display_label) return a.display_label;
-  if (a.label === "Others" && a.custom_label) return a.custom_label;
-  return a.label;
+function addressCardLabel(a: DrawerSavedAddress, t: (key: string) => string): string {
+  return nicknameDisplay(a, t);
 }
 
 /**
@@ -107,10 +121,13 @@ export function CartDrawer({
   signedIn = false,
   customerName = null,
   customerPhone = null,
+  zones = [],
 }: {
   signedIn?: boolean;
   customerName?: string | null;
   customerPhone?: string | null;
+  /** The master zone list; the add-address form offers these names only. */
+  zones?: AddressZoneOption[];
 }) {
   const { lines, count, total, isOpen, closeCart, setQty, remove, clear, cartBranchId, cartBranchName } =
     useHomeCart();
@@ -138,7 +155,10 @@ export function CartDrawer({
   const [savingAddress, setSavingAddress] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
   // Compact add-address form — the same Area → sub-area model as the address book.
+  const [nickname, setNickname] = useState<NicknameKind>("home");
   const [locationName, setLocationName] = useState("");
+  // Live coverage per saved address, keyed by address id (see AddressCoverageState).
+  const [coverage, setCoverage] = useState<Record<number, AddressCoverageState>>({});
   const [mainArea, setMainArea] = useState("");
   const [customMain, setCustomMain] = useState("");
   const [subArea, setSubArea] = useState("");
@@ -193,6 +213,50 @@ export function CartDrawer({
     () => addresses.find((a) => String(a.id) === addressId) ?? null,
     [addresses, addressId],
   );
+
+  // The master list from the database; the bundled constant only as a fallback.
+  const mainAreaOptions = zones.length > 0 ? zones.map((z) => z.name) : MAIN_AREA_NAMES;
+  const subAreaOptions = (main: string): string[] =>
+    zones.length > 0
+      ? (zones.find((z) => z.name === main)?.localities.map((l) => l.name) ?? [])
+      : subAreasFor(main);
+
+  // PHASE 3 — check every saved address against the cart's branch whenever the
+  // address step is showing. Re-run on each visit and whenever the list or the
+  // branch changes, so a stale answer from another shift is never shown.
+  useEffect(() => {
+    if (view !== "address" || cartBranchId == null || addresses.length === 0) return;
+    let alive = true;
+    for (const a of addresses) {
+      fetch("/api/delivery/address-coverage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branch_id: cartBranchId, customer_address_id: a.id }),
+      })
+        .then(async (res) => {
+          const data = (await res.json().catch(() => ({}))) as { covered?: boolean; pickup_enabled?: boolean };
+          if (!alive) return;
+          setCoverage((current) => ({
+            ...current,
+            [a.id]: res.ok
+              ? { status: data.covered ? "covered" : "outside", pickupEnabled: Boolean(data.pickup_enabled) }
+              : { status: "error", pickupEnabled: false },
+          }));
+        })
+        .catch(() => {
+          if (alive) setCoverage((current) => ({ ...current, [a.id]: { status: "error", pickupEnabled: false } }));
+        });
+    }
+    return () => {
+      alive = false;
+    };
+  }, [view, cartBranchId, addresses]);
+
+  const chosenCoverage = chosenAddress ? (coverage[chosenAddress.id] ?? null) : null;
+  // An address with no answer yet is still being checked. Derived here rather
+  // than written from the effect, which would cascade a render per address.
+  const addressCoverage = (id: number): AddressCoverageState =>
+    coverage[id] ?? { status: "checking", pickupEnabled: false };
 
   /* ══════════════ Task 3 — same-screen checkout (NO navigation) ══════════════
      Every step below renders inside this drawer. The /customer/checkout route
@@ -294,6 +358,7 @@ export function CartDrawer({
     setShowAddForm(false);
     setShowMapForm(false);
     setMapPoint(null);
+    setCoverage({});
     setStep("address");
     // loadAddresses returns { list, failed }. Only open the Add New Address form
     // when the fetch SUCCEEDED and the customer genuinely has zero saved addresses.
@@ -394,7 +459,7 @@ export function CartDrawer({
       setAddressError(t("home.order.errCustomAreaRequired"));
       return;
     }
-    if (!locationName.trim()) {
+    if (nickname === "custom" && !locationName.trim()) {
       setAddressError(t("home.order.errCustomLabelRequired"));
       return;
     }
@@ -417,7 +482,8 @@ export function CartDrawer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          label: locationName.trim(),
+          label: labelForNickname(nickname),
+          custom_label: nickname === "custom" ? locationName.trim() : "",
           address: parts.join(", "),
           main_area: areaName,
           ...(isCustomMain
@@ -484,6 +550,7 @@ export function CartDrawer({
                 branch_id: cartBranchId,
                 fulfillment_type: "delivery",
                 ...(hasCoords ? { lat, lng } : {}),
+                customer_address_id: chosenAddress!.id,
                 items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty })),
               };
             })();
@@ -510,6 +577,12 @@ export function CartDrawer({
   function goPayment() {
     if (!chosenAddress) {
       setAddressError(t("home.order.errAddressRequired"));
+      return;
+    }
+    // Delivery is not offered to an address this branch does not cover; the
+    // banner above offers pickup instead. The server enforces the same rule.
+    if (chosenCoverage?.status === "outside") {
+      setAddressError(t("home.order.outsideAreaTitle"));
       return;
     }
     setAddressError(null);
@@ -934,7 +1007,7 @@ export function CartDrawer({
                         </span>
                         <span className="min-w-0">
                           <span className="block truncate text-[0.82rem] font-bold text-white">
-                            {addressCardLabel(a)}
+                            {addressCardLabel(a, t)}
                           </span>
                           {a.house_plot || a.road_lane || a.main_area || a.landmark ? (
                             /* structured card — House/Plot · Flat · Road · Area ·
@@ -961,10 +1034,57 @@ export function CartDrawer({
                           ) : (
                             <span className="mt-0.5 block break-words text-[0.75rem] text-[#a0a0b0]">{a.address}</span>
                           )}
+                          {addressCoverage(a.id) ? (
+                            <span
+                              data-testid={`drawer-address-coverage-${a.id}`}
+                              data-coverage={addressCoverage(a.id).status}
+                              className={cn(
+                                "mt-1.5 inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-bold",
+                                addressCoverage(a.id).status === "covered" && "bg-emerald-500/15 text-emerald-300",
+                                addressCoverage(a.id).status === "outside" && "bg-amber-500/15 text-amber-300",
+                                (addressCoverage(a.id).status === "checking" || addressCoverage(a.id).status === "error") &&
+                                  "bg-white/6 text-[#a0a0b0]",
+                              )}
+                            >
+                              {addressCoverage(a.id).status === "covered"
+                                ? t("home.order.deliversHereBadge")
+                                : addressCoverage(a.id).status === "outside"
+                                  ? t("home.order.pickupOnlyBadge")
+                                  : addressCoverage(a.id).status === "checking"
+                                    ? t("home.order.checkingCoverage")
+                                    : t("home.order.coverageCheckFailed")}
+                            </span>
+                          ) : null}
                         </span>
                       </button>
                     );
                   })}
+                </div>
+              ) : null}
+              {chosenAddress && chosenCoverage?.status === "outside" ? (
+                /* PHASE 3 — the same honest pattern the storefront bar uses: say
+                    delivery is not possible from here, and offer what works. */
+                <div
+                  className="rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3"
+                  data-testid="drawer-outside-area"
+                  role="status"
+                >
+                  <p className="text-[0.82rem] font-bold text-amber-300">{t("home.order.outsideAreaTitle")}</p>
+                  <p className="mt-0.5 text-[0.75rem] text-amber-200/80">
+                    {t("home.order.outsideAreaBody", { branch: cartBranchName ?? "" })}
+                  </p>
+                  {chosenCoverage.pickupEnabled ? (
+                    <button
+                      type="button"
+                      onClick={startPickupCheckout}
+                      data-testid="drawer-switch-to-pickup"
+                      className="mt-2 w-full rounded-lg border border-amber-400/40 py-2 text-[0.78rem] font-extrabold text-amber-200 hover:bg-amber-500/10"
+                    >
+                      🏬 {t("home.order.switchToPickup")}
+                    </button>
+                  ) : (
+                    <p className="mt-1.5 text-[0.72rem] text-amber-200/70">{t("home.order.pickupNotOffered")}</p>
+                  )}
                 </div>
               ) : null}
               {showAddForm ? (
@@ -975,14 +1095,27 @@ export function CartDrawer({
                   data-testid="drawer-add-address-form"
                 >
                   <p className="text-[0.8rem] font-bold text-white">{t("home.order.addNewAddress")}</p>
-                  <input
-                    value={locationName}
-                    onChange={(e) => setLocationName(e.target.value)}
-                    placeholder={t("addresses.locationNamePlaceholder")}
-                    maxLength={40}
-                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
-                    aria-label={t("addresses.locationNameField")}
-                  />
+                  <select
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value as NicknameKind)}
+                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
+                    aria-label={t("addresses.nicknameField")}
+                    data-testid="drawer-address-nickname"
+                  >
+                    <option value="home">{t("addresses.nicknameHome")}</option>
+                    <option value="office">{t("addresses.nicknameOffice")}</option>
+                    <option value="custom">{t("addresses.nicknameCustom")}</option>
+                  </select>
+                  {nickname === "custom" ? (
+                    <input
+                      value={locationName}
+                      onChange={(e) => setLocationName(e.target.value)}
+                      placeholder={t("addresses.nicknameCustomPlaceholder")}
+                      maxLength={40}
+                      className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                      aria-label={t("addresses.nicknameCustomField")}
+                    />
+                  ) : null}
                   <select
                     value={mainArea}
                     onChange={(e) => {
@@ -995,12 +1128,11 @@ export function CartDrawer({
                     aria-label={t("addresses.selectYourArea")}
                   >
                     <option value="">{t("addresses.selectYourArea")}</option>
-                    {MAIN_AREA_NAMES.map((m) => (
+                    {mainAreaOptions.map((m) => (
                       <option key={m} value={m}>
                         {m}
                       </option>
                     ))}
-                    <option value={CUSTOM_VALUE}>{t("addresses.addYourOwn")}</option>
                   </select>
                   {mainArea === CUSTOM_VALUE ? (
                     <input
@@ -1023,7 +1155,7 @@ export function CartDrawer({
                         aria-label={t("addresses.selectYourAreaName")}
                       >
                         <option value="">{t("addresses.selectYourAreaName")}</option>
-                        {subAreasFor(mainArea).map((s) => (
+                        {subAreaOptions(mainArea).map((s) => (
                           <option key={s} value={s}>
                             {s}
                           </option>
@@ -1281,7 +1413,7 @@ export function CartDrawer({
               <p className="rounded-lg bg-white/4 px-3 py-2 text-center text-[0.72rem] text-[#a0a0b0]">
                 {fulfillmentType === "pickup"
                   ? `${t("home.order.pickupLocation")}: ${pickupBranch?.name ?? "—"}`
-                  : `${t("home.order.deliverTo")}: ${chosenAddress ? addressCardLabel(chosenAddress) : "—"}`}
+                  : `${t("home.order.deliverTo")}: ${chosenAddress ? addressCardLabel(chosenAddress, t) : "—"}`}
               </p>
             </div>
           ) : view === "overview" ? (
@@ -1319,7 +1451,7 @@ export function CartDrawer({
                     {t("home.order.deliverTo")}
                   </p>
                   <p className="mt-0.5 truncate text-[0.82rem] font-bold text-white">
-                    {addressCardLabel(chosenAddress)}
+                    {addressCardLabel(chosenAddress, t)}
                   </p>
                   <p className="mt-0.5 break-words text-[0.75rem] text-[#a0a0b0]">{chosenAddress.address}</p>
                   <button
