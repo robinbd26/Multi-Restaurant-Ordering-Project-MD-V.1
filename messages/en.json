@@ -129,7 +129,8 @@
     "deliveryAreas": "Delivery Areas",
     "commissions": "Commissions",
     "deductions": "Deductions",
-    "inventory": "Inventory"
+    "inventory": "Inventory",
+    "deliveryZones": "Delivery Zones"
   },
   "navGroup": {
     "people": "People",
@@ -2043,7 +2044,15 @@
     "push": {
       "invalidSubscription": "This push subscription is not valid."
     },
-    "sessionExpired": "Your session has ended. Please sign in again."
+    "sessionExpired": "Your session has ended. Please sign in again.",
+    "deliveryZone": {
+      "forbidden": "Only a super admin can edit the master list.",
+      "nameRequired": "Enter a name.",
+      "invalidNameLength": "Use between {min} and {max} characters.",
+      "duplicate": "That name is already on the list.",
+      "notFound": "That zone or area no longer exists.",
+      "invalidActive": "Choose a valid status."
+    }
   },
   "states": {
     "loading": "Loading…",
@@ -4149,5 +4158,32 @@
     "allOrderableProducts": "All customer-orderable products",
     "noEligibleProducts": "No eligible products found.",
     "manageProducts": "Manage products"
+  },
+  "deliveryZone": {
+    "title": "Delivery Zones",
+    "subtitle": "The master list of zones and areas every branch picks its coverage from",
+    "zonesCount": "Zones",
+    "localitiesCount": "Areas",
+    "activeLabel": "Active",
+    "inactiveLabel": "Inactive",
+    "addZone": "+ New zone",
+    "addLocality": "+ New area",
+    "zoneName": "Zone",
+    "localityName": "Area",
+    "localitiesIn": "Areas in {zone}",
+    "noZones": "No zones yet",
+    "noZonesDesc": "Add the first zone to start building the master list.",
+    "noLocalities": "No areas in this zone yet",
+    "coveredByBranches": "Branches covering",
+    "nameLabel": "Name",
+    "namePlaceholder": "For example: Mirpur-10",
+    "zoneLabel": "Zone",
+    "selectZone": "Select a zone",
+    "saved": "Saved",
+    "deactivate": "Deactivate",
+    "reactivate": "Reactivate",
+    "deactivateTitle": "Deactivate {name}?",
+    "deactivateBody": "Customers stop seeing it when saving an address, and branches stop covering it. Existing addresses and orders keep their saved text.",
+    "masterHint": "Editing here is the authority: a later reseed never renames or removes what you change."
   }
 }

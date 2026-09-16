@@ -129,7 +129,8 @@
     "deliveryAreas": "ডেলিভারি এলাকা",
     "commissions": "কমিশন",
     "deductions": "কর্তন ও চার্জ",
-    "inventory": "ইনভেন্টরি"
+    "inventory": "ইনভেন্টরি",
+    "deliveryZones": "ডেলিভারি জোন"
   },
   "navGroup": {
     "people": "ব্যবহারকারী",
@@ -2043,7 +2044,15 @@
     "push": {
       "invalidSubscription": "এই পুশ সাবস্ক্রিপশনটি সঠিক নয়।"
     },
-    "sessionExpired": "আপনার সেশন শেষ হয়েছে। আবার লগইন করুন।"
+    "sessionExpired": "আপনার সেশন শেষ হয়েছে। আবার লগইন করুন।",
+    "deliveryZone": {
+      "forbidden": "কেবল সুপার অ্যাডমিন মাস্টার তালিকা সম্পাদনা করতে পারেন।",
+      "nameRequired": "একটি নাম লিখুন।",
+      "invalidNameLength": "{min} থেকে {max} অক্ষরের মধ্যে লিখুন।",
+      "duplicate": "এই নামটি তালিকায় আগে থেকেই আছে।",
+      "notFound": "এই জোন বা এলাকাটি আর নেই।",
+      "invalidActive": "একটি সঠিক স্ট্যাটাস বাছুন।"
+    }
   },
   "states": {
     "loading": "লোড হচ্ছে…",
@@ -4149,5 +4158,32 @@
     "allOrderableProducts": "গ্রাহকের অর্ডারযোগ্য সব পণ্য",
     "noEligibleProducts": "যোগ্য কোনো পণ্য পাওয়া যায়নি।",
     "manageProducts": "পণ্য ব্যবস্থাপনা"
+  },
+  "deliveryZone": {
+    "title": "ডেলিভারি জোন",
+    "subtitle": "মাস্টার তালিকা — প্রতিটি শাখা এখান থেকেই তাদের কভারেজ বাছে",
+    "zonesCount": "জোন",
+    "localitiesCount": "এলাকা",
+    "activeLabel": "সক্রিয়",
+    "inactiveLabel": "নিষ্ক্রিয়",
+    "addZone": "+ নতুন জোন",
+    "addLocality": "+ নতুন এলাকা",
+    "zoneName": "জোন",
+    "localityName": "এলাকা",
+    "localitiesIn": "{zone}-এর এলাকাসমূহ",
+    "noZones": "এখনো কোনো জোন নেই",
+    "noZonesDesc": "মাস্টার তালিকা শুরু করতে প্রথম জোনটি যোগ করুন।",
+    "noLocalities": "এই জোনে এখনো কোনো এলাকা নেই",
+    "coveredByBranches": "কভার করছে যত শাখা",
+    "nameLabel": "নাম",
+    "namePlaceholder": "যেমন: মিরপুর-১০",
+    "zoneLabel": "জোন",
+    "selectZone": "একটি জোন বাছুন",
+    "saved": "সংরক্ষিত হয়েছে",
+    "deactivate": "নিষ্ক্রিয় করুন",
+    "reactivate": "পুনরায় সক্রিয় করুন",
+    "deactivateTitle": "{name} নিষ্ক্রিয় করবেন?",
+    "deactivateBody": "ঠিকানা সংরক্ষণের সময় গ্রাহকরা এটি আর দেখবেন না, শাখাগুলোও এটি কভার করবে না। বিদ্যমান ঠিকানা ও অর্ডারের সংরক্ষিত লেখা অপরিবর্তিত থাকবে।",
+    "masterHint": "এখানে করা পরিবর্তনই চূড়ান্ত: পরবর্তী সিড কখনো আপনার পরিবর্তন মুছবে বা নাম বদলাবে না।"
   }
 }

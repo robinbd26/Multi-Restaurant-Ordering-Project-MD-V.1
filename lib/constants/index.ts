@@ -230,6 +230,7 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
     { href: "/admin/staff", label: "nav.staff", icon: "users" , group: "navGroup.people" },
     { href: "/admin/branches", label: "nav.branches", icon: "store" , group: "navGroup.catalog" },
     { href: "/admin/delivery-areas", label: "nav.deliveryAreas", icon: "bike" , group: "navGroup.catalog" },
+    { href: "/admin/delivery-zones", label: "nav.deliveryZones", icon: "pin" , group: "navGroup.catalog" },
     { href: "/admin/products", label: "nav.products", icon: "grid" , group: "navGroup.catalog" },
     { href: "/admin/categories", label: "nav.categories", icon: "list" , group: "navGroup.catalog" },
     { href: "/admin/orders", label: "nav.orders", icon: "bag" , group: "navGroup.orders" },

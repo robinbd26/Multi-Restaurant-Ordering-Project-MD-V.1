@@ -21,20 +21,32 @@ import type { FieldErrors } from "@/lib/validation/contract";
 import { maxLength, required } from "@/lib/validation/rules";
 import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-validation";
 import { MAIN_AREA_NAMES, subAreasFor, CUSTOM_VALUE } from "@/lib/constants/area-data";
+
+/**
+ * A zone from the DATABASE master list (super admin owned). Optional: callers
+ * that have not been wired to it yet fall back to the bundled constant, so the
+ * form keeps working exactly as before while the two sources coexist.
+ */
+export interface AddressZoneOption {
+  id: number;
+  name: string;
+  localities: { id: number; name: string }[];
+}
 import { cn } from "@/lib/utils";
 
 function coord(value: number | null | undefined): string {
   return value != null && Number.isFinite(value) ? value.toFixed(6) : "";
 }
 
-/** Map a stored main-area value onto the curated list, tolerating case drift
- *  (e.g. a legacy "Beaily Road" record now reads as "Beaily road"). Returns ""
- *  when the value is genuinely custom. */
-function normalizeMainArea(name: string): string {
+/** Map a stored main-area value onto the offered list, tolerating case drift
+ *  (e.g. a legacy "Beaily Road" record now reads as "Bailey Road"). Returns ""
+ *  when the value is genuinely custom. The list is passed in because it now
+ *  comes from the database, where a super admin can rename or retire a zone. */
+function normalizeMainArea(name: string, names: string[]): string {
   if (!name) return "";
-  const exact = MAIN_AREA_NAMES.find((a) => a === name);
+  const exact = names.find((a) => a === name);
   if (exact) return name;
-  return MAIN_AREA_NAMES.find((a) => a.toLowerCase() === name.toLowerCase()) ?? "";
+  return names.find((a) => a.toLowerCase() === name.toLowerCase()) ?? "";
 }
 
 export interface AddressT {
@@ -145,10 +157,23 @@ const RULES: FieldRules = {
   instructions: [maxLength(200)],
 };
 
-export function AddressManager({ addresses }: { addresses: AddressT[] }) {
+export function AddressManager({
+  addresses,
+  zones = [],
+}: {
+  addresses: AddressT[];
+  zones?: AddressZoneOption[];
+}) {
   const { t } = useTranslation();
   const router = useRouter();
   const [pending, start] = useTransition();
+  // The master list from the database wins; the bundled constant is the
+  // fallback until every caller passes zones in.
+  const mainAreaNames = zones.length > 0 ? zones.map((z) => z.name) : MAIN_AREA_NAMES;
+  const subAreaNamesFor = (main: string): string[] =>
+    zones.length > 0
+      ? (zones.find((z) => z.name === main)?.localities.map((l) => l.name) ?? [])
+      : subAreasFor(main);
   const formRef = useRef<HTMLFormElement>(null);
 
   const [editing, setEditing] = useState<AddressT | null>(null);
@@ -264,7 +289,7 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
     setEditing(a);
 
     const savedMain = a.main_area ?? "";
-    const canonicalMain = normalizeMainArea(savedMain);
+    const canonicalMain = normalizeMainArea(savedMain, mainAreaNames);
     if (canonicalMain) {
       setMainArea(canonicalMain);
       setCustomMainArea("");
@@ -273,7 +298,7 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
       setCustomMainArea(savedMain);
     }
 
-    const subs = canonicalMain ? subAreasFor(canonicalMain) : [];
+    const subs = canonicalMain ? subAreaNamesFor(canonicalMain) : [];
     const savedSub = a.sub_area ?? "";
     if (savedSub && subs.includes(savedSub)) {
       setSubArea(savedSub);
@@ -599,7 +624,7 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
                     {t("addresses.selectYourArea")}
                   </option>
                   <option value={CUSTOM_VALUE}>{t("addresses.addYourOwn")}</option>
-                  {MAIN_AREA_NAMES.map((name) => (
+                  {mainAreaNames.map((name) => (
                     <option key={name} value={name}>{name}</option>
                   ))}
                 </Select>
@@ -627,11 +652,11 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
                 >
                   <option value="">{t("addresses.selectAreaName")}</option>
                   {mainArea && mainArea !== CUSTOM_VALUE
-                    ? subAreasFor(mainArea).map((name) => (
+                    ? subAreaNamesFor(mainArea).map((name) => (
                         <option key={name} value={name}>{name}</option>
                       ))
                     : null}
-                  {subArea && subArea !== CUSTOM_VALUE && !subAreasFor(mainArea).includes(subArea) ? (
+                  {subArea && subArea !== CUSTOM_VALUE && !subAreaNamesFor(mainArea).includes(subArea) ? (
                     // Legacy: a stored sub-area that is not on the current list.
                     <option value={subArea}>{subArea}</option>
                   ) : null}
