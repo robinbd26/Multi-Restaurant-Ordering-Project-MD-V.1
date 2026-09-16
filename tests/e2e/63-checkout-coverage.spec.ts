@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { API_BASE, newSession, setLocale } from "./helpers";
+import { API_BASE, newSession, setLocale, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
 
 /**
  * PHASE 3 — checkout enforces coverage by NAME as well as by geometry.
@@ -128,6 +128,13 @@ async function coverageOf(req: APIRequestContext, branchId: number, addressId: n
 function items(productId: number) {
   return [{ product_id: productId, quantity: 1, variation_type: "THICK" }];
 }
+
+// PHASE 3 — for the quarter hour before 04:00 Dhaka, a delivery order is
+// refused on purpose (the night shift's last order is 03:45). Skip rather than
+// report the rule as a failure.
+test.beforeEach(() => {
+  test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+});
 
 test.describe("Checkout enforces coverage by name", () => {
   test("a pinless address the branch lists can be quoted and ordered", async ({ browser }) => {

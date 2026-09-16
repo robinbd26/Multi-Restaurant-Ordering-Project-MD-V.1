@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, API_BASE } from "./helpers";
+import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
 
 /**
  * Gap #1 — server-side OPENING-HOURS enforcement (§8 / §17 / §18).
@@ -110,6 +110,13 @@ async function makeBranchWithMenu(
 
   return { branch, category, product };
 }
+
+// PHASE 3 — for the quarter hour before 04:00 Dhaka, a delivery order is
+// refused on purpose (the night shift's last order is 03:45). Skip rather than
+// report the rule as a failure.
+test.beforeEach(() => {
+  test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+});
 
 test.describe("Phase — opening hours: nearest OPEN branch is primary", () => {
   // Sylhet — deliberately far from every seeded/fixture cluster (Dhaka ~23.78/90.40

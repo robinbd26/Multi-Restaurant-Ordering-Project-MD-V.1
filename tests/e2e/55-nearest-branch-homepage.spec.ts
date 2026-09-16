@@ -5,7 +5,16 @@ import {
   type BrowserContext,
   type Page,
 } from "@playwright/test";
-import { newSession, setLocale, ROLE_HOME, atPath, login, E2E_ORIGIN } from "./helpers";
+import {
+  newSession,
+  setLocale,
+  ROLE_HOME,
+  atPath,
+  login,
+  E2E_ORIGIN,
+  inNightOrderBlackout,
+  NIGHT_BLACKOUT_REASON,
+} from "./helpers";
 
 /**
  * NEAREST-BRANCH HOMEPAGE — an authenticated customer sees, and can order, the
@@ -437,6 +446,9 @@ test.describe("Forged requests are refused", () => {
   });
 
   test("ordering another branch's product is rejected", async ({ browser }) => {
+    // Needs a SUCCESSFUL own-branch order as its control, so it cannot run in
+    // the 03:45–04:00 window where delivery orders are refused by design.
+    test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
     const admin = await newSession(browser, "super_admin");
     const world = await buildWorld(admin);
     const customer = await newSession(browser, "customer");
@@ -572,6 +584,8 @@ test.describe("Admin changes reach the right branch", () => {
   });
 
   test("existing orders are unchanged by later product edits", async ({ browser }) => {
+    // 03:45–04:00 Dhaka: a delivery order is refused by design (night last order).
+    test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
     const admin = await newSession(browser, "super_admin");
     const world = await buildWorld(admin);
     const customer = await newSession(browser, "customer");
@@ -669,7 +683,7 @@ test.describe("The homepage follows the customer's deliver-to selection", () => 
         longitude: String(point.lng),
       },
     });
-    expect(res.status(), "address created").toBe(201);
+    expect(res.status(), `address created (${await res.text()})`).toBe(201);
     return (await res.json()) as { id: number };
   }
 

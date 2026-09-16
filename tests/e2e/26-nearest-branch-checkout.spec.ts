@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, API_BASE } from "./helpers";
+import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
 
 /**
  * req #20 (nearest branch enforced server-side in order creation) + req #6
@@ -109,6 +109,13 @@ async function createEligibleBranch(req: APIRequestContext, pt: { lat: number; l
 }
 
 // ── req #20 — nearest branch enforced in order creation ────────────────────
+// PHASE 3 — for the quarter hour before 04:00 Dhaka, a delivery order is
+// refused on purpose (the night shift's last order is 03:45). Skip rather than
+// report the rule as a failure.
+test.beforeEach(() => {
+  test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+});
+
 test.describe("#20 server-derived delivery branch (order creation)", () => {
   test("client branch_id is IGNORED — the branch is derived from the cart's product", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");

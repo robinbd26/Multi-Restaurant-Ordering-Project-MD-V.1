@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, login, API_BASE, PASSWORD, ROLE_HOME, atPath } from "./helpers";
+import { newSession, apiLogin, login, API_BASE, PASSWORD, ROLE_HOME, atPath, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
 
 /**
  * PHASES O, P, Q, R — login destination, the out-of-zone experience, ordering
@@ -80,6 +80,13 @@ async function loginWithCallback(page: import("@playwright/test").Page, username
     await expect(page).not.toHaveURL(/\/login(\?|$)/, { timeout: 5_000 });
   }).toPass({ timeout: 20_000 });
 }
+
+// PHASE 3 — for the quarter hour before 04:00 Dhaka, a delivery order is
+// refused on purpose (the night shift's last order is 03:45). Skip rather than
+// report the rule as a failure.
+test.beforeEach(() => {
+  test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+});
 
 test.describe("Phase O — login destination", () => {
   // One test per role: seven full sign-ins in a single test share one time

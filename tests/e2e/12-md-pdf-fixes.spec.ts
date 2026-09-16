@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { login, newSession, setLocale, API_BASE, PASSWORD } from "./helpers";
+import { login, newSession, setLocale, API_BASE, PASSWORD, clearCustomerAddresses } from "./helpers";
 import {
   disconnectResetDb,
   mintResetToken,
@@ -198,6 +198,10 @@ test.describe("Delete My Account (customer punch-list #13)", () => {
 test.describe("Address icons differ per label (customer punch-list #4)", () => {
   test("Home and Office addresses render distinct icons", async ({ browser }) => {
     const { page, context } = await newSession(browser, "customer");
+    // The seeded customer is capped at five addresses and the test database
+    // persists, so this spec clears its own leftovers before adding more.
+    const PROBE = /123 Test Road/;
+    await clearCustomerAddresses(page.request, PROBE);
     await page.goto("/customer/addresses");
 
     // Create Home + Office (idempotent enough for a demo run).
@@ -221,6 +225,7 @@ test.describe("Address icons differ per label (customer punch-list #4)", () => {
     );
     const distinct = new Set(paths.filter(Boolean));
     expect(distinct.size).toBeGreaterThan(1); // icons are no longer all identical
+    await clearCustomerAddresses(page.request, PROBE);
     await context.close();
   });
 });
