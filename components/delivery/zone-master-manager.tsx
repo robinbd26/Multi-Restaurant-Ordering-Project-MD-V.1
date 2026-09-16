@@ -105,7 +105,7 @@ export function ZoneMasterManager({ zones }: { zones: ZoneMasterZone[] }) {
             onSubmit={(event) => {
               event.preventDefault();
               if (!newZone.trim()) return;
-              send("/api/delivery-zones", "POST", { name: newZone.trim() }, () => setNewZone(""));
+              send("/api/area-zones", "POST", { name: newZone.trim() }, () => setNewZone(""));
             }}
           >
             <Field label={t("deliveryZone.nameLabel")} name="zone_name" className="min-w-56 flex-1">
@@ -155,14 +155,14 @@ export function ZoneMasterManager({ zones }: { zones: ZoneMasterZone[] }) {
                       title={t("deliveryZone.deactivateTitle", { name: zone.name })}
                       description={t("deliveryZone.deactivateBody")}
                       confirmLabel={t("deliveryZone.deactivate")}
-                      action={async () => confirmed(`/api/delivery-zones/${zone.id}`, { is_active: false })}
+                      action={async () => confirmed(`/api/area-zones/${zone.id}`, { is_active: false })}
                     />
                   ) : (
                     <Button
                       size="sm"
                       variant="success"
                       disabled={pending}
-                      onClick={() => send(`/api/delivery-zones/${zone.id}`, "PATCH", { is_active: true })}
+                      onClick={() => send(`/api/area-zones/${zone.id}`, "PATCH", { is_active: true })}
                       data-testid={`zone-activate-${zone.id}`}
                     >
                       {t("deliveryZone.reactivate")}
@@ -178,7 +178,7 @@ export function ZoneMasterManager({ zones }: { zones: ZoneMasterZone[] }) {
                   event.preventDefault();
                   const value = (newLocality[zone.id] ?? "").trim();
                   if (!value) return;
-                  send("/api/delivery-localities", "POST", { zone_id: zone.id, name: value }, () =>
+                  send("/api/area-localities", "POST", { zone_id: zone.id, name: value }, () =>
                     setNewLocality((current) => ({ ...current, [zone.id]: "" })),
                   );
                 }}
@@ -245,7 +245,7 @@ export function ZoneMasterManager({ zones }: { zones: ZoneMasterZone[] }) {
                           description={t("deliveryZone.deactivateBody")}
                           confirmLabel={t("deliveryZone.deactivate")}
                           action={async () =>
-                            confirmed(`/api/delivery-localities/${locality.id}`, { is_active: false })
+                            confirmed(`/api/area-localities/${locality.id}`, { is_active: false })
                           }
                         />
                       ) : (
@@ -254,7 +254,7 @@ export function ZoneMasterManager({ zones }: { zones: ZoneMasterZone[] }) {
                           variant="outline"
                           disabled={pending}
                           onClick={() =>
-                            send(`/api/delivery-localities/${locality.id}`, "PATCH", { is_active: true })
+                            send(`/api/area-localities/${locality.id}`, "PATCH", { is_active: true })
                           }
                           data-testid={`locality-activate-${locality.id}`}
                         >

@@ -205,13 +205,14 @@ test.describe("Address icons differ per label (customer punch-list #4)", () => {
     // the preset buttons this spec used to click, and the area now comes from the
     // master list, so both have to be chosen before the form will save.
     for (const preset of ["home", "office"]) {
-      await page.getByRole("button", { name: /new address/i }).first().click();
+      await page.getByTestId("add-address").click();
+      await page.getByTestId("mode-manual").click();
       await page.getByTestId("addr-nickname").selectOption(preset);
       await page.getByTestId("addr-main-area").selectOption({ index: 1 });
       await page.getByTestId("addr-sub-area").selectOption({ index: 1 });
-      await page.locator("textarea").fill("123 Test Road, Dhaka");
-      await page.getByRole("button", { name: /^save$/i }).click();
-      await page.waitForTimeout(800);
+      await page.getByTestId("addr-road-lane").fill("123 Test Road");
+      await page.getByTestId("save-address").click();
+      await expect(page.getByTestId("address-form")).toBeHidden();
     }
 
     // Collect the SVG path shapes used by the address-card icons.

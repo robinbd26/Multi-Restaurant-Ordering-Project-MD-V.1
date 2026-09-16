@@ -3,7 +3,7 @@ import { handle } from "@/lib/http/errors";
 import { created } from "@/lib/http/respond";
 import { createLocality } from "@/lib/services/area-master-admin";
 
-// POST /api/delivery-localities — add a locality to a zone on the master list.
+// POST /api/area-localities — add a locality to a zone on the master list.
 export const POST = handle(async (req: Request) => {
   const me = await requireApiRole("super_admin");
   const body = (await req.json().catch(() => ({}))) as {

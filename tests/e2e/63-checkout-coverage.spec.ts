@@ -35,7 +35,7 @@ async function clearAddresses(req: APIRequestContext) {
 }
 
 async function locality(req: APIRequestContext, zoneName: string, localityName: string) {
-  const res = await req.get(`${API_BASE}/api/delivery-zones`);
+  const res = await req.get(`${API_BASE}/api/area-zones`);
   expect(res.status()).toBe(200);
   const zones = (await res.json()).results as {
     name: string;

@@ -28,7 +28,7 @@ interface ZoneRow {
 }
 
 async function zones(req: APIRequestContext): Promise<ZoneRow[]> {
-  const res = await req.get(`${API_BASE}/api/delivery-zones`);
+  const res = await req.get(`${API_BASE}/api/area-zones`);
   expect(res.status(), "master list readable by super admin").toBe(200);
   return (await res.json()).results as ZoneRow[];
 }
@@ -57,7 +57,7 @@ async function clearAddresses(req: APIRequestContext) {
  * another throwaway name to a real picker in this database.
  */
 async function retireZone(req: APIRequestContext, zoneId: number) {
-  await req.patch(`${API_BASE}/api/delivery-zones/${zoneId}`, { data: { is_active: false } });
+  await req.patch(`${API_BASE}/api/area-zones/${zoneId}`, { data: { is_active: false } });
 }
 
 /** A branch placed far from everything, so ONLY a named locality can cover it. */
@@ -104,20 +104,20 @@ test.describe("The master list belongs to the super admin", () => {
     const admin = await newSession(browser, "super_admin");
 
     const zoneName = uniq("ZoneMaster");
-    const created = await admin.req.post(`${API_BASE}/api/delivery-zones`, { data: { name: zoneName } });
+    const created = await admin.req.post(`${API_BASE}/api/area-zones`, { data: { name: zoneName } });
     expect(created.status(), "zone created").toBe(201);
     const zoneId = ((await created.json()) as { id: number }).id;
 
-    const dupe = await admin.req.post(`${API_BASE}/api/delivery-zones`, { data: { name: zoneName } });
+    const dupe = await admin.req.post(`${API_BASE}/api/area-zones`, { data: { name: zoneName } });
     expect(dupe.status(), "same zone name refused").toBe(400);
 
     const localityName = uniq("Locality");
-    const locality = await admin.req.post(`${API_BASE}/api/delivery-localities`, {
+    const locality = await admin.req.post(`${API_BASE}/api/area-localities`, {
       data: { zone_id: zoneId, name: localityName },
     });
     expect(locality.status(), "locality created").toBe(201);
 
-    const localityDupe = await admin.req.post(`${API_BASE}/api/delivery-localities`, {
+    const localityDupe = await admin.req.post(`${API_BASE}/api/area-localities`, {
       data: { zone_id: zoneId, name: localityName.toUpperCase() },
     });
     expect(localityDupe.status(), "same locality refused case-insensitively").toBe(400);
@@ -135,9 +135,9 @@ test.describe("The master list belongs to the super admin", () => {
     const customer = await newSession(browser, "customer");
 
     for (const [who, session] of [["branch manager", manager], ["customer", customer]] as const) {
-      const read = await session.req.get(`${API_BASE}/api/delivery-zones`);
+      const read = await session.req.get(`${API_BASE}/api/area-zones`);
       expect(read.status(), `${who} cannot read the master list`).toBe(403);
-      const write = await session.req.post(`${API_BASE}/api/delivery-zones`, { data: { name: uniq("Nope") } });
+      const write = await session.req.post(`${API_BASE}/api/area-zones`, { data: { name: uniq("Nope") } });
       expect(write.status(), `${who} cannot add a zone`).toBe(403);
     }
 
@@ -147,14 +147,14 @@ test.describe("The master list belongs to the super admin", () => {
 
   test("a retired locality is deactivated, never deleted", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
-    const zoneRes = await admin.req.post(`${API_BASE}/api/delivery-zones`, { data: { name: uniq("RetireZone") } });
+    const zoneRes = await admin.req.post(`${API_BASE}/api/area-zones`, { data: { name: uniq("RetireZone") } });
     const zoneId = ((await zoneRes.json()) as { id: number }).id;
-    const localityRes = await admin.req.post(`${API_BASE}/api/delivery-localities`, {
+    const localityRes = await admin.req.post(`${API_BASE}/api/area-localities`, {
       data: { zone_id: zoneId, name: uniq("RetireArea") },
     });
     const localityId = ((await localityRes.json()) as { id: number }).id;
 
-    const off = await admin.req.patch(`${API_BASE}/api/delivery-localities/${localityId}`, {
+    const off = await admin.req.patch(`${API_BASE}/api/area-localities/${localityId}`, {
       data: { is_active: false },
     });
     expect(off.status()).toBe(200);

@@ -1,20 +1,47 @@
-import { requireApiRole } from "@/lib/auth/current-user";
+import { requireApproved } from "@/lib/auth/current-user";
 import { handle } from "@/lib/http/errors";
-import { created, json } from "@/lib/http/respond";
-import { createZone, zonesForAdmin } from "@/lib/services/area-master-admin";
+import { created, paginated } from "@/lib/http/respond";
+import { createZone, serializeZone, zonesForBranch } from "@/lib/services/delivery";
+import { resolveManageableBranch } from "@/lib/services/branch-ops";
 
-// GET /api/delivery-zones — the whole master list, including inactive rows.
-// Super admin only: this is the platform-wide list every branch picks from.
-export const GET = handle(async () => {
-  await requireApiRole("super_admin");
-  const zones = await zonesForAdmin();
-  return json({ results: zones, count: zones.length });
+function positiveInteger(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+// GET /api/delivery-zones?branch_id= — zones for a branch the user may manage.
+export const GET = handle(async (req: Request) => {
+  const me = await requireApproved();
+  const url = new URL(req.url);
+  const branch = await resolveManageableBranch(
+    me,
+    positiveInteger(url.searchParams.get("branch_id")),
+  );
+  const zones = await zonesForBranch(branch.id);
+  return paginated(zones.map(serializeZone));
 });
 
-// POST /api/delivery-zones — add a zone to the master list.
+// POST /api/delivery-zones — create a zone (BM own branch / SA any).
 export const POST = handle(async (req: Request) => {
-  const me = await requireApiRole("super_admin");
-  const body = (await req.json().catch(() => ({}))) as { name?: unknown };
-  const zone = await createZone(me, body.name);
-  return created({ id: zone.id, name: zone.name, is_active: zone.isActive });
+  const me = await requireApproved();
+  const body = (await req.json().catch(() => ({}))) as {
+    branch_id?: number;
+    name?: string;
+    center_lat?: number;
+    center_lng?: number;
+    radius_km?: number;
+    delivery_fee?: number;
+    is_active?: boolean;
+  };
+  const zone = await createZone(me, {
+    branchId: positiveInteger(body.branch_id),
+    name: String(body.name ?? ""),
+    centerLat: Number(body.center_lat),
+    centerLng: Number(body.center_lng),
+    radiusKm: Number(body.radius_km),
+    deliveryFee: body.delivery_fee != null ? Number(body.delivery_fee) : 0,
+    isActive: body.is_active,
+  });
+  return created(serializeZone(zone));
 });
