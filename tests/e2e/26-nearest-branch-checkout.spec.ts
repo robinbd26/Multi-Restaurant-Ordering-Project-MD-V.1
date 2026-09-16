@@ -248,7 +248,9 @@ test.describe("#6 checkout quote (server-derived)", () => {
     const q = await res.json();
     expect(q.delivery_charge).toBeCloseTo(Number(active.delivery_charge), 2);
     expect(q.delivery_estimate_minutes).toBe(active.estimated_delivery_minutes);
-    expect(q.total).toBeCloseTo(q.subtotal + q.delivery_charge, 2);
+    // PHASE 4 — the flat platform fee is added on top of food and delivery.
+    const platformFee = Number((q as unknown as { platform_fee?: number }).platform_fee ?? 0);
+    expect(q.total).toBeCloseTo(q.subtotal + q.delivery_charge + platformFee, 2);
     expect(q.prep_time_minutes).not.toBeNull();
     // Overall estimate = prep + delivery time.
     expect(q.overall_estimate_minutes).toBe(q.prep_time_minutes + q.delivery_estimate_minutes);

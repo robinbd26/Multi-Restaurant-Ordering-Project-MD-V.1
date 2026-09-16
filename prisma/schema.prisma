@@ -1316,6 +1316,12 @@ model Order {
   couponId                 Int?
   coupon                   Coupon?             @relation(fields: [couponId], references: [id], onDelete: SetNull)
   discountAmount           Decimal             @default(0)
+  // PHASE 4 — the flat platform fee this order paid, snapshotted at creation.
+  // It is a real surcharge (unlike tax/service charge, which are extracted from
+  // prices that already include them), so it is INCLUDED in totalAmount and kept
+  // in its own column so reports can separate it from food revenue. Default 0
+  // leaves every order placed before the fee existed exactly as it was.
+  platformFee              Decimal             @default(0)
   // WS-7.1 — coins burned on this order and the Taka discount they bought, as a
   // real line item. Held separately from discountAmount (which is the coupon's)
   // so an invoice can show coupon and coin discounts independently.

@@ -231,7 +231,8 @@ test.describe("Phase Q/R — a nearby customer can complete an order", () => {
     const quoted = await quote.json();
     expect(quoted.branch.id, "the server picked the branch").toBe(branch.id);
     expect(quoted.subtotal, "2 × 450").toBe(900);
-    expect(quoted.total).toBe(900 + quoted.delivery_charge);
+    // PHASE 4 — the flat platform fee is added on top of food and delivery.
+    expect(quoted.total).toBe(900 + quoted.delivery_charge + quoted.platform_fee);
 
     // 4. The order goes through, priced by the server.
     const placed = await customer.req.post(`${API_BASE}/api/orders/`, {

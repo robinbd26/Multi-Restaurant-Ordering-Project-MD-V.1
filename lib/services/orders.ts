@@ -23,6 +23,7 @@ import { isPaymentMethod } from "@/lib/constants";
 import { LIMITS } from "@/lib/validation/limits";
 import { resolveDeliveryCoordinate } from "@/lib/services/customer-location";
 import { coverageForAddress, type AddressCoverage } from "@/lib/services/address-coverage";
+import { platformFeeFor } from "@/lib/services/settings";
 import { haversineKm } from "@/lib/services/geo";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
 import { isReceiveConfirmed } from "@/lib/services/rider-duty";
@@ -399,6 +400,9 @@ export async function quoteOrder(input: {
 
   const subtotalAmount = sumLines(lines);
   const deliveryChargeAmount = deliveryChargeFor(fulfillmentType, branch, area);
+  // PHASE 4 — the flat platform fee, for delivery AND pickup alike, resolved from
+  // the same setting (global, or this branch's override) the order will snapshot.
+  const platformFeeAmount = toPaisa(await platformFeeFor(branch.id));
   const subtotal = subtotalAmount.toNumber();
   const deliveryCharge = deliveryChargeAmount.toNumber();
   const prepTime = branch.prepTimeMinutes ?? null;
@@ -421,10 +425,11 @@ export async function quoteOrder(input: {
     items,
     subtotal,
     delivery_charge: deliveryCharge,
+    platform_fee: platformFeeAmount.toNumber(),
     prep_time_minutes: prepTime,
     delivery_estimate_minutes: deliveryEstimate,
     overall_estimate_minutes: overallEstimate,
-    total: subtotalAmount.plus(deliveryChargeAmount).toNumber(),
+    total: subtotalAmount.plus(deliveryChargeAmount).plus(platformFeeAmount).toNumber(),
   };
 }
 
@@ -595,6 +600,9 @@ export async function createOrder(input: {
   // impossible quantity is a validation error, not a rolled-back write.
   const lines = priceLines(input.items, byId);
   const itemsSubtotal = sumLines(lines);
+  // PHASE 4 — resolved once, before the transaction, from the same rule the quote
+  // used, and snapshotted: a later change to the fee never rewrites this order.
+  const platformFeeSnapshot = toPaisa(await platformFeeFor(branch.id));
 
   return prisma.$transaction(async (tx) => {
     // #15 — reserve a unique, immutable order number inside the same
@@ -625,6 +633,7 @@ export async function createOrder(input: {
         deliveryAreaId: area?.id ?? null,
         deliveryAreaName: area?.name ?? "",
         deliveryCharge: deliveryChargeSnapshot,
+        platformFee: platformFeeSnapshot,
         deliveryEstimateMinutes: deliveryEstimateSnapshot,
         deliveryDistanceKm: distanceKm != null ? new Prisma.Decimal(distanceKm.toFixed(3)) : null,
         deliveryRadiusKmSnapshot: fulfillmentType === "delivery" ? new Prisma.Decimal(branch.deliveryRadiusKm) : null,
@@ -701,7 +710,11 @@ export async function createOrder(input: {
     // Every term is an exact 2dp Decimal, so the subtraction is exact too: the
     // `toDecimalPlaces` below is a normalisation of the stored scale, not a
     // correction of accumulated float error (there is none to correct).
-    const payable = notBelowZero(grandTotal.minus(couponDiscount).minus(coinDiscount));
+    // PHASE 4 — the platform fee is added AFTER every discount. A coupon or a coin
+    // voucher prices the food and the delivery, exactly as before, and can never
+    // eat into the fee: it is platform revenue, not something a branch offer or a
+    // loyalty reward gets to give away.
+    const payable = notBelowZero(grandTotal.minus(couponDiscount).minus(coinDiscount)).plus(platformFeeSnapshot);
     return tx.order.update({
       where: { id: order.id },
       data: {

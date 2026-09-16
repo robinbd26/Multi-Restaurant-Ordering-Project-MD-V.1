@@ -337,6 +337,8 @@ export function serializeOrder(o: OrderRel) {
     delivery_area: o.deliveryAreaId ?? null,
     delivery_area_name: o.deliveryAreaName ?? "",
     delivery_charge: decOr0(o.deliveryCharge, 2),
+    // PHASE 4 — the flat platform fee this order paid (0 on older orders).
+    platform_fee: decOr0(o.platformFee, 2),
     delivery_estimate_minutes: o.deliveryEstimateMinutes ?? null,
     // WS-4.2 — provenance of the delivery coordinate the fee was charged
     // against (device_gps | saved_address | map_pin | unverified; "" = legacy).

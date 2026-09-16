@@ -162,7 +162,9 @@ export function BranchBar({
             ) : null}
             {context.deliveryFee != null ? (
               <span className="text-[#a0a0b0]" data-testid="home-branch-fee">
-                {t("nearestHome.deliveryFee", { fee: fmt.money(context.deliveryFee) })}
+                {context.deliveryFee === 0
+                  ? t("nearestHome.freeDelivery")
+                  : t("nearestHome.deliveryFee", { fee: fmt.money(context.deliveryFee) })}
               </span>
             ) : null}
             <span className="ms-auto flex flex-wrap items-center gap-2">{controls}</span>

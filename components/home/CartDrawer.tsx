@@ -75,6 +75,8 @@ interface DrawerQuote {
   branch: { id: number; name: string };
   subtotal: number;
   delivery_charge: number;
+  /** PHASE 4 — the flat platform fee, on delivery and pickup alike. */
+  platform_fee?: number;
   total: number;
 }
 
@@ -88,6 +90,7 @@ interface DrawerOrderResult {
   items: number;
   subtotal: number;
   deliveryFee: number;
+  platformFee: number;
   grandTotal: number;
   fulfillmentType: "delivery" | "pickup";
   pickupTimeLabel?: string;
@@ -743,6 +746,7 @@ export function CartDrawer({
         items: count,
         subtotal: quote.subtotal,
         deliveryFee: quote.delivery_charge,
+        platformFee: quote.platform_fee ?? 0,
         grandTotal: quote.total,
         fulfillmentType,
         pickupTimeLabel:
@@ -869,9 +873,19 @@ export function CartDrawer({
                   <div className="flex items-center justify-between">
                     <span className="text-[#a0a0b0]">{t("home.order.deliveryFee")}</span>
                     <span className="text-white">
-                      {orderResult.fulfillmentType === "pickup" ? t("home.order.freePickup") : fmt.money(orderResult.deliveryFee)}
+                      {orderResult.fulfillmentType === "pickup"
+                        ? t("home.order.freePickup")
+                        : orderResult.deliveryFee === 0
+                          ? t("home.order.freeDelivery")
+                          : fmt.money(orderResult.deliveryFee)}
                     </span>
                   </div>
+                  {orderResult.platformFee > 0 ? (
+                    <div className="flex items-center justify-between" data-testid="drawer-receipt-platform-fee">
+                      <span className="text-[#a0a0b0]">{t("home.order.platformFee")}</span>
+                      <span className="text-white">{fmt.money(orderResult.platformFee)}</span>
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between border-t border-white/8 pt-1.5">
                     <span className="font-bold text-white">{t("home.order.grandTotal")}</span>
                     <span className="font-display text-[1.1rem] font-extrabold text-brand-500">
@@ -1506,7 +1520,11 @@ export function CartDrawer({
                       {fulfillmentType === "pickup" ? (
                         t("home.order.freePickup")
                       ) : quote ? (
-                        fmt.money(quote.delivery_charge)
+                        quote.delivery_charge === 0 ? (
+                          t("home.order.freeDelivery")
+                        ) : (
+                          fmt.money(quote.delivery_charge)
+                        )
                       ) : quoting ? (
                         <span className="inline-flex items-center gap-1.5 text-[#a0a0b0]">
                           <span className="size-3 animate-spin rounded-full border-2 border-white/20 border-t-brand-500" />
@@ -1517,6 +1535,14 @@ export function CartDrawer({
                       )}
                     </dd>
                   </div>
+                  {quote && (quote.platform_fee ?? 0) > 0 ? (
+                    /* PHASE 4 — stated before the one order-creating tap, never folded
+                        silently into the total. */
+                    <div className="flex items-center justify-between" data-testid="drawer-quote-platform-fee">
+                      <dt className="text-[0.85rem] text-[#a0a0b0]">{t("home.order.platformFee")}</dt>
+                      <dd className="text-[0.8rem] text-white">{fmt.money(quote.platform_fee ?? 0)}</dd>
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between border-t border-white/8 pt-2">
                     <dt className="text-[0.95rem] font-bold text-white">{t("home.order.grandTotal")}</dt>
                     <dd

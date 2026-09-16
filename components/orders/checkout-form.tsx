@@ -81,6 +81,8 @@ interface Quote {
   area: { id: number; name: string; delivery_charge: number; estimated_delivery_minutes: number } | null;
   subtotal: number;
   delivery_charge: number;
+  /** PHASE 4 — the flat platform fee, on delivery and pickup alike. */
+  platform_fee?: number;
   prep_time_minutes: number | null;
   delivery_estimate_minutes: number | null;
   overall_estimate_minutes: number | null;
@@ -758,9 +760,21 @@ export function CheckoutForm({
           <div className="flex justify-between gap-3">
             <dt className="text-fg-muted">{t("checkout.summaryDeliveryCharge")}</dt>
             <dd className="font-medium text-fg-base" data-testid="summary-delivery-charge">
-              {fulfillment === "pickup" ? t("checkout.pickupNoCharge") : fmt.money(deliveryCharge)}
+              {fulfillment === "pickup"
+                ? t("checkout.pickupNoCharge")
+                : quote && deliveryCharge === 0
+                  ? t("home.order.freeDelivery")
+                  : fmt.money(deliveryCharge)}
             </dd>
           </div>
+          {quote && (quote.platform_fee ?? 0) > 0 ? (
+            <div className="flex justify-between gap-3">
+              <dt className="text-fg-muted">{t("home.order.platformFee")}</dt>
+              <dd className="font-medium text-fg-base" data-testid="summary-platform-fee">
+                {fmt.money(quote.platform_fee ?? 0)}
+              </dd>
+            </div>
+          ) : null}
           {coinDiscount > 0 ? (
             <div className="flex justify-between gap-3">
               <dt className="text-fg-muted">{t("checkout.summaryCoinDiscount")}</dt>

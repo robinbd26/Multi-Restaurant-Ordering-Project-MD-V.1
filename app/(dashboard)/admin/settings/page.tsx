@@ -46,6 +46,10 @@ export default async function AdminSettingsPage() {
             <ButtonLink href="/admin/settings/delivery-fees" variant="outline" className="w-full">
               <Icon name="money" className="size-4" /> {t("wallet.setRate")}
             </ButtonLink>
+            {/* PHASE 4 — the flat fee every order pays, with per-branch overrides. */}
+            <ButtonLink href="/admin/settings/platform-fee" variant="outline" className="w-full">
+              <Icon name="money" className="size-4" /> {t("platformFee.title")}
+            </ButtonLink>
           </CardContent>
         </Card>
         {/* req #3 — single global company logo, super admin only. */}

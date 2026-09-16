@@ -65,6 +65,8 @@ export const GET = handle(async (req: Request) => {
       // The delivery slice of `sales` (WS-2.2) — never add it back on top.
       delivery_revenue: totals.deliveryRevenue.toFixed(2),
       food_revenue: totals.foodRevenue.toFixed(2),
+      // PHASE 4 — the platform fee slice of `sales`, like delivery never added back on top.
+      platform_fee_revenue: totals.platformFeeRevenue.toFixed(2),
       refunds: totals.refunds.toFixed(2),
       commission: totals.commission.toFixed(2),
       withdrawals_paid: totals.withdrawalsPaid.toFixed(2),
