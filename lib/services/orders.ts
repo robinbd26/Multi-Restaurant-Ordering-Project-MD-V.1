@@ -26,6 +26,7 @@ import { coverageForAddress, type AddressCoverage } from "@/lib/services/address
 import { platformFeeFor } from "@/lib/services/settings";
 import { haversineKm } from "@/lib/services/geo";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
+import { isPastNightLastOrder } from "@/lib/services/coverage-window";
 import { isReceiveConfirmed } from "@/lib/services/rider-duty";
 import { nextOrderNumber } from "@/lib/services/order-number";
 import { customerProductWhere } from "@/lib/services/product-eligibility";
@@ -313,6 +314,11 @@ async function resolveBranchForCart(input: {
   if (branch.isOnHold) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
   if (!isBranchOpenNow(branch).orderable) {
     throw validationError({ branch_id: sk("errors.orders.branchClosed") });
+  }
+  // PHASE 3 — the night shift accepts its last delivery order at 03:45, so the
+  // ride can finish by 04:00. Pickup has no ride and is governed by hours alone.
+  if (isPastNightLastOrder()) {
+    throw validationError({ branch_id: sk("errors.orders.nightLastOrderPassed") });
   }
   return {
     branch,

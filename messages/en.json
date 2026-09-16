@@ -875,7 +875,8 @@
     "totalMoneyOutHint": "Withdrawals + refunds",
     "outflowWindowNote": "Withdrawal requests in the selected date range",
     "windowDaysNote": "Last {days} days (Dhaka time)",
-    "paidOn": "Paid: {date}"
+    "paidOn": "Paid: {date}",
+    "platformFeeRevenue": "Platform fee revenue"
   },
   "customer": {
     "dashboardTitle": "Customer Dashboard",
@@ -1759,7 +1760,8 @@
       "invalidQuantity": "Quantity must be a whole number between {min} and {max}.",
       "invalidPaymentMethod": "That payment method is not available.",
       "branchOnHold": "This branch has paused taking new orders. Please try again shortly.",
-      "outsideDeliveryArea": "This branch does not deliver to that address. Self-pickup is still available."
+      "outsideDeliveryArea": "This branch does not deliver to that address. Self-pickup is still available.",
+      "nightLastOrderPassed": "Night delivery takes its last order at 3:45 AM. Self-pickup is still available while the branch is open."
     },
     "catalog": {
       "onlyAssignedManagerCanModifyCatalog": "Only the assigned branch manager can modify the catalog.",
@@ -3184,7 +3186,9 @@
       "complaints": "Complaints Report",
       "marketing": "Marketing Report",
       "delivery": "Delivery Performance",
-      "attendance": "Attendance Report"
+      "attendance": "Attendance Report",
+      "expenses": "Expenses Report",
+      "withdrawals": "Rider Withdrawals Report"
     },
     "sub": {
       "sales": "Sales by day for the selected period",
@@ -3197,7 +3201,9 @@
       "complaints": "By status and recipient",
       "marketing": "Coupons and campaigns",
       "delivery": "Average delivery time",
-      "attendance": "Rider duty days"
+      "attendance": "Rider duty days",
+      "expenses": "Branch expenses by category",
+      "withdrawals": "Rider withdrawal requests by status"
     },
     "col": {
       "date": "Date",
@@ -3233,7 +3239,25 @@
       "clicked": "Clicked",
       "conversions": "Conversions",
       "discountCost": "Discount cost",
-      "category": "Category"
+      "category": "Category",
+      "entries": "Entries",
+      "commission": "Commission",
+      "expenses": "Expenses",
+      "refunds": "Refunds",
+      "profit": "Profit",
+      "requests": "Requests",
+      "pending": "Pending",
+      "approved": "Approved",
+      "paid": "Paid",
+      "rejected": "Rejected",
+      "measured": "Measured",
+      "person": "Person",
+      "post": "Post",
+      "present": "Present",
+      "late": "Late",
+      "absent": "Absent",
+      "leave": "Leave",
+      "halfDay": "Half day"
     },
     "kind": {
       "campaign": "Campaign",
