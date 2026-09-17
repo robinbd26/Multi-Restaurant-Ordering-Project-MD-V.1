@@ -209,7 +209,11 @@ export default async function HomePage() {
         // Server-rendered from our own data; no user input is interpolated.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <HomeCartProvider initialBrand={initialBrand}>
+      <HomeCartProvider
+        initialBrand={initialBrand}
+        activeBranchId={branchContext?.branchId ?? null}
+        activeBranchName={branchContext?.branch?.name ?? null}
+      >
         <Header user={user} logoUrl={logoUrl} searchIndex={menu.search} />
         <main>
           <HeroSection />

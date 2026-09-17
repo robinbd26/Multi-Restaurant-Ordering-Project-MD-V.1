@@ -810,6 +810,7 @@ export function CartDrawer({
             ) : null}
             <button
               onClick={handleClose}
+              data-testid="drawer-close"
               className="flex size-8 items-center justify-center rounded-lg border border-white/10 bg-surface-dark text-white hover:bg-[#23232e]"
               aria-label={t("home.cart.close")}
             >

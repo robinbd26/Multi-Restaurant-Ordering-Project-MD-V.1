@@ -4214,7 +4214,10 @@
     "switchTitle": "অর্ডারের শাখা বদলাবেন?",
     "switchBody": "আপনার কার্টে {current}-এর পণ্য রয়েছে। “{product}” বিক্রি করে {next}। একটি অর্ডার একটি শাখার, তাই শাখা বদলালে বর্তমান কার্ট খালি হয়ে যাবে।",
     "clearAndSwitch": "কার্ট খালি করে শাখা বদলান",
-    "differentBranch": "পণ্যটি অন্য শাখার"
+    "differentBranch": "পণ্যটি অন্য শাখার",
+    "browseSwitchTitle": "{next}-এ যাবেন?",
+    "browseSwitchBody": "আপনার কার্টে {current}-এর পণ্য রয়েছে। শাখা বদলালে কার্ট খালি হয়ে যাবে, যাতে আপনি {next} থেকে অর্ডার করতে পারেন।",
+    "keepCurrentBranch": "{current}-এই থাকুন"
   },
   "catalogue": {
     "allBranches": "সব শাখা",

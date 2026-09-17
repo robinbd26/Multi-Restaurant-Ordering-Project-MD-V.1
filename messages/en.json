@@ -4214,7 +4214,10 @@
     "switchTitle": "Switch order branch?",
     "switchBody": "Your cart contains products from {current}. “{product}” is sold by {next}. An order belongs to one branch, so switching clears the current cart.",
     "clearAndSwitch": "Clear cart and switch branch",
-    "differentBranch": "Product belongs to another branch"
+    "differentBranch": "Product belongs to another branch",
+    "browseSwitchTitle": "Switch to {next}?",
+    "browseSwitchBody": "Your cart has items from {current}. Switching branches clears the cart so you can order from {next} instead.",
+    "keepCurrentBranch": "Keep browsing {current}"
   },
   "catalogue": {
     "allBranches": "All branches",
