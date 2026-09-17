@@ -291,6 +291,21 @@ export async function setAreaHold(user: User, areaId: number, held: boolean, rea
   });
 }
 
+/**
+ * ITEM 7 — the master localities this branch already has an active coverage
+ * row for (held or not — a held row still means the branch already configured
+ * that locality, so it must not be suggested again). Used only to filter what
+ * the "Suggest areas for my branch" helper offers; it never reads inactive
+ * rows, so a re-suggested locality after a deactivation is expected.
+ */
+export async function coveredLocalityIdsForBranch(branchId: number): Promise<Set<number>> {
+  const rows = await prisma.branchDeliveryArea.findMany({
+    where: { branchId, isActive: true, localityId: { not: null } },
+    select: { localityId: true },
+  });
+  return new Set(rows.map((r) => r.localityId).filter((id): id is number => id != null));
+}
+
 /** List areas visible to the user, optional branch + status filter. */
 export async function areasForUser(
   user: User,

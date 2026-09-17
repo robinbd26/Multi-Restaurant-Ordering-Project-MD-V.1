@@ -1048,7 +1048,10 @@
     "deleteNamed": "You are about to delete the branch “{name}”.",
     "deleteArchiveWarning": "If this branch has any orders, products, delivery areas or other historical data it will be ARCHIVED (kept for reporting, hidden from customers) instead of permanently deleted.",
     "logoKeepHint": "Leave empty to keep the current logo",
-    "archivedBadge": "Archived"
+    "archivedBadge": "Archived",
+    "zoneField": "Zone / Area",
+    "zoneFieldHint": "Which master zone this branch is based in (Gulshan, Banani, …). Seeds the \"Suggest areas\" helper on Delivery Areas.",
+    "zoneNone": "No zone set"
   },
   "catalog": {
     "title": "Catalog Management",
@@ -3805,7 +3808,15 @@
     "locality": "Area on master list",
     "noLocality": "Not linked",
     "coverageWindowHint": "Day runs 11:00 to 22:45, night 22:45 to 04:00. All day covers both shifts.",
-    "localityHint": "Link this row to the master list so an address in that area is matched automatically."
+    "localityHint": "Link this row to the master list so an address in that area is matched automatically.",
+    "suggestNoZone": "Set a Zone / Area on your branch profile to use the area suggestion helper.",
+    "suggestAreas": "Suggest areas for my branch",
+    "suggestTitle": "Suggested areas — {zone}",
+    "suggestSubtitle": "From your branch's zone. Review, edit or remove any row — nothing is saved until you choose Save.",
+    "suggestAllCovered": "Every area in your zone is already covered.",
+    "suggestSave": "Save selected areas",
+    "suggestSaved": "{count} area(s) saved.",
+    "suggestNoneSelected": "Select at least one area to save."
   },
   "assignment": {
     "newOrderTitle": "New order assigned",

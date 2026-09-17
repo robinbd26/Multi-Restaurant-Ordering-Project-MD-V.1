@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { DeliveryAreaExplorer } from "@/components/delivery/delivery-area-explorer";
+import { SuggestAreasPanel } from "@/components/delivery/suggest-areas-panel";
 import { Icon } from "@/components/layout/icons";
 import { ButtonLink } from "@/components/ui/button";
 import { requireRole } from "@/lib/auth/session";
@@ -12,7 +13,8 @@ import {
 } from "@/lib/delivery-areas/query";
 import { getT } from "@/lib/i18n/server";
 import { branchForManager } from "@/lib/selectors";
-import { deliveryAreaListForUser } from "@/lib/services/delivery-areas";
+import { activeZonesWithLocalities } from "@/lib/services/area-master";
+import { coveredLocalityIdsForBranch, deliveryAreaListForUser } from "@/lib/services/delivery-areas";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
@@ -38,6 +40,26 @@ export default async function BranchManagerDeliveryAreasPage({
     page: initial.page,
     pageSize: initial.pageSize,
   }).toString();
+
+  // ITEM 7 — "Suggest areas for my branch": pre-fill the master localities in
+  // the branch's own location tag (its zone) that it does not already cover.
+  // No zone tag set on the branch → nothing to suggest from (never guessed).
+  let suggestZoneId: number | null = null;
+  let suggestZoneName: string | null = null;
+  let suggestCandidates: { id: number; name: string }[] = [];
+  if (branch?.zoneId != null) {
+    const [zones, covered] = await Promise.all([
+      activeZonesWithLocalities(),
+      coveredLocalityIdsForBranch(branch.id),
+    ]);
+    const zone = zones.find((z) => z.id === branch.zoneId);
+    if (zone) {
+      suggestZoneId = zone.id;
+      suggestZoneName = zone.name;
+      suggestCandidates = zone.localities.filter((l) => !covered.has(l.id));
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -53,13 +75,16 @@ export default async function BranchManagerDeliveryAreasPage({
           </ButtonLink>
         }
       />
-      <DeliveryAreaExplorer
-        initial={initial}
-        initialQuery={initialQuery}
-        isSuperAdmin={false}
-        assignedBranchName={branch?.name}
-        listPath="/branch-manager/delivery-areas"
-      />
+      <SuggestAreasPanel zoneId={suggestZoneId} zoneName={suggestZoneName} candidates={suggestCandidates} />
+      <div className="mt-6">
+        <DeliveryAreaExplorer
+          initial={initial}
+          initialQuery={initialQuery}
+          isSuperAdmin={false}
+          assignedBranchName={branch?.name}
+          listPath="/branch-manager/delivery-areas"
+        />
+      </div>
     </>
   );
 }

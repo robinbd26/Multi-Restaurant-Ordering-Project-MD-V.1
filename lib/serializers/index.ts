@@ -95,7 +95,10 @@ export function serializeUser(u: UserWithApprover) {
 }
 
 // ── Branch ────────────────────────────────────────────────────────────
-type BranchWithManager = Branch & { manager?: Pick<User, "firstName" | "lastName" | "username"> | null };
+type BranchWithManager = Branch & {
+  manager?: Pick<User, "firstName" | "lastName" | "username"> | null;
+  zone?: { name: string } | null;
+};
 
 export function serializeBranch(b: BranchWithManager) {
   const managerName = b.manager ? fullName(b.manager) || b.manager.username : null;
@@ -107,6 +110,11 @@ export function serializeBranch(b: BranchWithManager) {
     email: b.email,
     latitude: dec(b.latitude, 7),
     longitude: dec(b.longitude, 7),
+    // ITEM 7 — the branch's location tag (a DeliveryZone id), used by the
+    // branch-manager "suggest areas" helper. Just the id/name — this is not a
+    // coverage grant, so it never joins delivery-area data.
+    zone_id: b.zoneId ?? null,
+    zone_name: b.zone?.name ?? null,
     delivery_radius_km: decOr0(b.deliveryRadiusKm, 1),
     brand_type: b.brandType,
     prep_time_minutes: b.prepTimeMinutes,
