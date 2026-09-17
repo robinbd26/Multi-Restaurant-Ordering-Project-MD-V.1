@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 
-import { Icon } from "@/components/layout/icons";
 import { PageHeader } from "@/components/layout/page-header";
 import { CouponTable, type CouponRowT } from "@/components/marketing/coupon-table";
-import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getJSON } from "@/lib/api/client";
@@ -17,9 +15,11 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * /branch-manager/coupons — PHASE 5. The same coupon system marketing uses,
- * scoped by the API to this manager's own branch: they see, create and end only
- * coupons valid at their branch.
+ * /branch-manager/coupons — ITEM 3: READ-ONLY. A branch manager sees which
+ * coupons apply to their branch, but creating, editing, ending and deleting a
+ * coupon is now super admin / marketing only (app/api/marketing/coupons/**).
+ * No "+ New Coupon" action, no Edit/Delete column — there is nothing here for
+ * a manager to act on, only to check.
  */
 export default async function BranchManagerCouponsPage() {
   const { t } = await getT();
@@ -28,28 +28,12 @@ export default async function BranchManagerCouponsPage() {
 
   return (
     <>
-      <PageHeader
-        title={t("pages.couponsTitle")}
-        subtitle={t("marketingX.branchCouponsSub")}
-        action={
-          <ButtonLink href="/branch-manager/coupons/create" data-testid="bm-coupon-create">
-            <Icon name="plus" className="size-4" /> {t("marketingX.newCoupon")}
-          </ButtonLink>
-        }
-      />
+      <PageHeader title={t("pages.couponsTitle")} subtitle={t("marketingX.branchCouponsSub")} />
       <Card>
         {data.results.length === 0 ? (
-          <EmptyState
-            title={t("marketingX.noCoupons")}
-            description={t("marketingX.noCouponsDesc")}
-            action={
-              <ButtonLink href="/branch-manager/coupons/create" size="sm">
-                {t("marketingX.newCoupon")}
-              </ButtonLink>
-            }
-          />
+          <EmptyState title={t("marketingX.noCoupons")} description={t("marketingX.noCouponsReadOnlyDesc")} />
         ) : (
-          <CouponTable coupons={data.results} editBase="/branch-manager/coupons" showScope={false} />
+          <CouponTable coupons={data.results} editBase="/branch-manager/coupons" showScope={false} readOnly />
         )}
       </Card>
     </>

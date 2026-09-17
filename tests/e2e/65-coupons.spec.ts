@@ -6,10 +6,12 @@ import { API_BASE, newSession, setLocale } from "./helpers";
  * PHASE 5 — ONE coupon system.
  *
  *  - scope: branch_id null = platform-wide; set = only that branch's orders;
- *  - a branch manager sees / creates / ends only their own branch's coupons,
- *    whatever branch_id they submit;
  *  - one redemption per customer by default (editable), plus an optional total cap;
  *  - a scheduled end AND a manual "End now".
+ *
+ * ITEM 3 — a branch manager is READ-ONLY: they see which coupons apply to
+ * their branch, but create/edit/end/delete are super admin and marketing
+ * only. That role restriction is pinned here.
  *
  * Orders are PICKUP at the seeded Main Branch (managed by the seeded
  * branch_manager), so no delivery coverage is involved.
@@ -160,41 +162,59 @@ test.describe("Coupons — one system", () => {
     await customer.context.close();
   });
 
-  test("a branch manager is confined to their own branch's coupons", async ({ browser }) => {
+  test("a branch manager reads only their own branch's coupons, and cannot write at all", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
     const { branchId } = await mainBranch(admin.req);
     const elsewhere = await otherBranch(admin.req);
     const platform = await createCoupon(admin.req, { code: uniqCode("PLAT") });
     const foreign = await createCoupon(admin.req, { code: uniqCode("THEIRS"), branch_id: elsewhere });
+    const mine = await createCoupon(admin.req, { code: uniqCode("MINE"), branch_id: branchId });
 
     const manager = await newSession(browser, "branch_manager");
-    // Whatever they ask for, it lands on their own branch — never platform-wide.
-    const mine = await createCoupon(manager.req, { code: uniqCode("MINE"), branch_id: elsewhere });
-    expect(mine.branch_id, "forced to the manager's branch").toBe(branchId);
-    const unscoped = await createCoupon(manager.req, { code: uniqCode("MINE2"), branch_id: null });
-    expect(unscoped.branch_id, "a manager cannot create a platform-wide coupon").toBe(branchId);
 
+    // ITEM 3 — read is still scoped to the manager's own branch…
     const list = (await (await manager.req.get(`${API_BASE}/api/marketing/coupons/`)).json()).results as CouponJson[];
     expect(list.every((c) => c.branch_id === branchId), "list is scoped to the manager's branch").toBe(true);
     expect(list.some((c) => c.id === mine.id)).toBe(true);
+    expect(list.some((c) => c.id === platform.id || c.id === foreign.id), "no platform/other-branch coupons").toBe(false);
+    expect((await manager.req.get(`${API_BASE}/api/marketing/coupons/${mine.id}/`)).status(), "reading their own is fine").toBe(200);
 
+    // …but every write is refused outright, own-branch coupon or not.
+    const createAttempt = await manager.req.post(`${API_BASE}/api/marketing/coupons/`, {
+      data: { code: uniqCode("NOPE"), discount_type: "fixed", value: "10", min_order: "0", max_uses: 0, branch_id: branchId },
+    });
+    expect(createAttempt.status(), "cannot create, even for their own branch").toBe(403);
+    expect(
+      (await manager.req.patch(`${API_BASE}/api/marketing/coupons/${mine.id}/`, { data: { value: "1" } })).status(),
+      "cannot edit their own branch's coupon",
+    ).toBe(403);
+    expect(
+      (await manager.req.delete(`${API_BASE}/api/marketing/coupons/${mine.id}/`)).status(),
+      "cannot delete their own branch's coupon",
+    ).toBe(403);
+    expect(
+      (await manager.req.post(`${API_BASE}/api/marketing/coupons/${mine.id}/end`)).status(),
+      "cannot end their own branch's coupon",
+    ).toBe(403);
+    // Another branch's / platform-wide coupons: also refused (403, since the
+    // write check runs before any scope lookup — never leaks a 404-vs-403 tell).
     for (const other of [platform, foreign]) {
-      expect((await manager.req.get(`${API_BASE}/api/marketing/coupons/${other.id}/`)).status(), "cannot read").toBe(404);
-      expect(
-        (await manager.req.patch(`${API_BASE}/api/marketing/coupons/${other.id}/`, { data: { value: "1" } })).status(),
-        "cannot edit",
-      ).toBe(404);
-      expect((await manager.req.post(`${API_BASE}/api/marketing/coupons/${other.id}/end`)).status(), "cannot end").toBe(404);
+      expect((await manager.req.patch(`${API_BASE}/api/marketing/coupons/${other.id}/`, { data: { value: "1" } })).status()).toBe(403);
+      expect((await manager.req.post(`${API_BASE}/api/marketing/coupons/${other.id}/end`)).status()).toBe(403);
     }
-    // Moving their own coupon to another branch is ignored, not obeyed.
-    const moved = await manager.req.patch(`${API_BASE}/api/marketing/coupons/${mine.id}/`, { data: { branch_id: elsewhere } });
-    expect(moved.status()).toBe(200);
-    expect(((await moved.json()) as CouponJson).branch_id).toBe(branchId);
 
-    // The page renders with the Status and scope-free table.
+    // The page renders read-only: the coupon shows, no Edit/Delete link, no create action.
     await manager.page.goto("/branch-manager/coupons");
-    await expect(manager.page.getByTestId(`coupon-row-${mine.code}`)).toBeVisible();
+    const row = manager.page.getByTestId(`coupon-row-${mine.code}`);
+    await expect(row).toBeVisible();
     await expect(manager.page.getByTestId(`coupon-row-${foreign.code}`)).toHaveCount(0);
+    await expect(row.getByRole("link", { name: /edit/i })).toHaveCount(0);
+    await expect(manager.page.getByRole("link", { name: /new coupon/i })).toHaveCount(0);
+    await expect(manager.page.getByTestId("bm-coupon-create")).toHaveCount(0);
+
+    // The old create/edit routes are gone entirely for this role.
+    const createPage = await manager.page.goto("/branch-manager/coupons/create");
+    expect(createPage?.status(), "the create route no longer exists").toBe(404);
 
     // Customers still cannot touch the coupon API at all.
     const customer = await newSession(browser, "customer");
@@ -205,7 +225,7 @@ test.describe("Coupons — one system", () => {
     await customer.context.close();
   });
 
-  test("the coupon form: scope choice for marketing, locked scope for a manager", async ({ browser }) => {
+  test("the coupon form: scope choice for marketing, and super admin's own entry point", async ({ browser }) => {
     const marketing = await newSession(browser, "marketing");
     await marketing.page.goto("/marketing/coupons/create");
     await expect(marketing.page.getByTestId("coupon-scope")).toBeVisible();
@@ -220,10 +240,11 @@ test.describe("Coupons — one system", () => {
     await expect(row.getByTestId("coupon-state")).toHaveText(/Live/i);
     await marketing.context.close();
 
-    const manager = await newSession(browser, "branch_manager");
-    await manager.page.goto("/branch-manager/coupons/create");
-    await expect(manager.page.getByTestId("coupon-scope-locked")).toContainText("Main Branch");
-    await expect(manager.page.getByTestId("coupon-scope")).toHaveCount(0);
-    await manager.context.close();
+    // Super admin keeps its own full read/write entry point (item 3 only
+    // narrows branch_manager; super admin and marketing are unaffected).
+    const admin = await newSession(browser, "super_admin");
+    await admin.page.goto("/admin/coupons/create");
+    await expect(admin.page.getByTestId("coupon-scope")).toBeVisible();
+    await admin.context.close();
   });
 });

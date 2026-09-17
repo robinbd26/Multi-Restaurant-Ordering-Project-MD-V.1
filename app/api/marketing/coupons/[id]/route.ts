@@ -41,8 +41,9 @@ export const GET = handle(async (_req: Request, ctx: Ctx) => {
 });
 
 // PATCH /api/marketing/coupons/[id]
+// ITEM 3 — edit is super admin / marketing only; a branch manager is read-only.
 export const PATCH = handle(async (req: Request, ctx: Ctx) => {
-  const me = await requireApiRole("marketing", "super_admin", "branch_manager");
+  const me = await requireApiRole("marketing", "super_admin");
   const { id } = await ctx.params;
   const { coupon: existing, scope } = await scopedCoupon(me, id);
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -76,8 +77,9 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
 // is onDelete: SetNull, so a real delete quietly nulled couponId on every
 // historical order and destroyed the record of why they were discounted. The
 // SERVER decides which happened and says so, like the branch delete verdict.
+// ITEM 3 — delete is super admin / marketing only; a branch manager is read-only.
 export const DELETE = handle(async (_req: Request, ctx: Ctx) => {
-  const me = await requireApiRole("marketing", "super_admin", "branch_manager");
+  const me = await requireApiRole("marketing", "super_admin");
   const { id } = await ctx.params;
   const { coupon } = await scopedCoupon(me, id);
   const action = await archiveOrDeleteCoupon(coupon.id);

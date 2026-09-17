@@ -29,10 +29,12 @@ export const GET = handle(async (req: Request) => {
 });
 
 // POST /api/marketing/coupons
-// PHASE 5 — super admin and marketing may create platform-wide or branch coupons;
-// a branch manager's coupon is forced to their own branch whatever they submit.
+// ITEM 3 — creation is SUPER ADMIN and MARKETING only. A branch manager is
+// read-only on coupons (sees what applies to their branch; cannot create,
+// edit, end or delete) — couponScopeForUser still exists for their GET, but
+// write access no longer includes the role at all.
 export const POST = handle(async (req: Request) => {
-  const me = await requireApiRole("marketing", "super_admin", "branch_manager");
+  const me = await requireApiRole("marketing", "super_admin");
   const scope = await couponScopeForUser(me);
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const data = parseCouponBody(body);

@@ -13,8 +13,9 @@ type Ctx = { params: Promise<{ id: string }> };
 // "ended", shared by validation, the list and reports. A coupon that has already
 // ended keeps its original end time, so the record says when it really ended.
 // Orders that already used it keep their discount.
+// ITEM 3 — ending a coupon early is super admin / marketing only.
 export const POST = handle(async (_req: Request, ctx: Ctx) => {
-  const me = await requireApiRole("marketing", "super_admin", "branch_manager");
+  const me = await requireApiRole("marketing", "super_admin");
   const { id } = await ctx.params;
   const scope = await couponScopeForUser(me);
   const couponId = Number(id);

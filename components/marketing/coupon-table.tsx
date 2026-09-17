@@ -42,15 +42,23 @@ const STATE_KEY: Record<string, string> = {
  * screens so the two can never describe a coupon differently. The status column
  * is the derived state (live / scheduled / paused / ended), not the raw switch:
  * an enabled coupon whose end time has passed is shown as ended, because it is.
+ *
+ * ITEM 3 — a branch manager is READ-ONLY: `readOnly` drops the Actions column
+ * (and its header) entirely rather than disabling the controls, so there is no
+ * dead Edit/Delete UI sitting in front of someone who cannot use it. The API
+ * enforces the same rule independently (app/api/marketing/coupons/**), so this
+ * is a courtesy, not the guard.
  */
 export async function CouponTable({
   coupons,
   editBase,
   showScope,
+  readOnly = false,
 }: {
   coupons: CouponRowT[];
   editBase: string;
   showScope: boolean;
+  readOnly?: boolean;
 }) {
   const { t, fmt } = await getT();
 
@@ -63,7 +71,7 @@ export async function CouponTable({
         t("marketingX.usageLabel"),
         ...(showScope ? [t("marketingX.scopeLabel")] : []),
         t("pages.colStatus"),
-        t("pages.colActions"),
+        ...(readOnly ? [] : [t("pages.colActions")]),
       ]}
     >
       {coupons.map((c) => (
@@ -96,17 +104,19 @@ export async function CouponTable({
               {t(STATE_KEY[c.state] ?? "marketingX.statePaused")}
             </Badge>
           </Td>
-          <Td className="text-right">
-            <span className="flex items-center justify-end gap-2">
-              <Link
-                href={`${editBase}/${c.id}/edit`}
-                className="text-sm font-medium text-fg-muted hover:text-brand-600 hover:underline"
-              >
-                {t("common.edit")}
-              </Link>
-              <CouponDeleteButton couponId={c.id} listPath={editBase} />
-            </span>
-          </Td>
+          {readOnly ? null : (
+            <Td className="text-right">
+              <span className="flex items-center justify-end gap-2">
+                <Link
+                  href={`${editBase}/${c.id}/edit`}
+                  className="text-sm font-medium text-fg-muted hover:text-brand-600 hover:underline"
+                >
+                  {t("common.edit")}
+                </Link>
+                <CouponDeleteButton couponId={c.id} listPath={editBase} />
+              </span>
+            </Td>
+          )}
         </tr>
       ))}
     </Table>

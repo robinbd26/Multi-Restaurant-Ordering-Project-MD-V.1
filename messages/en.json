@@ -3152,7 +3152,8 @@
     "stateArchived": "Archived",
     "perCustomerShort": "{count} per customer",
     "perCustomerUnlimited": "No per-customer limit",
-    "branchCouponsSub": "Coupons that apply to your branch only"
+    "branchCouponsSub": "Coupons that apply to your branch only",
+    "noCouponsReadOnlyDesc": "No coupons currently apply to your branch."
   },
   "mgmtReports": {
     "hubSub": "Every business report in one place",
