@@ -799,7 +799,16 @@ export async function updateOrderStatus(input: {
 }): Promise<Order> {
   const { order, newStatus, user, reason = "", delayMinutes = null } = input;
   const allowed = ALLOWED_TRANSITIONS[order.status as OrderStatus] ?? [];
-  if (!allowed.includes(newStatus)) {
+  // ITEM 6 — a pickup order has no rider leg, so "ready" → "delivered" (the
+  // customer walked out with it) is a legal move directly for fulfillmentType
+  // "pickup" ONLY, skipping the delivery-only picked_up/on_the_way detour. The
+  // normal ready → picked_up edge is left untouched (still reachable, e.g. an
+  // order staged before this change), so nothing already at "picked_up" is
+  // stranded; "delivered" is what every report already keys a completed sale
+  // off, so this needs no change anywhere else.
+  const pickupSkipsToDelivered =
+    order.fulfillmentType === "pickup" && order.status === "ready" && newStatus === "delivered";
+  if (!allowed.includes(newStatus) && !pickupSkipsToDelivered) {
     // PHASE J — an illegal move is a STATE CONFLICT, not a bad field: 409.
     throw conflict(sk("errors.orders.cannotTransitionFromStatus", { status: `@:orderStatus.${order.status}` }));
   }

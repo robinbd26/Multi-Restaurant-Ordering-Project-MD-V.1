@@ -185,7 +185,12 @@ export async function PaymentStatusCard({ order }: { order: OrderWithPayment }) 
             <p className="text-sm text-fg-muted">
               {settled
                 ? t("payments.codSettled")
-                : t("payments.codNotice", { amount: fmt.money(order.total_amount) })}
+                : t(
+                    // ITEM 6 — a pickup order is never handed to a rider, so
+                    // "pay the rider" is simply wrong for it.
+                    order.fulfillment_type === "pickup" ? "payments.codNoticePickup" : "payments.codNotice",
+                    { amount: fmt.money(order.total_amount) },
+                  )}
             </p>
           </CardContent>
         </Card>

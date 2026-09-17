@@ -11,7 +11,7 @@ import { ApiError, getJSON } from "@/lib/api/client";
 import { requireRole } from "@/lib/auth/session";
 import { BM_NEXT_STATUS } from "@/lib/constants";
 import { getT } from "@/lib/i18n/server";
-import type { Order, RiderProfile } from "@/types";
+import type { Order, OrderStatus, RiderProfile } from "@/types";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
@@ -31,10 +31,19 @@ export default async function BMOrderDetailPage({ params }: { params: Promise<{ 
     throw err;
   }
 
-  // Riders assigned to this manager's own branch (branch-manager-scoped endpoint).
-  const riders = await getJSON<RiderProfile[]>("/riders/branch/").catch(
-    () => [] as RiderProfile[],
-  );
+  // ITEM 6 — a pickup order has no rider leg. Riders are only fetched (and
+  // the Assign Rider card only shown) for delivery orders.
+  const isPickup = order.fulfillment_type === "pickup";
+  const riders = isPickup
+    ? []
+    : await getJSON<RiderProfile[]>("/riders/branch/").catch(() => [] as RiderProfile[]);
+  // From "ready", a pickup order skips straight to "delivered" (its actual
+  // "Picked Up (Done)" step — lib/services/orders.ts allows this transition
+  // directly for pickup) instead of the delivery-only picked_up/on_the_way
+  // chain. Every other status offers the same next steps regardless of
+  // fulfillment type.
+  const nextStatuses: OrderStatus[] =
+    isPickup && order.status === "ready" ? ["delivered", "cancelled"] : (BM_NEXT_STATUS[order.status] ?? []);
 
   return (
     <>
@@ -53,10 +62,11 @@ export default async function BMOrderDetailPage({ params }: { params: Promise<{ 
       />
 
       <OrderDetailCard order={order}>
-        <OrderStatusActions orderId={order.id} nextStatuses={BM_NEXT_STATUS[order.status] ?? []} />
+        <OrderStatusActions orderId={order.id} nextStatuses={nextStatuses} pickup={isPickup} />
       </OrderDetailCard>
 
-      {["accepted", "preparing", "ready"].includes(order.status) ? (
+      {/* ITEM 6 — no assign-rider step for a pickup order: there is no rider. */}
+      {!isPickup && ["accepted", "preparing", "ready"].includes(order.status) ? (
         <Card className="mt-6 max-w-xl">
           <CardHeader title={t("branchManager.assignRider")} subtitle={t("branchManager.assignRiderSub")} />
           <CardContent>

@@ -171,7 +171,9 @@
     "on_the_way": "On the Way",
     "delayed": "Delayed",
     "delivered": "Delivered",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "readyForPickup": "Ready for Pickup",
+    "pickedUpDone": "Picked Up (Done)"
   },
   "payment": {
     "cash": "Cash on Delivery",
@@ -985,7 +987,8 @@
     "couponPlaceholder": "Coupon code (optional)",
     "nagadHint": "Pay to the branch's Nagad number",
     "rocketHint": "Pay to the branch's Rocket number",
-    "bankHint": "Transfer to the branch's bank account — the branch verifies the payment before preparation."
+    "bankHint": "Transfer to the branch's bank account — the branch verifies the payment before preparation.",
+    "nextPickedUpDone": "Mark Picked Up (Done)"
   },
   "branches": {
     "title": "Branches",
@@ -3999,7 +4002,8 @@
     "queueEmptyDesc": "Manual bKash submissions appear here the moment a customer sends one.",
     "rejectReasonHint": "The customer sees this word for word, so say what they should do next.",
     "rejectReasonPlaceholder": "e.g. This TrxID is not in our bKash statement.",
-    "errRejectReasonRequired": "Write why the payment is being rejected — the customer will see this."
+    "errRejectReasonRequired": "Write why the payment is being rejected — the customer will see this.",
+    "codNoticePickup": "Pay {amount} in cash when you collect your order."
   },
   "orderWorkflow": {
     "history": "Status history",

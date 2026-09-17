@@ -38,9 +38,17 @@ const NEXT_LABEL_KEYS: Partial<Record<OrderStatus, string>> = {
 export function OrderStatusActions({
   orderId,
   nextStatuses,
+  pickup = false,
 }: {
   orderId: number;
   nextStatuses: OrderStatus[];
+  /**
+   * ITEM 6 — a pickup order's "delivered" transition IS its "Picked Up
+   * (Done)" step (lib/services/orders.ts allows ready → delivered directly
+   * for pickup orders), so the button needs pickup wording rather than the
+   * delivery-flow "Mark as Delivered".
+   */
+  pickup?: boolean;
 }) {
   const { t, fmt } = useTranslation();
   const [pending, startTransition] = useTransition();
@@ -95,7 +103,11 @@ export function OrderStatusActions({
           onClick={() => advance(status)}
         >
           {pending ? <Spinner className="size-3.5 border-white/40 border-t-white" /> : null}
-          {NEXT_LABEL_KEYS[status] ? t(NEXT_LABEL_KEYS[status]!) : t(`orderStatus.${status}`)}
+          {pickup && status === "delivered"
+            ? t("orders.nextPickedUpDone")
+            : NEXT_LABEL_KEYS[status]
+              ? t(NEXT_LABEL_KEYS[status]!)
+              : t(`orderStatus.${status}`)}
         </Button>
       ))}
       {canDelay && !delayOpen ? (
