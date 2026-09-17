@@ -30,12 +30,15 @@ export const POST = handle(async (req: Request) => {
     description?: string;
     is_active?: boolean;
     branch_id?: number | string | null;
+    brand?: string | null;
   };
   const category = await createCategory(me, {
     name: body.name ?? "",
     description: body.description,
     isActive: body.is_active,
     branchId: body.branch_id,
+    // req #3 — "cheez" | "madchef" | "" ("" = serves BOTH brands).
+    brand: body.brand,
   });
   return created(serializeCategory(category));
 });

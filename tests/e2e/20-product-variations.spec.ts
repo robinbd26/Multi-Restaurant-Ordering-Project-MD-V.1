@@ -49,6 +49,10 @@ test.describe("Part A: product variations + brand type", () => {
     // Category selection is mandatory (req #10) — pick the branch's category.
     await page.selectOption('select[name="category"]', { index: 1 });
 
+    // req #4 — Variations is optional and collapsed by default; open it first.
+    const toggle = page.getByTestId("variations-toggle");
+    if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+
     // Two variations.
     const rows = page.getByTestId("variation-row");
     await page.getByRole("button", { name: /add variation/i }).click();

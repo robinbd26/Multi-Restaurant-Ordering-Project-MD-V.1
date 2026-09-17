@@ -261,6 +261,8 @@ export async function saveCategoryAction(
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? ""),
       is_active: formData.get("is_active") === "on",
+      // req #3 — brand scope; "" (the field's default) = serves BOTH brands.
+      brand: String(formData.get("brand") ?? ""),
     };
     if (categoryId === null) {
       await sendJSON("/categories/", "POST", payload);
@@ -425,6 +427,8 @@ export async function adminCreateCategoryAction(
       description: String(formData.get("description") ?? ""),
       branch_id: branchValue === "" ? "global" : branchValue,
       is_active: true,
+      // req #3 — "cheez" | "madchef" | "" ("" = serves BOTH brands).
+      brand: String(formData.get("brand") ?? ""),
     });
     revalidatePath("/admin/categories");
     return { error: null, success: await tr("adminExtras.categoryCreated") };
@@ -912,7 +916,6 @@ export async function saveDeliverySettingsAction(payload: Record<string, unknown
   try {
     await sendJSON("/branch-manager/delivery-settings/", "PATCH", payload);
     revalidatePath("/branch-manager/delivery-zone");
-    revalidatePath("/branch-manager/delivery-hours");
     return { error: null, success: await tr("bmExtras.settingsSaved") };
   } catch (err) {
     return await errorState(err);
@@ -926,7 +929,7 @@ export async function addTimeSlotAction(payload: {
 }): Promise<ActionState> {
   try {
     await sendJSON("/branch-manager/time-slots/", "POST", payload);
-    revalidatePath("/branch-manager/delivery-hours");
+    revalidatePath("/branch-manager/delivery-zone");
     return { error: null, success: await tr("bmExtras.slotAdded") };
   } catch (err) {
     return await errorState(err);
@@ -936,7 +939,7 @@ export async function addTimeSlotAction(payload: {
 export async function deleteTimeSlotAction(slotId: number): Promise<ActionState> {
   try {
     await sendJSON(`/branch-manager/time-slots/${slotId}/`, "DELETE");
-    revalidatePath("/branch-manager/delivery-hours");
+    revalidatePath("/branch-manager/delivery-zone");
     return { error: null, success: await tr("bmExtras.slotDeleted") };
   } catch (err) {
     return await errorState(err);

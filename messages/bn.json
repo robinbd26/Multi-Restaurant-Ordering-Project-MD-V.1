@@ -66,7 +66,7 @@
     "branches": "শাখাসমূহ",
     "branchManagement": "শাখা ব্যবস্থাপনা",
     "newBranch": "নতুন শাখা",
-    "catalog": "ক্যাটালগ",
+    "catalog": "পণ্য",
     "orders": "অর্ডারসমূহ",
     "myDeliveries": "আমার ডেলিভারি",
     "restaurants": "রেস্টুরেন্ট",
@@ -133,7 +133,7 @@
   },
   "navGroup": {
     "people": "ব্যবহারকারী",
-    "catalog": "ক্যাটালগ",
+    "catalog": "পণ্য",
     "orders": "অর্ডার",
     "customers": "কাস্টমার",
     "delivery": "ডেলিভারি অপারেশন",
@@ -1034,7 +1034,7 @@
     "archivedBadge": "আর্কাইভ করা"
   },
   "catalog": {
-    "title": "ক্যাটালগ ব্যবস্থাপনা",
+    "title": "পণ্য",
     "subtitle": "আপনার শাখার ক্যাটাগরি ও প্রোডাক্ট",
     "category": "ক্যাটাগরি",
     "product": "প্রোডাক্ট",
@@ -1084,9 +1084,17 @@
     "branch": "ব্রাঞ্চ",
     "brand": "ব্র্যান্ড",
     "selectBrand": "ব্র্যান্ড নির্বাচন করুন",
+    "basePrice": "বেস প্রাইস (৳)",
+    "basePriceHint": "ডিফল্ট ভ্যারিয়েশনের দামের সাথে সিঙ্ক হয়।",
+    "categoryBrand": "ব্র্যান্ড স্কোপ",
+    "categoryBrandHint": "নির্বাচিত ব্র্যান্ডের প্রোডাক্টই কেবল এই ক্যাটাগরিতে পাবে। \"উভয়\" দিলে সব ব্র্যান্ডের জন্য প্রযোজ্য থাকবে।",
     "variations": "ভ্যারিয়েশন",
     "variationsHint": "অন্তত একটি ক্রয়যোগ্য সাইজ/অপশন যোগ করুন।",
     "addVariation": "ভ্যারিয়েশন যোগ করুন",
+    "variationsSummary": "{n}টি সংরক্ষিত",
+    "showVariations": "ভ্যারিয়েশন দেখান",
+    "hideVariations": "ভ্যারিয়েশন লুকান",
+    "variationsOptional": "ঐচ্ছিক — ভিন্ন সাইজ বা অপশন থাকলেই খুলুন।",
     "variationName": "নাম",
     "variationNamePlaceholder": "যেমন: ছোট",
     "variationSize": "সাইজ লেবেল",
@@ -1108,6 +1116,8 @@
     "selectCategory": "একটি ক্যাটাগরি নির্বাচন করুন",
     "globalCategory": "গ্লোবাল",
     "noCategoriesContactAdmin": "এই শাখার জন্য এখনও কোনো ক্যাটাগরি নেই। অনুগ্রহ করে সুপার অ্যাডমিনের সাথে যোগাযোগ করুন।",
+    "noCategoriesForBrand": "এই ব্র্যান্ডের জন্য এখনও কোনো ক্যাটাগরি নেই। উভয় ব্র্যান্ডের জন্য প্রযোজ্য ক্যাটাগরি বেছে নিন, অথবা সুপার অ্যাডমিনকে যোগ করতে বলুন।",
+    "branchLockedHint": "আপনার লগইন করা ব্রাঞ্চে লক করা।",
     "deleteProductConfirm": "{branch} থেকে “{name}” মুছবেন? এটি একটি সফট ডিলিট: পণ্যটি সঙ্গে সঙ্গে মেনু, সার্চ ও চেকআউট থেকে সরে যাবে, পুরোনো অর্ডারের তথ্য অপরিবর্তিত থাকবে, এবং প্রশাসকের কাছে নিষ্ক্রিয় তালিকায় দেখা যাবে।",
     "imageKeepHint": "বর্তমান ছবি রাখতে খালি রাখুন",
     "actionsFor": "{name}-এর জন্য অ্যাকশন",
@@ -1136,7 +1146,9 @@
     "variationNumber": "ভ্যারিয়েশন {n}",
     "saveChanges": "পরিবর্তন সংরক্ষণ করুন",
     "backToProducts": "পণ্যে ফিরে যান",
-    "imageFormatsHint": "JPG, PNG, WebP বা AVIF · সর্বোচ্চ {n} MB · WebP-তে রূপান্তরিত হবে"
+    "imageFormatsHint": "JPG, PNG, WebP বা AVIF · সর্বোচ্চ {n} MB · WebP-তে রূপান্তরিত হবে",
+    "imageDropTitle": "টেনে আনুন বা ক্লিক করে আপলোড করুন",
+    "imageChange": "ছবি পরিবর্তন করুন"
   },
   "users": {
     "allUsers": "সকল ব্যবহারকারী",
@@ -1776,6 +1788,7 @@
       "selectedManagerNotFoundOrNotApproved": "নির্বাচিত ম্যানেজার পাওয়া যায়নি বা অনুমোদিত নন।",
       "selectBrand": "একটি ব্র্যান্ড নির্বাচন করুন।",
       "brandNotAllowedForBranch": "নির্বাচিত ব্রাঞ্চের জন্য এই ব্র্যান্ড অনুমোদিত নয়।",
+      "categoryBrandMismatch": "নির্বাচিত ক্যাটাগরিটি ভিন্ন ব্র্যান্ডের। একই ব্র্যান্ডের ক্যাটাগরি, অথবা উভয় ব্র্যান্ডের জন্য প্রযোজ্য ক্যাটাগরি বেছে নিন।",
       "invalidBrandType": "অবৈধ ব্র্যান্ড টাইপ।",
       "variationsInvalid": "ভ্যারিয়েশন ডেটা অবৈধ।",
       "variationsRequired": "অন্তত একটি ভ্যারিয়েশন প্রয়োজন।",
@@ -3404,7 +3417,9 @@
   "brands": {
     "cheez": "CHEEZ",
     "madchef": "MADCHEF",
-    "combined": "কম্বাইন্ড (CHEEZ + MADCHEF)"
+    "combined": "কম্বাইন্ড (CHEEZ + MADCHEF)",
+    "combinedOption": "কম্বাইন্ড ব্রাঞ্চ (উভয়)",
+    "both": "উভয় (CHEEZ + MADCHEF)"
   },
   "b1": {
     "checkCoverageTitle": "ডেলিভারি কভারেজ",

@@ -159,6 +159,9 @@ export function serializeCategory(
     branch: c.branchId, // null = global ("Main Branch")
     branch_name: c.branch?.name ?? null,
     is_global: c.branchId === null,
+    // null = serves both brands. Drives the Brand → Category filter in the
+    // product form (lib/constants/enums.ts#categoryBrandMatchesProductBrand).
+    brand: c.brand,
     name: c.name,
     description: c.description,
     is_active: c.isActive,
