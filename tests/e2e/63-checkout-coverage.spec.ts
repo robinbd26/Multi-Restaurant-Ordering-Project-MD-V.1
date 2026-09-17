@@ -318,4 +318,83 @@ test.describe("Checkout enforces coverage by name", () => {
     await owner.context.close();
     await intruder.context.close();
   });
+
+  // ITEM 2 — a branch manager's "On Hold" toggle on a named area used to be
+  // invisible to checkout: coverageForAddress() counted the row's mere
+  // EXISTENCE as coverage and never looked at isHeld, so the address-coverage
+  // check, the quote and order creation all still treated a held area as
+  // "delivers here". Pins the fix: held resolves exactly like "not covered" —
+  // pickup still works, delivery is refused with the same outsideDeliveryArea
+  // message — and resuming the area restores delivery immediately.
+  test("a held delivery area falls back to pickup-only, same as an uncovered address", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const { branch, product } = await farBranchWithProduct(admin.req);
+    expect((await admin.req.patch(`${API_BASE}/api/branches/${branch.id}/`, { data: { pickup_enabled: "true" } })).status()).toBe(200);
+    const mirpur10 = await locality(admin.req, "Mirpur", "Mirpur-10");
+    const area = await listLocality(admin.req, branch.id, mirpur10, "both", 55);
+
+    const customer = await newSession(browser, "qa_upload_2");
+    await clearAddresses(customer.req);
+    const addressId = await pinlessAddress(customer.req, "Mirpur", "Mirpur-10");
+
+    // Covered, and orderable, before the hold.
+    const before = await coverageOf(customer.req, branch.id, addressId);
+    expect(before.covered, "covered before the hold").toBe(true);
+
+    // The branch manager equivalent — super admin may hold any area too.
+    const held = await admin.req.post(`${API_BASE}/api/delivery-areas/${area.id}/hold`, {
+      data: { reason: "Rider shortage" },
+    });
+    expect(held.status(), "area put on hold").toBe(200);
+
+    // 1. The live check the drawer shows now says "not covered", not "delivers here".
+    const live = await coverageOf(customer.req, branch.id, addressId);
+    expect(live.covered, "a held area is not covered").toBe(false);
+    expect(live.reason).toBe("on_hold");
+
+    // 2. The quote refuses delivery through the SAME rule an uncovered address hits.
+    const quote = await customer.req.post(`${API_BASE}/api/delivery/quote/`, {
+      data: {
+        branch_id: branch.id,
+        fulfillment_type: "delivery",
+        customer_address_id: addressId,
+        items: items(product.id),
+      },
+    });
+    expect(quote.status(), "delivery quote refused for a held area").toBe(400);
+
+    // 3. Delivery order creation refuses the same way.
+    const order = await customer.req.post(`${API_BASE}/api/orders/`, {
+      data: {
+        branch_id: branch.id,
+        payment_method: "cash",
+        delivery_address: "Mirpur-10",
+        fulfillment_type: "delivery",
+        customer_address_id: addressId,
+        items: items(product.id),
+      },
+    });
+    expect(order.status(), "delivery order refused for a held area").toBe(400);
+
+    // 4. Self-pickup from the SAME branch still works — held blocks delivery only.
+    const pickup = await customer.req.post(`${API_BASE}/api/orders/`, {
+      data: {
+        branch_id: branch.id,
+        payment_method: "cash",
+        delivery_address: "Pickup",
+        fulfillment_type: "pickup",
+        items: items(product.id),
+      },
+    });
+    expect(pickup.status(), "pickup still works while the area is held").toBe(201);
+
+    // 5. Resuming the area restores delivery immediately.
+    const resumed = await admin.req.post(`${API_BASE}/api/delivery-areas/${area.id}/resume`);
+    expect(resumed.status()).toBe(200);
+    const after = await coverageOf(customer.req, branch.id, addressId);
+    expect(after.covered, "covered again once resumed").toBe(true);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
 });

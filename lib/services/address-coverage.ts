@@ -40,11 +40,16 @@ export interface AddressCoverage {
   customerAddressId: number | null;
   localityId: number | null;
   localityName: string | null;
-  /** The branch's coverage row for that locality on the active shift, if any. */
+  /**
+   * The branch's coverage row for that locality on the active shift, if any —
+   * returned even when it is ON HOLD (isHeld true), so a caller can explain WHY
+   * ("this area is paused") rather than just "not covered". It does NOT, by
+   * itself, mean the address is covered: see `covered` and `via`.
+   */
   localityRow: LocalityCoverage | null;
   window: "day" | "night";
-  /** covered · no_location (nothing to measure) · not_covered (measured, outside). */
-  reason: "covered" | "no_location" | "not_covered";
+  /** covered · no_location (nothing to measure) · on_hold · not_covered (measured, outside). */
+  reason: "covered" | "no_location" | "on_hold" | "not_covered";
 }
 
 export async function coverageForAddress(
@@ -97,17 +102,30 @@ export async function coverageForAddress(
   }
 
   const localityRow = localityId != null ? await branchCoversLocality(branch.id, localityId, window) : null;
-  const covered = geometry || localityRow != null;
+  // ITEM 2 — a branch manager's HOLD on a named area is a deliberate "not
+  // delivering there right now" and must not grant coverage, even though the
+  // row still genuinely names the locality. Geometry is a SEPARATE signal (a
+  // different admin surface, BranchDeliveryZone) and is left untouched: if the
+  // address independently falls inside the branch's radius/zone, that still
+  // covers it regardless of what a named-area hold says.
+  const localityGrants = localityRow != null && !localityRow.isHeld;
+  const covered = geometry || localityGrants;
 
   return {
     covered,
-    via: geometry ? "geometry" : localityRow ? "locality" : null,
+    via: geometry ? "geometry" : localityGrants ? "locality" : null,
     point,
     customerAddressId,
     localityId,
     localityName,
     localityRow,
     window,
-    reason: covered ? "covered" : !point && localityId == null ? "no_location" : "not_covered",
+    reason: covered
+      ? "covered"
+      : localityRow?.isHeld
+        ? "on_hold"
+        : !point && localityId == null
+          ? "no_location"
+          : "not_covered",
   };
 }
