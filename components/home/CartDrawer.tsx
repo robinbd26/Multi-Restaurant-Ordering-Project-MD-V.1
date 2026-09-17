@@ -125,12 +125,21 @@ export function CartDrawer({
   customerName = null,
   customerPhone = null,
   zones = [],
+  platformClosed = false,
 }: {
   signedIn?: boolean;
   customerName?: string | null;
   customerPhone?: string | null;
   /** The master zone list; the add-address form offers these names only. */
   zones?: AddressZoneOption[];
+  /**
+   * ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery and
+   * pickup alike, at every branch. Computed server-side (app/page.tsx) once
+   * per page load, so it reflects Dhaka time rather than the visitor's own
+   * clock. Browsing and the cart itself stay open; this only blocks the two
+   * buttons that would START checkout, which is what stops anything further.
+   */
+  platformClosed?: boolean;
 }) {
   const { lines, count, total, isOpen, closeCart, setQty, remove, clear, cartBranchId, cartBranchName } =
     useHomeCart();
@@ -1759,14 +1768,28 @@ export function CartDrawer({
             /* req #4 — ONE primary action, carrying the grand total, plus the
                 Self Pickup alternative underneath. */
             <>
+              {platformClosed ? (
+                /* ITEM 5 — the SAME honest "here's why, here's what still
+                    works" pattern the outside-delivery-area banner uses:
+                    browsing and the cart stay open, only placing the order
+                    is blocked, with a plain reason and a reopen time. */
+                <div
+                  className="mb-2.5 rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3"
+                  data-testid="drawer-platform-closed"
+                  role="status"
+                >
+                  <p className="text-[0.82rem] font-bold text-amber-300">{t("home.order.platformClosedTitle")}</p>
+                  <p className="mt-0.5 text-[0.75rem] text-amber-200/80">{t("home.order.platformClosedBody")}</p>
+                </div>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void startCheckout()}
-                disabled={cartBranchId == null || lines.length === 0}
+                disabled={platformClosed || cartBranchId == null || lines.length === 0}
                 data-testid="place-an-order"
                 className={cn(
                   "flex w-full items-center justify-center gap-2 rounded-[10px] bg-brand-500 py-3.25 text-[0.95rem] font-extrabold text-white transition-colors hover:bg-brand-600",
-                  (cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
+                  (platformClosed || cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
                 )}
               >
                 {t("home.order.placeAnOrder")} · {fmt.money(total)}
@@ -1774,11 +1797,11 @@ export function CartDrawer({
               <button
                 type="button"
                 onClick={startPickupCheckout}
-                disabled={cartBranchId == null || lines.length === 0}
+                disabled={platformClosed || cartBranchId == null || lines.length === 0}
                 data-testid="self-pickup"
                 className={cn(
                   "mt-2 flex w-full items-center justify-center gap-2 rounded-[10px] border border-brand-500/40 py-2.75 text-[0.85rem] font-extrabold text-brand-400 transition-colors hover:bg-brand-500/10",
-                  (cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
+                  (platformClosed || cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
                 )}
               >
                 🏬 {t("home.order.selfPickup")}

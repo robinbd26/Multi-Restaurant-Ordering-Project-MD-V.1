@@ -26,7 +26,7 @@ import { coverageForAddress, type AddressCoverage } from "@/lib/services/address
 import { platformFeeFor } from "@/lib/services/settings";
 import { haversineKm } from "@/lib/services/geo";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
-import { isPastNightLastOrder } from "@/lib/services/coverage-window";
+import { isFullClosureWindow, isPastNightLastOrder } from "@/lib/services/coverage-window";
 import { isReceiveConfirmed } from "@/lib/services/rider-duty";
 import { nextOrderNumber } from "@/lib/services/order-number";
 import { customerProductWhere } from "@/lib/services/product-eligibility";
@@ -275,6 +275,12 @@ async function resolveBranchForCart(input: {
   lng: number | null;
   coverage: AddressCoverage | null;
 }> {
+  // ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery AND
+  // pickup, at every branch, whatever that branch's own hours say. Checked
+  // before anything branch-specific, so it applies uniformly to both rails.
+  if (isFullClosureWindow()) {
+    throw validationError({ branch_id: sk("errors.orders.platformClosed") });
+  }
   if (input.fulfillmentType === "pickup") {
     const picked = await prisma.branch.findFirst({
       where: { id: input.branchId, isActive: true, isArchived: false },

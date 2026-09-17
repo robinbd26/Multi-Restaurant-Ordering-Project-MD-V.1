@@ -20,6 +20,7 @@ import type { Brand } from "@/lib/home/types";
 import { getCompanyLogoUrl } from "@/lib/services/settings";
 import { BranchBar, type BranchBarContext } from "@/components/home/BranchBar";
 import { readBrowseScope } from "@/lib/browse-scope/server";
+import { isFullClosureWindow } from "@/lib/services/coverage-window";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
 import { savedAddressOptions } from "@/lib/services/addresses";
 import { activeZonesWithLocalities } from "@/lib/services/area-master";
@@ -171,6 +172,11 @@ export default async function HomePage() {
   const pickerAddresses = isCustomer ? await savedAddressOptions(user.id) : [];
   // The master list the checkout add-address form offers (Phase 3: names only).
   const checkoutZones = isCustomer ? await activeZonesWithLocalities() : [];
+  // ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery and
+  // pickup alike. Computed server-side (Dhaka time, not the visitor's clock)
+  // and handed to the drawer so it can block placing an order honestly, the
+  // moment checkout opens, rather than only after a failed API call.
+  const platformClosed = isFullClosureWindow();
   const pickerBranches = branches.map((b) => ({
     id: b.id,
     name: b.name,
@@ -239,6 +245,7 @@ export default async function HomePage() {
           customerName={user?.full_name ?? null}
           customerPhone={user?.phone ?? null}
           zones={checkoutZones}
+          platformClosed={platformClosed}
         />
         <CartToast />
         <BranchSwitchDialog />

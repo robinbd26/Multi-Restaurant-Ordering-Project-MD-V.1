@@ -48,3 +48,26 @@ export async function clearCustomerAddresses(
     await req.delete(`${API_BASE}/api/customer/addresses/${row.id}/`);
   }
 }
+
+/**
+ * ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery and
+ * pickup alike, at every branch. Mirrors isFullClosureWindow in
+ * lib/services/coverage-window.ts, computed independently (not imported) the
+ * same way inNightOrderBlackout above does, so this file has no dependency on
+ * server code and keeps working if that module ever moves.
+ */
+export function isDhakaFullClosureWindow(now: Date = new Date()): boolean {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Dhaka",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0") % 24;
+  const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  const minutes = hh * 60 + mm;
+  return minutes >= 4 * 60 && minutes < 11 * 60;
+}
+
+export const FULL_CLOSURE_REASON = "04:00–11:00 Dhaka: the whole platform is closed (by design)";
+export const NOT_CLOSED_REASON = "outside 04:00–11:00 Dhaka: the full-closure window is not active";

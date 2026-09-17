@@ -665,7 +665,9 @@
       "pickupOnlyBadge": "Pickup only",
       "coverageCheckFailed": "Could not check delivery for this address. Please try again.",
       "platformFee": "Platform fee",
-      "freeDelivery": "Free delivery"
+      "freeDelivery": "Free delivery",
+      "platformClosedTitle": "Closed until 11:00 AM",
+      "platformClosedBody": "We reopen at 11:00 AM. Delivery and self-pickup are both paused until then — your cart is safe, come back and check out any time."
     }
   },
   "superAdmin": {
@@ -1761,7 +1763,8 @@
       "invalidPaymentMethod": "That payment method is not available.",
       "branchOnHold": "This branch has paused taking new orders. Please try again shortly.",
       "outsideDeliveryArea": "This branch does not deliver to that address. Self-pickup is still available.",
-      "nightLastOrderPassed": "Night delivery takes its last order at 3:45 AM. Self-pickup is still available while the branch is open."
+      "nightLastOrderPassed": "Night delivery takes its last order at 3:45 AM. Self-pickup is still available while the branch is open.",
+      "platformClosed": "We are closed right now. Delivery and self-pickup both reopen at 11:00 AM — you can still browse and build your cart."
     },
     "catalog": {
       "onlyAssignedManagerCanModifyCatalog": "Only the assigned branch manager can modify the catalog.",

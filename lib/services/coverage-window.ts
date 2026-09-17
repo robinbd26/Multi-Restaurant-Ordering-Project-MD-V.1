@@ -67,3 +67,15 @@ export function coverageAppliesIn(rowWindow: string, active: Exclude<CoverageWin
 export function isPastNightLastOrder(minutes: number = nowMinutesInDhaka()): boolean {
   return minutes >= NIGHT_LAST_ORDER_MINUTES && minutes < NIGHT_END_MINUTES;
 }
+
+/**
+ * ITEM 5 — 04:00–11:00 Dhaka: the WHOLE PLATFORM is closed. No branch takes a
+ * new order on ANY rail, delivery or pickup, regardless of that branch's own
+ * configured opening hours (lib/services/branch-hours.ts) — a branch that never
+ * set hours is normally always "open", which is exactly the gap this closes.
+ * Browsing and building a cart stay open the whole time; only PLACING an order
+ * is blocked, at checkout.
+ */
+export function isFullClosureWindow(minutes: number = nowMinutesInDhaka()): boolean {
+  return minutes >= NIGHT_END_MINUTES && minutes < DAY_START_MINUTES;
+}
