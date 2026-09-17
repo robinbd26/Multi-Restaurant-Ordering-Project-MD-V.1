@@ -320,3 +320,88 @@ test.describe("Coverage by locality name", () => {
     await admin.context.close();
   });
 });
+
+// ITEM 4 — the super-admin master-list page could only add and
+// activate/deactivate; there was no way to RENAME an existing zone or
+// locality (the API already supported it). Pins the inline edit UI.
+test.describe("Renaming an existing zone or locality", () => {
+  test("edits a zone's name in place from the master list page", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const create = await admin.req.post(`${API_BASE}/api/area-zones`, { data: { name: uniq("EditZone") } });
+    expect(create.status()).toBe(201);
+    const zone = (await create.json()) as { id: number; name: string };
+
+    await admin.page.goto("/admin/delivery-zones", { waitUntil: "domcontentloaded" });
+    const card = admin.page.getByTestId(`zone-card-${zone.id}`);
+    await expect(card).toBeVisible();
+    await expect(card).toContainText(zone.name);
+
+    await admin.page.getByTestId(`zone-edit-${zone.id}`).click();
+    const renamed = uniq("RenamedZone");
+    const input = admin.page.getByTestId(`zone-edit-name-${zone.id}`);
+    await expect(input).toHaveValue(zone.name);
+    await input.fill(renamed);
+    await admin.page.getByTestId(`zone-edit-save-${zone.id}`).click();
+
+    await expect(card).toContainText(renamed);
+    await expect(card).not.toContainText(zone.name);
+
+    // Persisted server-side, not just in the client.
+    const rows = await zones(admin.req);
+    expect(rows.some((z) => z.id === zone.id && z.name === renamed)).toBe(true);
+
+    await admin.context.close();
+  });
+
+  test("edits a locality's name in place, and Cancel discards the draft", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const zoneRes = await admin.req.post(`${API_BASE}/api/area-zones`, { data: { name: uniq("EditZoneL") } });
+    const zone = (await zoneRes.json()) as { id: number };
+    const locRes = await admin.req.post(`${API_BASE}/api/area-localities`, {
+      data: { zone_id: zone.id, name: uniq("EditLoc") },
+    });
+    expect(locRes.status()).toBe(201);
+    const locality = (await locRes.json()) as { id: number; name: string };
+
+    await admin.page.goto("/admin/delivery-zones", { waitUntil: "domcontentloaded" });
+    const row = admin.page.getByTestId(`locality-row-${locality.id}`);
+    await expect(row).toContainText(locality.name);
+
+    // Cancel: the draft is thrown away, the stored name is untouched.
+    await admin.page.getByTestId(`locality-edit-${locality.id}`).click();
+    await admin.page.getByTestId(`locality-edit-name-${locality.id}`).fill(uniq("Discarded"));
+    await row.getByRole("button", { name: /cancel/i }).click();
+    await expect(row).toContainText(locality.name);
+
+    // Save: the new name sticks, server-side.
+    await admin.page.getByTestId(`locality-edit-${locality.id}`).click();
+    const renamed = uniq("RenamedLoc");
+    await admin.page.getByTestId(`locality-edit-name-${locality.id}`).fill(renamed);
+    await admin.page.getByTestId(`locality-edit-save-${locality.id}`).click();
+    await expect(row).toContainText(renamed);
+
+    const rows = await zones(admin.req);
+    const savedZone = rows.find((z) => z.id === zone.id);
+    expect(savedZone?.localities.some((l) => l.id === locality.id && l.name === renamed)).toBe(true);
+
+    await admin.context.close();
+  });
+
+  test("branch manager and customer cannot rename", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const create = await admin.req.post(`${API_BASE}/api/area-zones`, { data: { name: uniq("LockedZone") } });
+    const zone = (await create.json()) as { id: number; name: string };
+
+    const manager = await newSession(browser, "branch_manager");
+    const bmAttempt = await manager.req.patch(`${API_BASE}/api/area-zones/${zone.id}`, { data: { name: "Nope" } });
+    expect(bmAttempt.status()).toBe(403);
+
+    const customer = await newSession(browser, "customer");
+    const custAttempt = await customer.req.patch(`${API_BASE}/api/area-zones/${zone.id}`, { data: { name: "Nope" } });
+    expect(custAttempt.status()).toBe(403);
+
+    await admin.context.close();
+    await manager.context.close();
+    await customer.context.close();
+  });
+});

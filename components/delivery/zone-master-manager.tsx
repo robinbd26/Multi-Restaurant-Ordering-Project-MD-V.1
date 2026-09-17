@@ -39,6 +39,11 @@ export interface ZoneMasterZone {
  *
  * Each locality shows how many branch coverage rows point at it, so the effect of
  * deactivating one is visible before it is confirmed rather than after.
+ *
+ * ITEM 4 — renaming an existing zone or locality (the PATCH already supported
+ * `name`; only the UI to reach it was missing). Inline, not a separate page:
+ * "Edit" swaps the row's name for a text field with Save/Cancel, matching how
+ * activate/deactivate already work in place.
  */
 export function ZoneMasterManager({ zones }: { zones: ZoneMasterZone[] }) {
   const { t } = useTranslation();
@@ -47,6 +52,10 @@ export function ZoneMasterManager({ zones }: { zones: ZoneMasterZone[] }) {
   const [error, setError] = useState<string | null>(null);
   const [newZone, setNewZone] = useState("");
   const [newLocality, setNewLocality] = useState<Record<number, string>>({});
+  const [editingZoneId, setEditingZoneId] = useState<number | null>(null);
+  const [zoneDraft, setZoneDraft] = useState("");
+  const [editingLocalityId, setEditingLocalityId] = useState<number | null>(null);
+  const [localityDraft, setLocalityDraft] = useState("");
 
   /**
    * One fetch path for every mutation, returning the app's ActionState so the
@@ -134,41 +143,83 @@ export function ZoneMasterManager({ zones }: { zones: ZoneMasterZone[] }) {
         zones.map((zone) => (
           <Card key={zone.id} testId={`zone-card-${zone.id}`}>
             <CardHeader
-              title={zone.name}
-              subtitle={t("deliveryZone.localitiesIn", { zone: zone.name })}
-              action={
-                <span className="flex flex-wrap items-center gap-2">
-                  <Badge dot tone={zone.isActive ? "green" : "slate"}>
-                    {zone.isActive ? t("deliveryZone.activeLabel") : t("deliveryZone.inactiveLabel")}
-                  </Badge>
-                  {zone.isActive ? (
-                    <ConfirmModal
-                      trigger={
-                        <button
-                          type="button"
-                          className="text-sm text-fg-muted hover:underline"
-                          data-testid={`zone-deactivate-${zone.id}`}
-                        >
-                          {t("deliveryZone.deactivate")}
-                        </button>
-                      }
-                      title={t("deliveryZone.deactivateTitle", { name: zone.name })}
-                      description={t("deliveryZone.deactivateBody")}
-                      confirmLabel={t("deliveryZone.deactivate")}
-                      action={async () => confirmed(`/api/area-zones/${zone.id}`, { is_active: false })}
+              title={
+                editingZoneId === zone.id ? (
+                  <form
+                    className="flex flex-wrap items-center gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const value = zoneDraft.trim();
+                      if (!value) return;
+                      send(`/api/area-zones/${zone.id}`, "PATCH", { name: value }, () => setEditingZoneId(null));
+                    }}
+                  >
+                    <Input
+                      name={`zone_edit_${zone.id}`}
+                      value={zoneDraft}
+                      onChange={(event) => setZoneDraft(event.target.value)}
+                      autoFocus
+                      className="h-9 max-w-64 text-sm"
+                      data-testid={`zone-edit-name-${zone.id}`}
                     />
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="success"
-                      disabled={pending}
-                      onClick={() => send(`/api/area-zones/${zone.id}`, "PATCH", { is_active: true })}
-                      data-testid={`zone-activate-${zone.id}`}
-                    >
-                      {t("deliveryZone.reactivate")}
+                    <Button type="submit" size="sm" disabled={pending || !zoneDraft.trim()} data-testid={`zone-edit-save-${zone.id}`}>
+                      {t("common.save")}
                     </Button>
-                  )}
-                </span>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setEditingZoneId(null)}>
+                      {t("common.cancel")}
+                    </Button>
+                  </form>
+                ) : (
+                  zone.name
+                )
+              }
+              subtitle={editingZoneId === zone.id ? undefined : t("deliveryZone.localitiesIn", { zone: zone.name })}
+              action={
+                editingZoneId === zone.id ? null : (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Badge dot tone={zone.isActive ? "green" : "slate"}>
+                      {zone.isActive ? t("deliveryZone.activeLabel") : t("deliveryZone.inactiveLabel")}
+                    </Badge>
+                    <button
+                      type="button"
+                      className="text-sm text-fg-muted hover:underline"
+                      data-testid={`zone-edit-${zone.id}`}
+                      onClick={() => {
+                        setEditingZoneId(zone.id);
+                        setZoneDraft(zone.name);
+                      }}
+                    >
+                      {t("common.edit")}
+                    </button>
+                    {zone.isActive ? (
+                      <ConfirmModal
+                        trigger={
+                          <button
+                            type="button"
+                            className="text-sm text-fg-muted hover:underline"
+                            data-testid={`zone-deactivate-${zone.id}`}
+                          >
+                            {t("deliveryZone.deactivate")}
+                          </button>
+                        }
+                        title={t("deliveryZone.deactivateTitle", { name: zone.name })}
+                        description={t("deliveryZone.deactivateBody")}
+                        confirmLabel={t("deliveryZone.deactivate")}
+                        action={async () => confirmed(`/api/area-zones/${zone.id}`, { is_active: false })}
+                      />
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="success"
+                        disabled={pending}
+                        onClick={() => send(`/api/area-zones/${zone.id}`, "PATCH", { is_active: true })}
+                        data-testid={`zone-activate-${zone.id}`}
+                      >
+                        {t("deliveryZone.reactivate")}
+                      </Button>
+                    )}
+                  </span>
+                )
               }
             />
             <CardContent className="space-y-4">
@@ -212,57 +263,110 @@ export function ZoneMasterManager({ zones }: { zones: ZoneMasterZone[] }) {
                 <p className="text-sm text-fg-muted">{t("deliveryZone.noLocalities")}</p>
               ) : (
                 <ul className="grid gap-2 sm:grid-cols-2">
-                  {zone.localities.map((locality) => (
-                    <li
-                      key={locality.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-border-base px-3 py-2"
-                      data-testid={`locality-row-${locality.id}`}
-                    >
-                      <span className="min-w-0">
-                        <span
-                          className={`block truncate text-sm font-medium ${
-                            locality.isActive ? "text-fg-base" : "text-fg-subtle line-through"
-                          }`}
+                  {zone.localities.map((locality) =>
+                    editingLocalityId === locality.id ? (
+                      <li
+                        key={locality.id}
+                        className="flex items-center gap-2 rounded-xl border border-border-base px-3 py-2"
+                        data-testid={`locality-row-${locality.id}`}
+                      >
+                        <form
+                          className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            const value = localityDraft.trim();
+                            if (!value) return;
+                            send(`/api/area-localities/${locality.id}`, "PATCH", { name: value }, () =>
+                              setEditingLocalityId(null),
+                            );
+                          }}
                         >
-                          {locality.name}
+                          <Input
+                            name={`locality_edit_${locality.id}`}
+                            value={localityDraft}
+                            onChange={(event) => setLocalityDraft(event.target.value)}
+                            autoFocus
+                            className="h-9 min-w-0 flex-1 text-sm"
+                            data-testid={`locality-edit-name-${locality.id}`}
+                          />
+                          <Button
+                            type="submit"
+                            size="sm"
+                            disabled={pending || !localityDraft.trim()}
+                            data-testid={`locality-edit-save-${locality.id}`}
+                          >
+                            {t("common.save")}
+                          </Button>
+                          <Button type="button" size="sm" variant="outline" onClick={() => setEditingLocalityId(null)}>
+                            {t("common.cancel")}
+                          </Button>
+                        </form>
+                      </li>
+                    ) : (
+                      <li
+                        key={locality.id}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-border-base px-3 py-2"
+                        data-testid={`locality-row-${locality.id}`}
+                      >
+                        <span className="min-w-0">
+                          <span
+                            className={`block truncate text-sm font-medium ${
+                              locality.isActive ? "text-fg-base" : "text-fg-subtle line-through"
+                            }`}
+                          >
+                            {locality.name}
+                          </span>
+                          <span className="text-xs text-fg-subtle">
+                            {t("deliveryZone.coveredByBranches")}: {locality.coverageCount}
+                          </span>
                         </span>
-                        <span className="text-xs text-fg-subtle">
-                          {t("deliveryZone.coveredByBranches")}: {locality.coverageCount}
-                        </span>
-                      </span>
-                      {locality.isActive ? (
-                        <ConfirmModal
-                          trigger={
-                            <button
-                              type="button"
-                              className="shrink-0 text-sm text-fg-muted hover:underline"
-                              data-testid={`locality-deactivate-${locality.id}`}
+                        <span className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            className="text-sm text-fg-muted hover:underline"
+                            data-testid={`locality-edit-${locality.id}`}
+                            onClick={() => {
+                              setEditingLocalityId(locality.id);
+                              setLocalityDraft(locality.name);
+                            }}
+                          >
+                            {t("common.edit")}
+                          </button>
+                          {locality.isActive ? (
+                            <ConfirmModal
+                              trigger={
+                                <button
+                                  type="button"
+                                  className="text-sm text-fg-muted hover:underline"
+                                  data-testid={`locality-deactivate-${locality.id}`}
+                                >
+                                  {t("deliveryZone.deactivate")}
+                                </button>
+                              }
+                              title={t("deliveryZone.deactivateTitle", { name: locality.name })}
+                              description={t("deliveryZone.deactivateBody")}
+                              confirmLabel={t("deliveryZone.deactivate")}
+                              action={async () =>
+                                confirmed(`/api/area-localities/${locality.id}`, { is_active: false })
+                              }
+                            />
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={pending}
+                              onClick={() =>
+                                send(`/api/area-localities/${locality.id}`, "PATCH", { is_active: true })
+                              }
+                              data-testid={`locality-activate-${locality.id}`}
                             >
-                              {t("deliveryZone.deactivate")}
-                            </button>
-                          }
-                          title={t("deliveryZone.deactivateTitle", { name: locality.name })}
-                          description={t("deliveryZone.deactivateBody")}
-                          confirmLabel={t("deliveryZone.deactivate")}
-                          action={async () =>
-                            confirmed(`/api/area-localities/${locality.id}`, { is_active: false })
-                          }
-                        />
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() =>
-                            send(`/api/area-localities/${locality.id}`, "PATCH", { is_active: true })
-                          }
-                          data-testid={`locality-activate-${locality.id}`}
-                        >
-                          {t("deliveryZone.reactivate")}
-                        </Button>
-                      )}
-                    </li>
-                  ))}
+                              {t("deliveryZone.reactivate")}
+                            </Button>
+                          )}
+                        </span>
+                      </li>
+                    ),
+                  )}
                 </ul>
               )}
             </CardContent>
