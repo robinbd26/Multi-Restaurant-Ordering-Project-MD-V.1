@@ -300,8 +300,6 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
     { href: "/branch-manager/orders", label: "nav.orders", icon: "bag" , group: "navGroup.orders" },
     { href: "/branch-manager/riders", label: "nav.riders", icon: "bike" , group: "navGroup.delivery" },
     { href: "/branch-manager/delivery-zone", label: "nav.deliveryZone", icon: "pin" , group: "navGroup.delivery" },
-    { href: "/branch-manager/delivery-areas", label: "nav.deliveryAreas", icon: "bike" , group: "navGroup.delivery" },
-    { href: "/branch-manager/delivery-hours", label: "nav.deliveryHours", icon: "clock" , group: "navGroup.delivery" },
     { href: "/branch-manager/tables", label: "nav.tables", icon: "grid" , group: "navGroup.delivery" },
     { href: "/branch-manager/table-reservations", label: "nav.reservations", icon: "grid" , group: "navGroup.delivery" },
     { href: "/branch-manager/ramadan-bookings", label: "nav.ramadan", icon: "store" , group: "navGroup.delivery" },

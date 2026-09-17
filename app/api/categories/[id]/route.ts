@@ -32,12 +32,14 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
     description?: string;
     is_active?: boolean;
     branch_id?: number | string | null;
+    brand?: string | null;
   };
   const updated = await updateCategory(me, categoryId, {
     name: body.name,
     description: body.description,
     isActive: body.is_active,
     ...(body.branch_id !== undefined ? { branchId: body.branch_id } : {}),
+    ...(body.brand !== undefined ? { brand: body.brand } : {}),
   });
   return json(serializeCategory(updated));
 });
