@@ -66,6 +66,10 @@ test.describe("Branch location tag (zone)", () => {
     const fetched = await (await admin.req.get(`${API_BASE}/api/branches/${branch.id}/`)).json();
     expect(fetched.zone_id).toBe(zone.id);
 
+    // The branch VIEW page (distinct from the edit form) also shows the tag.
+    await admin.page.goto(`/admin/branches/${branch.id}`, { waitUntil: "domcontentloaded" });
+    await expect(admin.page.getByText(zone.name, { exact: true })).toBeVisible();
+
     await admin.context.close();
   });
 

@@ -83,6 +83,7 @@ export default async function BranchDetailPage({ params }: { params: Promise<{ i
               label={t("branches.location")}
               value={branch.latitude && branch.longitude ? `${branch.latitude}, ${branch.longitude}` : "—"}
             />
+            <InfoRow label={t("branches.zoneField")} value={branch.zone_name ?? t("branches.zoneNone")} />
             <InfoRow label={t("branches.currentManager")} value={branch.manager_name ?? t("common.notAssigned")} />
           </CardContent>
         </Card>
