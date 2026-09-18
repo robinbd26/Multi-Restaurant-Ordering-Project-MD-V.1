@@ -57,11 +57,22 @@ export interface LastAdded {
   seq: number;
 }
 
-/** A blocked add: the cart already belongs to a different branch. */
+/**
+ * A blocked add, or a browsing switch the cart no longer agrees with.
+ *
+ *   "add"    — adding a product that belongs to a different branch than the
+ *              cart already holds (input carries the blocked item).
+ *   "browse" — the customer switched WHICH branch they are browsing (the
+ *              picker, or the Restaurants page) while the cart still holds a
+ *              different branch's items. Same underlying conflict, no item to
+ *              carry — resolving it clears the cart rather than adding one.
+ */
 export interface BranchSwitchRequest {
-  input: CartAddInput;
+  kind: "add" | "browse";
   currentBranchName: string;
   nextBranchName: string;
+  /** "add" only. */
+  input?: CartAddInput;
 }
 
 interface HomeCartValue {
@@ -103,6 +114,8 @@ function lineKey(input: CartAddInput): string {
 export function HomeCartProvider({
   children,
   initialBrand = "cheez",
+  activeBranchId = null,
+  activeBranchName = null,
 }: {
   children: ReactNode;
   /**
@@ -113,6 +126,15 @@ export function HomeCartProvider({
    * that actually has products (see app/page.tsx).
    */
   initialBrand?: Brand;
+  /**
+   * The branch this render is actually scoped to — the SAME id the product
+   * grid and header are drawn from (resolveHomeBranch's result), not merely
+   * requested. null for a guest/super-admin all-branches view, where there is
+   * no single active branch to reconcile against.
+   */
+  activeBranchId?: number | null;
+  /** That branch's name, for the reconciliation dialog. */
+  activeBranchName?: string | null;
 }) {
   const [lines, setLines] = useState<HomeCartLine[]>([]);
   const [isOpen, setOpen] = useState(false);
@@ -198,6 +220,7 @@ export function HomeCartProvider({
         input.branchId !== cartBranchId
       ) {
         setPendingBranchSwitch({
+          kind: "add",
           input,
           currentBranchName: cartBranchName ?? "",
           nextBranchName: input.branchName ?? "",
@@ -209,12 +232,44 @@ export function HomeCartProvider({
     [addLine, cartBranchId, cartBranchName],
   );
 
+  /**
+   * Item 1 fix — the cart's branch used to be entirely deaf to "Browsing":
+   * switching which branch's menu is on screen (the picker, or a Restaurants
+   * page card) never touched a cart already holding a different branch's
+   * items, so checkout kept checking coverage against whatever branch the
+   * cart happened to lock onto FIRST, contradicting the header. `activeBranchId`
+   * is the SAME resolved id the header and product grid render from; whenever
+   * it changes and disagrees with a non-empty cart, surface the same
+   * switch/cancel choice an add-conflict shows, rather than letting the two
+   * silently drift. Guarded so it never clobbers a pending "add" conflict.
+   */
+  useEffect(() => {
+    if (!hydrated) return;
+    if (activeBranchId == null || cartBranchId == null) return;
+    if (activeBranchId === cartBranchId) return;
+    // Reconciling against an EXTERNAL signal (the server-resolved branch, which
+    // only changes via a prop update after a scope write + router.refresh()),
+    // not deriving one render's state from another — same shape as the
+    // hydration effect above, which disables this rule for the same reason.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPendingBranchSwitch((prev) =>
+      prev ??
+      {
+        kind: "browse",
+        currentBranchName: cartBranchName ?? "",
+        nextBranchName: activeBranchName ?? "",
+      },
+    );
+  }, [hydrated, activeBranchId, activeBranchName, cartBranchId, cartBranchName]);
+
   const confirmBranchSwitch = useCallback(() => {
     setPendingBranchSwitch((pending) => {
       if (pending) {
-        // Clearing and adding in one step, so the cart is never briefly mixed.
+        // Clearing (and, for "add", adding) in one step, so the cart is never
+        // briefly mixed. "browse" has no item to add — clearing alone re-syncs
+        // the cart with whatever branch is now on screen.
         setLines([]);
-        addLine(pending.input);
+        if (pending.kind === "add" && pending.input) addLine(pending.input);
       }
       return null;
     });

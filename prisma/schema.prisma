@@ -506,6 +506,12 @@ model Coupon {
   // A hard delete cascades Order.couponId → null via SetNull, silently erasing why
   // a historical order was discounted. Archived coupons stay joinable forever.
   isArchived       Boolean   @default(false)
+  // PHASE 5 — one coupon system. null = platform-wide (valid at every branch);
+  // set = valid only for orders served by that branch. A branch coupon can only
+  // ever be redeemed on that branch's orders, and a branch with orders is never
+  // hard-deleted, so the cascade cannot erase a redemption history.
+  branchId         Int?
+  branch           Branch?   @relation("BranchCoupons", fields: [branchId], references: [id], onDelete: Cascade)
   createdById      Int?
   createdBy        User?     @relation("CouponCreator", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt        DateTime  @default(now())
@@ -514,6 +520,8 @@ model Coupon {
   campaigns   Campaign[]
   orders      Order[]
   redemptions CouponRedemption[] @relation("CouponRedemptionCoupon")
+
+  @@index([branchId])
 }
 
 // WS-7.2 — one row per (coupon, order) redemption. usedCount alone is a lossy
@@ -686,6 +694,15 @@ model Branch {
   email             String    @default("")
   latitude          Decimal?
   longitude         Decimal?
+  // ITEM 7 — which master zone (Gulshan, Banani, …) this branch is based in.
+  // Optional (a branch predating this field, or one the admin hasn't set yet,
+  // has none) and never deleted-cascade: retiring a zone must not delete the
+  // branch, so it just loses the tag. This is a LOCATION TAG, not a coverage
+  // grant — a branch's actual delivery coverage is still the separate,
+  // explicit BranchDeliveryArea list; this field only seeds the "suggest
+  // areas for my branch" helper with a starting point to review.
+  zoneId            Int?
+  zone              DeliveryZone? @relation(fields: [zoneId], references: [id], onDelete: SetNull)
   deliveryRadiusKm  Decimal   @default(3.0)
   // PHASE 11 — branch-level delivery fee applied when the order is inside the
   // branch radius and no named delivery area supplies its own charge. Decimal
@@ -780,6 +797,7 @@ model Branch {
   ramadanSlots         RamadanTimeSlot[]
   ramadanMenus         RamadanMenu[]
   ramadanReservations  RamadanReservation[]       @relation("RamadanReservationBranch")
+  coupons              Coupon[]                   @relation("BranchCoupons")
 }
 
 // ── B1: Delivery zones (circular coverage areas) ────────────────────────
@@ -813,26 +831,73 @@ model BranchDeliveryZone {
 // NEW delivery orders. Duplicate normalized names per branch are prevented by
 // the unique index.
 model BranchDeliveryArea {
-  id                       Int      @id @default(autoincrement())
+  id                       Int               @id @default(autoincrement())
   branchId                 Int
-  branch                   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branch                   Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
   name                     String
-  normalizedName           String   @default("")
-  isActive                 Boolean  @default(true)
-  isHeld                   Boolean  @default(false) // hold blocks NEW delivery orders only
-  holdReason               String   @default("")
-  estimatedDeliveryMinutes Int      @default(45)
-  deliveryCharge           Decimal  @default(0)
+  normalizedName           String            @default("")
+  isActive                 Boolean           @default(true)
+  isHeld                   Boolean           @default(false) // hold blocks NEW delivery orders only
+  holdReason               String            @default("")
+  estimatedDeliveryMinutes Int               @default(45)
+  deliveryCharge           Decimal           @default(0)
   centerLat                Decimal? // optional centroid for distance/coverage
   centerLng                Decimal?
+  // Phase 2 — the master locality this coverage row stands for. Null on legacy
+  // free-text rows a branch manager typed before the master list existed.
+  localityId               Int?
+  locality                 DeliveryLocality? @relation(fields: [localityId], references: [id], onDelete: SetNull)
+  // Which shift this row applies to: "day" | "night" | "both" (COVERAGE_WINDOWS).
+  // "both" is the safe default, so every row that existed before this field keeps
+  // covering around the clock exactly as it did.
+  coverageWindow           String            @default("both")
   updatedById              Int? // audit: who last changed it (app-level SetNull)
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
 
   orders Order[] @relation("OrderDeliveryArea")
 
-  @@unique([branchId, normalizedName])
+  // A branch may cover the same locality in BOTH windows with different charges,
+  // so the window is part of the key — otherwise the night list could never
+  // repeat a day locality.
+  @@unique([branchId, normalizedName, coverageWindow])
   @@index([branchId])
+  @@index([localityId])
+}
+
+// ── Phase 2 · MASTER zone / locality list (super admin owned) ─────────────
+// The places that exist, named once for the whole platform. Coverage is NOT
+// decided here: a branch ticks the localities it delivers to (BranchDeliveryArea),
+// per time window. Customer addresses point at a locality by name, which is what
+// lets coverage be answered without a map pin on every address.
+model DeliveryZone {
+  id             Int                @id @default(autoincrement())
+  name           String
+  normalizedName String             @unique
+  isActive       Boolean            @default(true)
+  // Display order in the address form; ties break by name.
+  sortOrder      Int                @default(0)
+  localities     DeliveryLocality[]
+  // ITEM 7 — branches whose location TAG points at this zone.
+  branches       Branch[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+}
+
+model DeliveryLocality {
+  id             Int                  @id @default(autoincrement())
+  zoneId         Int
+  zone           DeliveryZone         @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  name           String
+  normalizedName String
+  isActive       Boolean              @default(true)
+  sortOrder      Int                  @default(0)
+  coverage       BranchDeliveryArea[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([zoneId, normalizedName])
+  @@index([zoneId])
 }
 
 // ── req #6/#13: Rider order-assignment offer + response ──────────────────
@@ -1278,6 +1343,12 @@ model Order {
   couponId                 Int?
   coupon                   Coupon?             @relation(fields: [couponId], references: [id], onDelete: SetNull)
   discountAmount           Decimal             @default(0)
+  // PHASE 4 — the flat platform fee this order paid, snapshotted at creation.
+  // It is a real surcharge (unlike tax/service charge, which are extracted from
+  // prices that already include them), so it is INCLUDED in totalAmount and kept
+  // in its own column so reports can separate it from food revenue. Default 0
+  // leaves every order placed before the fee existed exactly as it was.
+  platformFee              Decimal             @default(0)
   // WS-7.1 — coins burned on this order and the Taka discount they bought, as a
   // real line item. Held separately from discountAmount (which is the coupon's)
   // so an invoice can show coupon and coin discounts independently.

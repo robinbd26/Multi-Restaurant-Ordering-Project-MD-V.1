@@ -8,12 +8,15 @@ export type DeliveryAreaSort = (typeof DELIVERY_AREA_SORTS)[number];
 export type DeliveryAreaSortDirection = "asc" | "desc";
 export type DeliveryAreaActiveStatus = "active" | "inactive";
 export type DeliveryAreaDeliveryState = "available" | "held";
+/** Filter by which shift a coverage row applies to. */
+export type DeliveryAreaWindowFilter = "day" | "night" | "both";
 
 export interface DeliveryAreaListQuery {
   search: string;
   branchId?: number;
   activeStatus?: DeliveryAreaActiveStatus;
   deliveryState?: DeliveryAreaDeliveryState;
+  coverageWindow?: DeliveryAreaWindowFilter;
   page: number;
   pageSize: number;
   sort: DeliveryAreaSort;
@@ -34,6 +37,12 @@ export interface DeliveryAreaRow {
   delivery_charge: string;
   center_lat: number | null;
   center_lng: number | null;
+  /** "day" | "night" | "both" — which shift this coverage row applies to. */
+  coverage_window: string;
+  /** The master locality this row stands for; null on legacy free-text rows. */
+  locality_id: number | null;
+  locality_name: string | null;
+  zone_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -78,6 +87,7 @@ export function parseDeliveryAreaQuery(input: DeliveryAreaQueryInput): DeliveryA
   const branchId = positiveInteger(rawBranch, 0);
   const rawSort = read(input, "sort");
   const rawDirection = read(input, "direction");
+  const rawWindow = read(input, "window");
 
   return {
     search: (read(input, "search") ?? "").trim().slice(0, LIMITS.shortTextMax),
@@ -90,6 +100,9 @@ export function parseDeliveryAreaQuery(input: DeliveryAreaQueryInput): DeliveryA
       : rawStatus === "held"
         ? { deliveryState: "held" as const }
         : {}),
+    ...(rawWindow === "day" || rawWindow === "night" || rawWindow === "both"
+      ? { coverageWindow: rawWindow }
+      : {}),
     page: positiveInteger(read(input, "page"), 1),
     pageSize: positiveInteger(
       read(input, "page_size"),
@@ -112,6 +125,7 @@ export function deliveryAreaQueryParams(
   if (query.branchId) params.set("branch", String(query.branchId));
   if (query.activeStatus) params.set("status", query.activeStatus);
   if (query.deliveryState) params.set("deliveryState", query.deliveryState);
+  if (query.coverageWindow) params.set("window", query.coverageWindow);
   if (query.page > 1) params.set("page", String(query.page));
   if (options.includePageSize || query.pageSize !== DELIVERY_AREA_PAGE_SIZE) {
     params.set("page_size", String(query.pageSize));

@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, API_BASE } from "./helpers";
+import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
 
 /**
  * Gap #1 — server-side OPENING-HOURS enforcement (§8 / §17 / §18).
@@ -111,6 +111,13 @@ async function makeBranchWithMenu(
   return { branch, category, product };
 }
 
+// PHASE 3 — for the quarter hour before 04:00 Dhaka, a delivery order is
+// refused on purpose (the night shift's last order is 03:45). Skip rather than
+// report the rule as a failure.
+test.beforeEach(() => {
+  test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+});
+
 test.describe("Phase — opening hours: nearest OPEN branch is primary", () => {
   // Sylhet — deliberately far from every seeded/fixture cluster (Dhaka ~23.78/90.40
   // with radii up to 8 km; Chittagong 22.35/91.78), so ONLY the branches THIS test
@@ -150,11 +157,11 @@ test.describe("Phase — opening hours: nearest OPEN branch is primary", () => {
     await expect(openCard).toHaveCount(1);
     await expect(openCard.getByTestId("branch-nearest-badge")).toBeVisible();
 
-    // The CLOSER branch is shown, disabled, with an "Opens at HH:MM" note (not the
+    // The CLOSER branch is shown, not orderable, with an "Opens at HH:MM" note (not the
     // generic out-of-area note) and never the nearest badge.
-    const closedCard = customer.page.getByTestId("branch-disabled").filter({ hasText: closed.branch.name });
+    const closedCard = customer.page.getByTestId("branch-not-orderable").filter({ hasText: closed.branch.name });
     await expect(closedCard).toHaveCount(1);
-    await expect(closedCard.getByTestId("branch-disabled-note")).toContainText(openingTime);
+    await expect(closedCard.getByTestId("branch-status-note")).toContainText(openingTime);
     await expect(closedCard.getByTestId("branch-nearest-badge")).toHaveCount(0);
   });
 
@@ -268,9 +275,9 @@ test.describe("Phase — every covered branch is closed", () => {
     await expect(banner).toContainText(openingTime);
     await expect(customer.page.getByTestId("out-of-zone-banner")).toHaveCount(0);
 
-    const card = customer.page.getByTestId("branch-disabled").filter({ hasText: closed.branch.name });
+    const card = customer.page.getByTestId("branch-not-orderable").filter({ hasText: closed.branch.name });
     await expect(card).toHaveCount(1);
-    await expect(card.getByTestId("branch-disabled-note")).toContainText(openingTime);
+    await expect(card.getByTestId("branch-status-note")).toContainText(openingTime);
     await expect(
       customer.page.getByTestId("branch-enabled").filter({ hasText: closed.branch.name }),
       "the only covered branch is closed, so it is not orderable",

@@ -11,6 +11,12 @@ import {
   MAIN_AREA_NAMES,
   subAreasFor,
 } from "@/lib/constants/area-data";
+import type { AddressZoneOption } from "@/components/customer/address-manager";
+import {
+  labelForNickname,
+  nicknameDisplay,
+  type NicknameKind,
+} from "@/lib/addresses/nickname";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { LIMITS } from "@/lib/validation/limits";
 import { cn } from "@/lib/utils";
@@ -54,11 +60,23 @@ interface DrawerSavedAddress {
   is_default: boolean;
 }
 
+/**
+ * The LIVE delivery check for one saved address against the cart's branch, on
+ * the shift running now. Never cached on the address: the same address can be
+ * covered by one branch and not another, or by day and not by night.
+ */
+interface AddressCoverageState {
+  status: "checking" | "covered" | "outside" | "error";
+  pickupEnabled: boolean;
+}
+
 /** /api/delivery/quote response — the subset the drawer renders. */
 interface DrawerQuote {
   branch: { id: number; name: string };
   subtotal: number;
   delivery_charge: number;
+  /** PHASE 4 — the flat platform fee, on delivery and pickup alike. */
+  platform_fee?: number;
   total: number;
 }
 
@@ -72,16 +90,15 @@ interface DrawerOrderResult {
   items: number;
   subtotal: number;
   deliveryFee: number;
+  platformFee: number;
   grandTotal: number;
   fulfillmentType: "delivery" | "pickup";
   pickupTimeLabel?: string;
 }
 
 /** The card title for a saved address (preset label or the custom name). */
-function addressCardLabel(a: DrawerSavedAddress): string {
-  if (a.display_label) return a.display_label;
-  if (a.label === "Others" && a.custom_label) return a.custom_label;
-  return a.label;
+function addressCardLabel(a: DrawerSavedAddress, t: (key: string) => string): string {
+  return nicknameDisplay(a, t);
 }
 
 /**
@@ -107,10 +124,22 @@ export function CartDrawer({
   signedIn = false,
   customerName = null,
   customerPhone = null,
+  zones = [],
+  platformClosed = false,
 }: {
   signedIn?: boolean;
   customerName?: string | null;
   customerPhone?: string | null;
+  /** The master zone list; the add-address form offers these names only. */
+  zones?: AddressZoneOption[];
+  /**
+   * ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery and
+   * pickup alike, at every branch. Computed server-side (app/page.tsx) once
+   * per page load, so it reflects Dhaka time rather than the visitor's own
+   * clock. Browsing and the cart itself stay open; this only blocks the two
+   * buttons that would START checkout, which is what stops anything further.
+   */
+  platformClosed?: boolean;
 }) {
   const { lines, count, total, isOpen, closeCart, setQty, remove, clear, cartBranchId, cartBranchName } =
     useHomeCart();
@@ -138,7 +167,10 @@ export function CartDrawer({
   const [savingAddress, setSavingAddress] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
   // Compact add-address form — the same Area → sub-area model as the address book.
+  const [nickname, setNickname] = useState<NicknameKind>("home");
   const [locationName, setLocationName] = useState("");
+  // Live coverage per saved address, keyed by address id (see AddressCoverageState).
+  const [coverage, setCoverage] = useState<Record<number, AddressCoverageState>>({});
   const [mainArea, setMainArea] = useState("");
   const [customMain, setCustomMain] = useState("");
   const [subArea, setSubArea] = useState("");
@@ -151,6 +183,29 @@ export function CartDrawer({
   // point carries lat/lng + the reverse-geocoded address and Google place_id.
   const [showMapForm, setShowMapForm] = useState(false);
   const [mapPoint, setMapPoint] = useState<PickedPoint | null>(null);
+  // ITEM 8 — a one-time address for THIS order only: coverage-checked exactly
+  // like a saved address, but never sent to /api/customer/addresses, so it
+  // never touches the 5-address cap and leaves no row behind. mainArea/subArea
+  // are matched against the master list the same way a pinless saved address
+  // is (lib/services/address-coverage.ts); `address` is the composed display
+  // text sent as the order's own delivery_address.
+  const [showOneTimeForm, setShowOneTimeForm] = useState(false);
+  const [oneTimeAddress, setOneTimeAddress] = useState<{ mainArea: string; subArea: string; address: string } | null>(
+    null,
+  );
+  const [oneTimeMainAreaInput, setOneTimeMainAreaInput] = useState("");
+  const [oneTimeSubAreaInput, setOneTimeSubAreaInput] = useState("");
+  const [oneTimeCustomSubInput, setOneTimeCustomSubInput] = useState("");
+  const [oneTimeRoad, setOneTimeRoad] = useState("");
+  const [oneTimeHouse, setOneTimeHouse] = useState("");
+  const [oneTimeFlat, setOneTimeFlat] = useState("");
+  const [oneTimeLandmark, setOneTimeLandmark] = useState("");
+  // Keyed by the address it answers, so a stale "covered" from a PREVIOUS
+  // one-time address is never shown while the new one is still in flight —
+  // the same reasoning as the `coverage` map above, without setState-in-effect.
+  const [oneTimeCoverageAnswer, setOneTimeCoverageAnswer] = useState<{ key: string; state: AddressCoverageState } | null>(
+    null,
+  );
   const [quote, setQuote] = useState<DrawerQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -194,6 +249,104 @@ export function CartDrawer({
     [addresses, addressId],
   );
 
+  // The master list from the database; the bundled constant only as a fallback.
+  const mainAreaOptions = zones.length > 0 ? zones.map((z) => z.name) : MAIN_AREA_NAMES;
+  const subAreaOptions = (main: string): string[] =>
+    zones.length > 0
+      ? (zones.find((z) => z.name === main)?.localities.map((l) => l.name) ?? [])
+      : subAreasFor(main);
+
+  // PHASE 3 — check every saved address against the cart's branch whenever the
+  // address step is showing. Re-run on each visit and whenever the list or the
+  // branch changes, so a stale answer from another shift is never shown.
+  useEffect(() => {
+    if (view !== "address" || cartBranchId == null || addresses.length === 0) return;
+    let alive = true;
+    for (const a of addresses) {
+      fetch("/api/delivery/address-coverage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branch_id: cartBranchId, customer_address_id: a.id }),
+      })
+        .then(async (res) => {
+          const data = (await res.json().catch(() => ({}))) as { covered?: boolean; pickup_enabled?: boolean };
+          if (!alive) return;
+          setCoverage((current) => ({
+            ...current,
+            [a.id]: res.ok
+              ? { status: data.covered ? "covered" : "outside", pickupEnabled: Boolean(data.pickup_enabled) }
+              : { status: "error", pickupEnabled: false },
+          }));
+        })
+        .catch(() => {
+          if (alive) setCoverage((current) => ({ ...current, [a.id]: { status: "error", pickupEnabled: false } }));
+        });
+    }
+    return () => {
+      alive = false;
+    };
+  }, [view, cartBranchId, addresses]);
+
+  // ITEM 8 — the SAME live check, for the one-time address: matched by name
+  // against the master list exactly like a pinless saved address, never by id.
+  useEffect(() => {
+    if (view !== "address" || cartBranchId == null || !oneTimeAddress) return;
+    let alive = true;
+    const key = `${oneTimeAddress.mainArea}|${oneTimeAddress.subArea}`;
+    fetch("/api/delivery/address-coverage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        branch_id: cartBranchId,
+        main_area: oneTimeAddress.mainArea,
+        sub_area: oneTimeAddress.subArea,
+      }),
+    })
+      .then(async (res) => {
+        const data = (await res.json().catch(() => ({}))) as { covered?: boolean; pickup_enabled?: boolean };
+        if (!alive) return;
+        setOneTimeCoverageAnswer({
+          key,
+          state: res.ok
+            ? { status: data.covered ? "covered" : "outside", pickupEnabled: Boolean(data.pickup_enabled) }
+            : { status: "error", pickupEnabled: false },
+        });
+      })
+      .catch(() => {
+        if (alive) setOneTimeCoverageAnswer({ key, state: { status: "error", pickupEnabled: false } });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [view, cartBranchId, oneTimeAddress]);
+
+  // No answer yet for THIS address (or a stale answer for a previous one) reads
+  // as "checking" — mirrors `addressCoverage()`'s default just below.
+  const oneTimeCoverage: AddressCoverageState | null = oneTimeAddress
+    ? oneTimeAddress.mainArea + "|" + oneTimeAddress.subArea === oneTimeCoverageAnswer?.key
+      ? oneTimeCoverageAnswer.state
+      : { status: "checking", pickupEnabled: false }
+    : null;
+
+  const chosenCoverage = oneTimeAddress
+    ? oneTimeCoverage
+    : chosenAddress
+      ? (coverage[chosenAddress.id] ?? null)
+      : null;
+  // ITEM 8 — the payment/overview recap reads from whichever destination is
+  // active, saved or one-time, with one small computed pair instead of
+  // repeating the branch at every render site.
+  const effectiveAddressLabel = oneTimeAddress
+    ? t("home.order.oneTimeAddressLabel")
+    : chosenAddress
+      ? addressCardLabel(chosenAddress, t)
+      : null;
+  const effectiveAddressText = oneTimeAddress ? oneTimeAddress.address : (chosenAddress?.address ?? null);
+  // An address with no answer yet is still being checked. Derived here rather
+  // than written from the effect, which would cascade a render per address.
+  const addressCoverage = (id: number): AddressCoverageState =>
+    coverage[id] ?? { status: "checking", pickupEnabled: false };
+
   /* ══════════════ Task 3 — same-screen checkout (NO navigation) ══════════════
      Every step below renders inside this drawer. The /customer/checkout route
      still exists for deep links, but this flow never routes to it. */
@@ -207,6 +360,7 @@ export function CartDrawer({
     setPickupBranchError(null);
     setShowAddForm(false);
     setShowMapForm(false);
+    setShowOneTimeForm(false);
     setMapPoint(null);
     setAddressError(null);
     setQuote(null);
@@ -294,6 +448,7 @@ export function CartDrawer({
     setShowAddForm(false);
     setShowMapForm(false);
     setMapPoint(null);
+    setCoverage({});
     setStep("address");
     // loadAddresses returns { list, failed }. Only open the Add New Address form
     // when the fetch SUCCEEDED and the customer genuinely has zero saved addresses.
@@ -394,7 +549,7 @@ export function CartDrawer({
       setAddressError(t("home.order.errCustomAreaRequired"));
       return;
     }
-    if (!locationName.trim()) {
+    if (nickname === "custom" && !locationName.trim()) {
       setAddressError(t("home.order.errCustomLabelRequired"));
       return;
     }
@@ -417,7 +572,8 @@ export function CartDrawer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          label: locationName.trim(),
+          label: labelForNickname(nickname),
+          custom_label: nickname === "custom" ? locationName.trim() : "",
           address: parts.join(", "),
           main_area: areaName,
           ...(isCustomMain
@@ -463,7 +619,7 @@ export function CartDrawer({
     if (cartBranchId == null) return;
     if (fulfillmentType === "pickup") {
       if (!pickupBranch) return;
-    } else if (!chosenAddress) {
+    } else if (!chosenAddress && !oneTimeAddress) {
       return;
     }
     setQuoteError(null);
@@ -476,17 +632,29 @@ export function CartDrawer({
               fulfillment_type: "pickup",
               items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty })),
             }
-          : (() => {
-              const lat = chosenAddress!.latitude != null ? Number(chosenAddress!.latitude) : undefined;
-              const lng = chosenAddress!.longitude != null ? Number(chosenAddress!.longitude) : undefined;
-              const hasCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
-              return {
+          : oneTimeAddress
+            ? // ITEM 8 — a one-time address for this order: matched by name, the
+              // same way a pinless saved address is; nothing to save, nothing to
+              // send an id for.
+              {
                 branch_id: cartBranchId,
                 fulfillment_type: "delivery",
-                ...(hasCoords ? { lat, lng } : {}),
+                main_area: oneTimeAddress.mainArea,
+                sub_area: oneTimeAddress.subArea,
                 items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty })),
-              };
-            })();
+              }
+            : (() => {
+                const lat = chosenAddress!.latitude != null ? Number(chosenAddress!.latitude) : undefined;
+                const lng = chosenAddress!.longitude != null ? Number(chosenAddress!.longitude) : undefined;
+                const hasCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
+                return {
+                  branch_id: cartBranchId,
+                  fulfillment_type: "delivery",
+                  ...(hasCoords ? { lat, lng } : {}),
+                  customer_address_id: chosenAddress!.id,
+                  items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty })),
+                };
+              })();
       const res = await fetch("/api/delivery/quote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -508,8 +676,14 @@ export function CartDrawer({
   }
 
   function goPayment() {
-    if (!chosenAddress) {
+    if (!chosenAddress && !oneTimeAddress) {
       setAddressError(t("home.order.errAddressRequired"));
+      return;
+    }
+    // Delivery is not offered to an address this branch does not cover; the
+    // banner above offers pickup instead. The server enforces the same rule.
+    if (chosenCoverage?.status === "outside") {
+      setAddressError(t("home.order.outsideAreaTitle"));
       return;
     }
     setAddressError(null);
@@ -521,6 +695,7 @@ export function CartDrawer({
     setPlaceError(null);
     setShowAddForm(false);
     setShowMapForm(false);
+    setShowOneTimeForm(false);
     setMapPoint(null);
   }
 
@@ -617,7 +792,7 @@ export function CartDrawer({
    */
   async function confirmOrder() {
     if (!quote || placing) return;
-    if (fulfillmentType === "pickup" ? !pickupBranch : !chosenAddress) return;
+    if (fulfillmentType === "pickup" ? !pickupBranch : !chosenAddress && !oneTimeAddress) return;
     if (!attemptKeyRef.current) rotateAttemptKey();
     setPlacing(true);
     setPlaceError(null);
@@ -634,23 +809,38 @@ export function CartDrawer({
               pickup_time: new Date(pickupTimeBase + pickupTimeMinutes * 60000).toISOString(),
               items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
             }
-          : (() => {
-              const lat = chosenAddress!.latitude != null ? Number(chosenAddress!.latitude) : undefined;
-              const lng = chosenAddress!.longitude != null ? Number(chosenAddress!.longitude) : undefined;
-              const hasCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
-              return {
+          : oneTimeAddress
+            ? // ITEM 8 — never saved: no customer_address_id, just this order's
+              // own typed area pair, matched by name like a pinless saved address.
+              {
                 branch_id: quote.branch.id,
                 idempotency_key: attemptKeyRef.current,
                 payment_method: payment,
-                delivery_address: chosenAddress!.address,
+                delivery_address: oneTimeAddress.address,
                 food_notes: "",
                 fulfillment_type: "delivery" as const,
-                ...(hasCoords ? { lat, lng } : {}),
-                customer_address_id: chosenAddress!.id,
-                coord_source: "saved_address",
+                main_area: oneTimeAddress.mainArea,
+                sub_area: oneTimeAddress.subArea,
+                coord_source: "one_time_address",
                 items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
-              };
-            })();
+              }
+            : (() => {
+                const lat = chosenAddress!.latitude != null ? Number(chosenAddress!.latitude) : undefined;
+                const lng = chosenAddress!.longitude != null ? Number(chosenAddress!.longitude) : undefined;
+                const hasCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
+                return {
+                  branch_id: quote.branch.id,
+                  idempotency_key: attemptKeyRef.current,
+                  payment_method: payment,
+                  delivery_address: chosenAddress!.address,
+                  food_notes: "",
+                  fulfillment_type: "delivery" as const,
+                  ...(hasCoords ? { lat, lng } : {}),
+                  customer_address_id: chosenAddress!.id,
+                  coord_source: "saved_address",
+                  items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
+                };
+              })();
       const result = await placeOrderAction(payload);
       if (result.error || result.orderId == null) {
         rotateAttemptKey();
@@ -666,10 +856,11 @@ export function CartDrawer({
         addressText:
           fulfillmentType === "pickup"
             ? `${pickupBranch!.pickupAddress || pickupBranch!.name}${pickupBranch!.pickupPhone ? ` · ${pickupBranch!.pickupPhone}` : ""}`
-            : chosenAddress!.address,
+            : (oneTimeAddress?.address ?? chosenAddress!.address),
         items: count,
         subtotal: quote.subtotal,
         deliveryFee: quote.delivery_charge,
+        platformFee: quote.platform_fee ?? 0,
         grandTotal: quote.total,
         fulfillmentType,
         pickupTimeLabel:
@@ -681,6 +872,10 @@ export function CartDrawer({
             : undefined,
       });
       clear(); // ordered — the drawer cart empties (orderResult holds the receipt)
+      // ITEM 8 — a one-time address is exactly that: it does not carry over to
+      // the customer's NEXT order the way a saved-address choice deliberately does.
+      setOneTimeAddress(null);
+      setOneTimeCoverageAnswer(null);
       setStep("success");
     } catch {
       rotateAttemptKey();
@@ -733,6 +928,7 @@ export function CartDrawer({
             ) : null}
             <button
               onClick={handleClose}
+              data-testid="drawer-close"
               className="flex size-8 items-center justify-center rounded-lg border border-white/10 bg-surface-dark text-white hover:bg-[#23232e]"
               aria-label={t("home.cart.close")}
             >
@@ -796,9 +992,19 @@ export function CartDrawer({
                   <div className="flex items-center justify-between">
                     <span className="text-[#a0a0b0]">{t("home.order.deliveryFee")}</span>
                     <span className="text-white">
-                      {orderResult.fulfillmentType === "pickup" ? t("home.order.freePickup") : fmt.money(orderResult.deliveryFee)}
+                      {orderResult.fulfillmentType === "pickup"
+                        ? t("home.order.freePickup")
+                        : orderResult.deliveryFee === 0
+                          ? t("home.order.freeDelivery")
+                          : fmt.money(orderResult.deliveryFee)}
                     </span>
                   </div>
+                  {orderResult.platformFee > 0 ? (
+                    <div className="flex items-center justify-between" data-testid="drawer-receipt-platform-fee">
+                      <span className="text-[#a0a0b0]">{t("home.order.platformFee")}</span>
+                      <span className="text-white">{fmt.money(orderResult.platformFee)}</span>
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between border-t border-white/8 pt-1.5">
                     <span className="font-bold text-white">{t("home.order.grandTotal")}</span>
                     <span className="font-display text-[1.1rem] font-extrabold text-brand-500">
@@ -894,7 +1100,12 @@ export function CartDrawer({
                   </button>
                 </div>
               ) : null}
-              {!loadingAddresses && !addressError && addresses.length === 0 && !showAddForm ? (
+              {!loadingAddresses &&
+              !addressError &&
+              addresses.length === 0 &&
+              !showAddForm &&
+              !showOneTimeForm &&
+              !oneTimeAddress ? (
                 <div className="rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-4 text-center">
                   <p className="text-[0.85rem] font-bold text-amber-300">{t("home.order.noSavedAddress")}</p>
                   <p className="mt-0.5 text-[0.75rem] text-amber-200/70">{t("home.order.noSavedAddressDesc")}</p>
@@ -915,6 +1126,9 @@ export function CartDrawer({
                         data-testid="drawer-saved-address"
                         onClick={() => {
                           setAddressId(String(a.id));
+                          // ITEM 8 — picking a saved address deselects any
+                          // one-time one; only one destination is active.
+                          setOneTimeAddress(null);
                           setAddressError(null);
                         }}
                         className={cn(
@@ -934,7 +1148,7 @@ export function CartDrawer({
                         </span>
                         <span className="min-w-0">
                           <span className="block truncate text-[0.82rem] font-bold text-white">
-                            {addressCardLabel(a)}
+                            {addressCardLabel(a, t)}
                           </span>
                           {a.house_plot || a.road_lane || a.main_area || a.landmark ? (
                             /* structured card — House/Plot · Flat · Road · Area ·
@@ -961,10 +1175,110 @@ export function CartDrawer({
                           ) : (
                             <span className="mt-0.5 block break-words text-[0.75rem] text-[#a0a0b0]">{a.address}</span>
                           )}
+                          {addressCoverage(a.id) ? (
+                            <span
+                              data-testid={`drawer-address-coverage-${a.id}`}
+                              data-coverage={addressCoverage(a.id).status}
+                              className={cn(
+                                "mt-1.5 inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-bold",
+                                addressCoverage(a.id).status === "covered" && "bg-emerald-500/15 text-emerald-300",
+                                addressCoverage(a.id).status === "outside" && "bg-amber-500/15 text-amber-300",
+                                (addressCoverage(a.id).status === "checking" || addressCoverage(a.id).status === "error") &&
+                                  "bg-white/6 text-[#a0a0b0]",
+                              )}
+                            >
+                              {addressCoverage(a.id).status === "covered"
+                                ? t("home.order.deliversHereBadge")
+                                : addressCoverage(a.id).status === "outside"
+                                  ? t("home.order.pickupOnlyBadge")
+                                  : addressCoverage(a.id).status === "checking"
+                                    ? t("home.order.checkingCoverage")
+                                    : t("home.order.coverageCheckFailed")}
+                            </span>
+                          ) : null}
                         </span>
                       </button>
                     );
                   })}
+                </div>
+              ) : null}
+              {oneTimeAddress ? (
+                /* ITEM 8 — the active one-time destination: styled like a
+                    selected saved-address row (same radio-checked look), plus
+                    its own live coverage badge and a way to drop it. */
+                <div
+                  className="flex items-start gap-2.5 rounded-[10px] border border-brand-500 bg-brand-500/10 p-3"
+                  data-testid="drawer-one-time-address"
+                >
+                  <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border-2 border-brand-500">
+                    <span className="size-1.5 rounded-full bg-brand-500" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[0.82rem] font-bold text-white">
+                      {t("home.order.oneTimeAddressLabel")}
+                    </span>
+                    <span className="mt-0.5 block break-words text-[0.75rem] text-[#a0a0b0]">
+                      {oneTimeAddress.address}
+                    </span>
+                    {oneTimeCoverage ? (
+                      <span
+                        data-testid="drawer-one-time-coverage"
+                        data-coverage={oneTimeCoverage.status}
+                        className={cn(
+                          "mt-1.5 inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-bold",
+                          oneTimeCoverage.status === "covered" && "bg-emerald-500/15 text-emerald-300",
+                          oneTimeCoverage.status === "outside" && "bg-amber-500/15 text-amber-300",
+                          (oneTimeCoverage.status === "checking" || oneTimeCoverage.status === "error") &&
+                            "bg-white/6 text-[#a0a0b0]",
+                        )}
+                      >
+                        {oneTimeCoverage.status === "covered"
+                          ? t("home.order.deliversHereBadge")
+                          : oneTimeCoverage.status === "outside"
+                            ? t("home.order.pickupOnlyBadge")
+                            : oneTimeCoverage.status === "checking"
+                              ? t("home.order.checkingCoverage")
+                              : t("home.order.coverageCheckFailed")}
+                      </span>
+                    ) : null}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOneTimeAddress(null);
+                      setOneTimeCoverageAnswer(null);
+                    }}
+                    data-testid="drawer-remove-one-time-address"
+                    className="shrink-0 text-[0.7rem] font-bold text-[#a0a0b0] hover:text-white"
+                  >
+                    ✕ {t("common.remove")}
+                  </button>
+                </div>
+              ) : null}
+              {(chosenAddress || oneTimeAddress) && chosenCoverage?.status === "outside" ? (
+                /* PHASE 3 — the same honest pattern the storefront bar uses: say
+                    delivery is not possible from here, and offer what works. */
+                <div
+                  className="rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3"
+                  data-testid="drawer-outside-area"
+                  role="status"
+                >
+                  <p className="text-[0.82rem] font-bold text-amber-300">{t("home.order.outsideAreaTitle")}</p>
+                  <p className="mt-0.5 text-[0.75rem] text-amber-200/80">
+                    {t("home.order.outsideAreaBody", { branch: cartBranchName ?? "" })}
+                  </p>
+                  {chosenCoverage.pickupEnabled ? (
+                    <button
+                      type="button"
+                      onClick={startPickupCheckout}
+                      data-testid="drawer-switch-to-pickup"
+                      className="mt-2 w-full rounded-lg border border-amber-400/40 py-2 text-[0.78rem] font-extrabold text-amber-200 hover:bg-amber-500/10"
+                    >
+                      🏬 {t("home.order.switchToPickup")}
+                    </button>
+                  ) : (
+                    <p className="mt-1.5 text-[0.72rem] text-amber-200/70">{t("home.order.pickupNotOffered")}</p>
+                  )}
                 </div>
               ) : null}
               {showAddForm ? (
@@ -975,14 +1289,27 @@ export function CartDrawer({
                   data-testid="drawer-add-address-form"
                 >
                   <p className="text-[0.8rem] font-bold text-white">{t("home.order.addNewAddress")}</p>
-                  <input
-                    value={locationName}
-                    onChange={(e) => setLocationName(e.target.value)}
-                    placeholder={t("addresses.locationNamePlaceholder")}
-                    maxLength={40}
-                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
-                    aria-label={t("addresses.locationNameField")}
-                  />
+                  <select
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value as NicknameKind)}
+                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
+                    aria-label={t("addresses.nicknameField")}
+                    data-testid="drawer-address-nickname"
+                  >
+                    <option value="home">{t("addresses.nicknameHome")}</option>
+                    <option value="office">{t("addresses.nicknameOffice")}</option>
+                    <option value="custom">{t("addresses.nicknameCustom")}</option>
+                  </select>
+                  {nickname === "custom" ? (
+                    <input
+                      value={locationName}
+                      onChange={(e) => setLocationName(e.target.value)}
+                      placeholder={t("addresses.nicknameCustomPlaceholder")}
+                      maxLength={40}
+                      className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                      aria-label={t("addresses.nicknameCustomField")}
+                    />
+                  ) : null}
                   <select
                     value={mainArea}
                     onChange={(e) => {
@@ -995,12 +1322,11 @@ export function CartDrawer({
                     aria-label={t("addresses.selectYourArea")}
                   >
                     <option value="">{t("addresses.selectYourArea")}</option>
-                    {MAIN_AREA_NAMES.map((m) => (
+                    {mainAreaOptions.map((m) => (
                       <option key={m} value={m}>
                         {m}
                       </option>
                     ))}
-                    <option value={CUSTOM_VALUE}>{t("addresses.addYourOwn")}</option>
                   </select>
                   {mainArea === CUSTOM_VALUE ? (
                     <input
@@ -1023,7 +1349,7 @@ export function CartDrawer({
                         aria-label={t("addresses.selectYourAreaName")}
                       >
                         <option value="">{t("addresses.selectYourAreaName")}</option>
-                        {subAreasFor(mainArea).map((s) => (
+                        {subAreaOptions(mainArea).map((s) => (
                           <option key={s} value={s}>
                             {s}
                           </option>
@@ -1109,42 +1435,210 @@ export function CartDrawer({
                     </button>
                   </div>
                 </div>
-              ) : addresses.length >= LIMITS.maxSavedAddresses ? (
-                /* 5/5 — no way to add a 6th address from the UI (the backend
-                    route rejects it independently) */
-                <p
-                  className="rounded-lg bg-amber-500/10 px-3 py-2 text-center text-[0.75rem] font-semibold text-amber-300"
-                  data-testid="drawer-max-addresses"
+              ) : showOneTimeForm ? (
+                /* ITEM 8 — the one-time address form: the SAME master-list
+                    area/sub-area model as the saved-address form (no custom
+                    main area — that is what coverage matches on), minus the
+                    nickname field, since nothing here is ever saved. Confirm
+                    sets local state only; no fetch, no address-book row, no
+                    5-address cap. */
+                <div
+                  className="space-y-2 rounded-[10px] border border-white/10 bg-surface-dark p-3"
+                  data-testid="drawer-one-time-address-form"
                 >
-                  {t("home.order.maxAddressesReached")}
-                </p>
-              ) : showMapForm ? null : (
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddForm(true);
-                      setShowMapForm(false);
-                      setAddressError(null);
+                  <p className="text-[0.8rem] font-bold text-white">{t("home.order.useOneTimeAddress")}</p>
+                  <p className="text-[0.7rem] text-[#a0a0b0]">{t("home.order.oneTimeAddressNotice")}</p>
+                  <select
+                    value={oneTimeMainAreaInput}
+                    onChange={(e) => {
+                      setOneTimeMainAreaInput(e.target.value);
+                      setOneTimeSubAreaInput("");
+                      setOneTimeCustomSubInput("");
                     }}
-                    data-testid="drawer-add-address"
-                    className="rounded-lg border border-dashed border-white/15 py-2 text-[0.72rem] font-bold text-[#a0a0b0] hover:border-brand-500/50 hover:text-brand-400"
+                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
+                    aria-label={t("addresses.selectYourArea")}
+                    data-testid="drawer-one-time-main-area"
                   >
-                    + {t("home.order.addNewAddress")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMapForm(true);
-                      setShowAddForm(false);
-                      setAddressError(null);
-                    }}
-                    data-testid="drawer-add-map-address"
-                    className="rounded-lg border border-dashed border-white/15 py-2 text-[0.72rem] font-bold text-[#a0a0b0] hover:border-brand-500/50 hover:text-brand-400"
-                  >
-                    🗺 {t("home.order.useMapLocation")}
-                  </button>
+                    <option value="">{t("addresses.selectYourArea")}</option>
+                    {mainAreaOptions.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  {oneTimeMainAreaInput ? (
+                    <>
+                      <select
+                        value={oneTimeSubAreaInput}
+                        onChange={(e) => {
+                          setOneTimeSubAreaInput(e.target.value);
+                          setOneTimeCustomSubInput("");
+                        }}
+                        className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
+                        aria-label={t("addresses.selectYourAreaName")}
+                        data-testid="drawer-one-time-sub-area"
+                      >
+                        <option value="">{t("addresses.selectYourAreaName")}</option>
+                        {subAreaOptions(oneTimeMainAreaInput).map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                        <option value={CUSTOM_VALUE}>{t("addresses.addYourOwn")}</option>
+                      </select>
+                      {oneTimeSubAreaInput === CUSTOM_VALUE ? (
+                        <input
+                          value={oneTimeCustomSubInput}
+                          onChange={(e) => setOneTimeCustomSubInput(e.target.value)}
+                          placeholder={t("addresses.enterAreaName")}
+                          maxLength={80}
+                          className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                          aria-label={t("addresses.enterAreaName")}
+                        />
+                      ) : null}
+                    </>
+                  ) : null}
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={oneTimeRoad}
+                      onChange={(e) => setOneTimeRoad(e.target.value)}
+                      placeholder={t("addresses.roadLanePlaceholder")}
+                      maxLength={80}
+                      className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                      aria-label={t("addresses.enterRoadLane")}
+                    />
+                    <input
+                      value={oneTimeHouse}
+                      onChange={(e) => setOneTimeHouse(e.target.value)}
+                      placeholder={t("addresses.housePlotField")}
+                      maxLength={80}
+                      className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                    />
+                    <input
+                      value={oneTimeFlat}
+                      onChange={(e) => setOneTimeFlat(e.target.value)}
+                      placeholder={t("addresses.flatNumberField")}
+                      maxLength={80}
+                      className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                    />
+                    <input
+                      value={oneTimeLandmark}
+                      onChange={(e) => setOneTimeLandmark(e.target.value)}
+                      placeholder={t("addresses.landmarkField")}
+                      maxLength={200}
+                      className="h-9 rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                    />
+                  </div>
+                  {addressError ? (
+                    <p className="text-[0.72rem] font-semibold text-red-400" role="alert">
+                      {addressError}
+                    </p>
+                  ) : null}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOneTimeForm(false);
+                        setAddressError(null);
+                      }}
+                      className="h-9 rounded-lg border border-white/12 text-[0.78rem] font-bold text-white hover:border-brand-500"
+                    >
+                      {t("common.cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="drawer-confirm-one-time-address"
+                      onClick={() => {
+                        const isCustomSub = oneTimeSubAreaInput === CUSTOM_VALUE;
+                        if (!oneTimeMainAreaInput) {
+                          setAddressError(t("home.order.errAreaRequired"));
+                          return;
+                        }
+                        if (isCustomSub && !oneTimeCustomSubInput.trim()) {
+                          setAddressError(t("home.order.errCustomAreaRequired"));
+                          return;
+                        }
+                        const subAreaText = isCustomSub ? oneTimeCustomSubInput.trim() : oneTimeSubAreaInput.trim();
+                        const parts: string[] = [];
+                        if (oneTimeHouse.trim()) parts.push(`House/Plot ${oneTimeHouse.trim()}`);
+                        if (oneTimeFlat.trim()) parts.push(`Flat ${oneTimeFlat.trim()}`);
+                        if (oneTimeRoad.trim()) parts.push(oneTimeRoad.trim());
+                        if (subAreaText) parts.push(subAreaText);
+                        parts.push(oneTimeMainAreaInput, "Dhaka");
+                        setOneTimeAddress({
+                          mainArea: oneTimeMainAreaInput,
+                          subArea: subAreaText,
+                          address: parts.join(", "),
+                        });
+                        // ITEM 8 — the one-time address IS the selection now;
+                        // a saved-address choice from before is superseded.
+                        setAddressId("");
+                        setAddressError(null);
+                        setShowOneTimeForm(false);
+                      }}
+                      className="flex h-9 items-center justify-center gap-2 rounded-lg bg-brand-500 text-[0.8rem] font-extrabold text-white hover:bg-brand-600"
+                    >
+                      {t("home.order.useOneTimeAddressConfirm")}
+                    </button>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  {addresses.length >= LIMITS.maxSavedAddresses ? (
+                    /* 5/5 — no way to add a 6th SAVED address from the UI (the
+                        backend route rejects it independently); the one-time
+                        address below is still offered, since it never counts
+                        toward this cap. */
+                    <p
+                      className="rounded-lg bg-amber-500/10 px-3 py-2 text-center text-[0.75rem] font-semibold text-amber-300"
+                      data-testid="drawer-max-addresses"
+                    >
+                      {t("home.order.maxAddressesReached")}
+                    </p>
+                  ) : showMapForm ? null : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddForm(true);
+                          setShowMapForm(false);
+                          setAddressError(null);
+                        }}
+                        data-testid="drawer-add-address"
+                        className="rounded-lg border border-dashed border-white/15 py-2 text-[0.72rem] font-bold text-[#a0a0b0] hover:border-brand-500/50 hover:text-brand-400"
+                      >
+                        + {t("home.order.addNewAddress")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMapForm(true);
+                          setShowAddForm(false);
+                          setAddressError(null);
+                        }}
+                        data-testid="drawer-add-map-address"
+                        className="rounded-lg border border-dashed border-white/15 py-2 text-[0.72rem] font-bold text-[#a0a0b0] hover:border-brand-500/50 hover:text-brand-400"
+                      >
+                        🗺 {t("home.order.useMapLocation")}
+                      </button>
+                    </div>
+                  )}
+                  {!showMapForm && !oneTimeAddress ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOneTimeForm(true);
+                        setShowAddForm(false);
+                        setShowMapForm(false);
+                        setAddressError(null);
+                      }}
+                      data-testid="drawer-use-one-time-address"
+                      className="w-full rounded-lg border border-dashed border-white/15 py-2 text-[0.72rem] font-bold text-[#a0a0b0] hover:border-brand-500/50 hover:text-brand-400"
+                    >
+                      ⏱ {t("home.order.useOneTimeAddress")}
+                    </button>
+                  ) : null}
+                </>
               )}
               {showMapForm ? (
                 /* map/current-location address — the SAME MapPicker component the
@@ -1281,7 +1775,7 @@ export function CartDrawer({
               <p className="rounded-lg bg-white/4 px-3 py-2 text-center text-[0.72rem] text-[#a0a0b0]">
                 {fulfillmentType === "pickup"
                   ? `${t("home.order.pickupLocation")}: ${pickupBranch?.name ?? "—"}`
-                  : `${t("home.order.deliverTo")}: ${chosenAddress ? addressCardLabel(chosenAddress) : "—"}`}
+                  : `${t("home.order.deliverTo")}: ${effectiveAddressLabel ?? "—"}`}
               </p>
             </div>
           ) : view === "overview" ? (
@@ -1313,15 +1807,13 @@ export function CartDrawer({
                     </button>
                   </div>
                 ) : null
-              ) : chosenAddress ? (
+              ) : chosenAddress || oneTimeAddress ? (
                 <div className="rounded-[10px] border border-white/8 bg-surface-dark px-3.5 py-2.5">
                   <p className="text-[0.68rem] font-bold uppercase tracking-wide text-[#606070]">
                     {t("home.order.deliverTo")}
                   </p>
-                  <p className="mt-0.5 truncate text-[0.82rem] font-bold text-white">
-                    {addressCardLabel(chosenAddress)}
-                  </p>
-                  <p className="mt-0.5 break-words text-[0.75rem] text-[#a0a0b0]">{chosenAddress.address}</p>
+                  <p className="mt-0.5 truncate text-[0.82rem] font-bold text-white">{effectiveAddressLabel}</p>
+                  <p className="mt-0.5 break-words text-[0.75rem] text-[#a0a0b0]">{effectiveAddressText}</p>
                   <button
                     type="button"
                     onClick={() => setStep("address")}
@@ -1374,7 +1866,11 @@ export function CartDrawer({
                       {fulfillmentType === "pickup" ? (
                         t("home.order.freePickup")
                       ) : quote ? (
-                        fmt.money(quote.delivery_charge)
+                        quote.delivery_charge === 0 ? (
+                          t("home.order.freeDelivery")
+                        ) : (
+                          fmt.money(quote.delivery_charge)
+                        )
                       ) : quoting ? (
                         <span className="inline-flex items-center gap-1.5 text-[#a0a0b0]">
                           <span className="size-3 animate-spin rounded-full border-2 border-white/20 border-t-brand-500" />
@@ -1385,6 +1881,14 @@ export function CartDrawer({
                       )}
                     </dd>
                   </div>
+                  {quote && (quote.platform_fee ?? 0) > 0 ? (
+                    /* PHASE 4 — stated before the one order-creating tap, never folded
+                        silently into the total. */
+                    <div className="flex items-center justify-between" data-testid="drawer-quote-platform-fee">
+                      <dt className="text-[0.85rem] text-[#a0a0b0]">{t("home.order.platformFee")}</dt>
+                      <dd className="text-[0.8rem] text-white">{fmt.money(quote.platform_fee ?? 0)}</dd>
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between border-t border-white/8 pt-2">
                     <dt className="text-[0.95rem] font-bold text-white">{t("home.order.grandTotal")}</dt>
                     <dd
@@ -1600,14 +2104,28 @@ export function CartDrawer({
             /* req #4 — ONE primary action, carrying the grand total, plus the
                 Self Pickup alternative underneath. */
             <>
+              {platformClosed ? (
+                /* ITEM 5 — the SAME honest "here's why, here's what still
+                    works" pattern the outside-delivery-area banner uses:
+                    browsing and the cart stay open, only placing the order
+                    is blocked, with a plain reason and a reopen time. */
+                <div
+                  className="mb-2.5 rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3"
+                  data-testid="drawer-platform-closed"
+                  role="status"
+                >
+                  <p className="text-[0.82rem] font-bold text-amber-300">{t("home.order.platformClosedTitle")}</p>
+                  <p className="mt-0.5 text-[0.75rem] text-amber-200/80">{t("home.order.platformClosedBody")}</p>
+                </div>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void startCheckout()}
-                disabled={cartBranchId == null || lines.length === 0}
+                disabled={platformClosed || cartBranchId == null || lines.length === 0}
                 data-testid="place-an-order"
                 className={cn(
                   "flex w-full items-center justify-center gap-2 rounded-[10px] bg-brand-500 py-3.25 text-[0.95rem] font-extrabold text-white transition-colors hover:bg-brand-600",
-                  (cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
+                  (platformClosed || cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
                 )}
               >
                 {t("home.order.placeAnOrder")} · {fmt.money(total)}
@@ -1615,11 +2133,11 @@ export function CartDrawer({
               <button
                 type="button"
                 onClick={startPickupCheckout}
-                disabled={cartBranchId == null || lines.length === 0}
+                disabled={platformClosed || cartBranchId == null || lines.length === 0}
                 data-testid="self-pickup"
                 className={cn(
                   "mt-2 flex w-full items-center justify-center gap-2 rounded-[10px] border border-brand-500/40 py-2.75 text-[0.85rem] font-extrabold text-brand-400 transition-colors hover:bg-brand-500/10",
-                  (cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
+                  (platformClosed || cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
                 )}
               >
                 🏬 {t("home.order.selfPickup")}
@@ -1687,11 +2205,11 @@ export function CartDrawer({
               <button
                 type="button"
                 onClick={goPayment}
-                disabled={!addressId || loadingAddresses}
+                disabled={(!addressId && !oneTimeAddress) || loadingAddresses}
                 data-testid="drawer-next-payment"
                 className={cn(
                   "flex items-center justify-center gap-2 rounded-[10px] bg-brand-500 py-3 text-[0.85rem] font-extrabold text-white hover:bg-brand-600",
-                  (!addressId || loadingAddresses) && "cursor-not-allowed opacity-50",
+                  ((!addressId && !oneTimeAddress) || loadingAddresses) && "cursor-not-allowed opacity-50",
                 )}
               >
                 {t("home.order.continue")} →

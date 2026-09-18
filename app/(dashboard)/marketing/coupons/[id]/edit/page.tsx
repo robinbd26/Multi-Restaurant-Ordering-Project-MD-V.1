@@ -3,10 +3,11 @@ import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
-import { CouponForm, type CouponInitial } from "@/components/marketing/marketing-forms";
+import { CouponForm, type CouponInitial } from "@/components/marketing/coupon-form";
 import { ApiError, getJSON } from "@/lib/api/client";
 import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
+import { couponBranchOptions } from "@/lib/services/marketing";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
@@ -28,6 +29,7 @@ export default async function EditCouponPage({ params }: Params) {
     if (err instanceof ApiError && err.status === 404) notFound();
     throw err;
   }
+  const branches = await couponBranchOptions();
 
   return (
     <>
@@ -42,7 +44,7 @@ export default async function EditCouponPage({ params }: Params) {
       />
       <Card className="max-w-2xl">
         <CardContent>
-          <CouponForm initial={coupon} />
+          <CouponForm initial={coupon} branches={branches} />
         </CardContent>
       </Card>
     </>

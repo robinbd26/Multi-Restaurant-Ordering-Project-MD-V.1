@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -8,11 +7,14 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { getJSON } from "@/lib/api/client";
 import { requireRole } from "@/lib/auth/session";
 import { getSessionUser } from "@/lib/auth/current-user";
+import { readBrowseScope } from "@/lib/browse-scope/server";
 import { getT } from "@/lib/i18n/server";
-import { mediaUrl } from "@/lib/utils";
+import { cn, mediaUrl } from "@/lib/utils";
 import { nearestEligibleBranch, customerLocationStatus } from "@/lib/services/customer-location";
+import { resolveDeliverTo } from "@/lib/services/customer-branch";
 import { BranchLocationPanel } from "@/components/customer/branch-location-panel";
 import { BranchesLocationGate } from "@/components/customer/branches-location-gate";
+import { BrowseBranchButton, BrowseBranchLink } from "@/components/customer/browse-branch-link";
 import type { Branch, Paginated } from "@/types";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -22,10 +24,22 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /**
  * req #20/#4 — Foodpanda model: every branch whose delivery radius/zones cover
- * the customer's trusted GPS / default-address coordinates is orderable. The
- * nearest covered (open) branch is badged; uncovered / closed branches render
- * disabled. When there is no location or no covered branch, a clear message is
- * shown. Search filters the list only — it never re-enables an uncovered branch.
+ * the customer's deliver-to point is orderable, and the nearest covered (open)
+ * branch is badged. When there is no location or no covered branch, a clear
+ * message is shown. Search filters the list only — it never makes an uncovered
+ * branch orderable.
+ *
+ * EVERY card is clickable. The page used to lock non-covering branches as
+ * unclickable ("ordering is locked to the nearest eligible one"), which
+ * contradicted the storefront, where any branch's menu can be browsed. Cards now
+ * open the storefront menu through the same browse scope the homepage "Browsing"
+ * control writes (BrowseBranchLink), so there is one browsing implementation. A
+ * non-covering branch says so with a "Browsing only" badge; ordering is still
+ * decided server-side at checkout, never by which card was clicked.
+ *
+ * Coverage is judged from the SAME deliver-to point the homepage uses — the saved
+ * address the customer chose there, if any, else their own trusted point — so the
+ * two pages cannot disagree about which branches can deliver.
  */
 export default async function CustomerBranchesPage({
   searchParams,
@@ -37,14 +51,15 @@ export default async function CustomerBranchesPage({
   const me = (await getSessionUser())!;
   // req #11 — search runs SERVER-SIDE (trimmed, case-insensitive, matches branch
   // name / address / active delivery-area names). It filters the list only; it
-  // can never re-enable an uncovered branch, because eligibility is computed
+  // can never make an uncovered branch orderable, because eligibility is computed
   // independently by nearestEligibleBranch below.
   const search = ((await searchParams).search ?? "").trim();
   const query = new URLSearchParams({ page_size: "100" });
   if (search) query.set("search", search);
+  const target = await resolveDeliverTo(me.id, (await readBrowseScope()).deliverTo);
   const [data, nearest, locationStatus] = await Promise.all([
     getJSON<Paginated<Branch>>(`/branches/?${query.toString()}`),
-    nearestEligibleBranch(me.id),
+    nearestEligibleBranch(me.id, target.point),
     customerLocationStatus(me.id),
   ]);
   const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null;
@@ -53,7 +68,7 @@ export default async function CustomerBranchesPage({
   const coveredById = new Map(nearest.branches.map((b) => [b.id, b.covered]));
   // Open-now is decided SERVER-SIDE (lib/services/branch-hours.ts, Asia/Dhaka) —
   // the client clock is never trusted for this (§20). A covered branch that is
-  // closed right now is shown but not orderable, with an "Opens at …" note.
+  // closed right now is shown as not orderable, with an "Opens at …" note.
   const openById = new Map(nearest.branches.map((b) => [b.id, b.open_now]));
   const opensAtById = new Map(nearest.branches.map((b) => [b.id, b.opens_at]));
   const hasCoveredBranches = nearest.branches.some((b) => b.covered);
@@ -63,9 +78,8 @@ export default async function CustomerBranchesPage({
   const outOfZone = Boolean(nearest.point) && !hasCoveredBranches;
   // WS-8.14 — no usable location is NOT out of zone: a guest on the public
   // homepage can browse every branch, so a signed-in customer must not see
-  // less. Cards stay browseable (menu links work); the location card above and
-  // the neutral "set location" note on each card are the invitation. Ordering
-  // still enforces coverage server-side at checkout.
+  // less. The location card above and the neutral "set location" note on each
+  // card are the invitation. Ordering still enforces coverage at checkout.
   const noLocation = !nearest.point;
 
   return (
@@ -144,19 +158,25 @@ export default async function CustomerBranchesPage({
           {data.results.map((branch) => {
             const logo = mediaUrl(branch.logo);
             const covered = coveredById.get(branch.id) ?? false;
-            // Open-now (server-decided) gates orderability alongside coverage: a
-            // covered branch that is closed right now stays visible but disabled,
-            // with an "Opens at …" note instead of the generic not-nearest one.
             const open = openById.get(branch.id) ?? true;
-            // Browseable when orderable — or when the customer simply has no
-            // location yet (WS-8.14): browsing must not be gated on a GPS fix.
-            const enabled = (covered && open) || noLocation;
-            const isNearest = branch.id === nearestId && enabled;
-            return enabled ? (
+            // Orderable = covered AND open now — or, with no location yet, treated
+            // as orderable-pending (WS-8.14): browsing must not look refused before
+            // we even know where they are.
+            const orderable = (covered && open) || noLocation;
+            const isNearest = branch.id === nearestId && covered && open;
+            // We know where they are and this branch cannot reach it.
+            const browseOnly = !noLocation && !covered;
+            const closedNow = covered && !open;
+            return (
               <div
                 key={branch.id}
-                data-testid="branch-enabled"
-                className="group flex flex-col overflow-hidden rounded-2xl border border-emerald-400/80 bg-surface-card shadow-card transition-all hover:border-emerald-500 hover:shadow-card-hover"
+                data-testid={orderable ? "branch-enabled" : "branch-not-orderable"}
+                className={cn(
+                  "group flex flex-col overflow-hidden rounded-2xl border bg-surface-card shadow-card transition-all hover:shadow-card-hover",
+                  orderable
+                    ? "border-emerald-400/80 hover:border-emerald-500"
+                    : "border-border-base/80 hover:border-border-strong",
+                )}
               >
                 <div className="relative flex h-28 items-center justify-center bg-gradient-to-br from-ink-900 to-ink-950">
                   {logo ? (
@@ -171,9 +191,9 @@ export default async function CustomerBranchesPage({
                   ) : null}
                 </div>
                 <div className="flex flex-1 flex-col p-4">
-                  <Link href={`/customer/branches/${branch.id}/menu`} className="group/title">
+                  <BrowseBranchLink branchId={branch.id} className="group/title">
                     <h3 className="font-semibold text-fg-base transition-colors group-hover/title:text-brand-600 group-hover/title:underline">{branch.name}</h3>
-                  </Link>
+                  </BrowseBranchLink>
                   <p className="mt-0.5 line-clamp-1 text-sm text-fg-muted">📍 {branch.address}</p>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-fg-subtle">
                     <span data-testid="branch-brand">{branch.brand_type}</span>
@@ -200,15 +220,39 @@ export default async function CustomerBranchesPage({
                       >
                         {t("outOfZone.deliveryAvailable")}
                       </span>
-                    ) : (
+                    ) : noLocation ? (
                       // Browsing without a location: coverage is UNKNOWN, not
                       // refused — a neutral nudge, never the amber "unavailable".
                       <span className="font-medium text-fg-subtle" data-testid="branch-delivery-availability">
                         {t("outOfZone.deliveryUnknown")}
                       </span>
+                    ) : (
+                      <span
+                        className="font-medium text-amber-600 dark:text-amber-400"
+                        data-testid="branch-delivery-availability"
+                      >
+                        {t("outOfZone.deliveryUnavailable")}
+                      </span>
                     )}
                   </div>
 
+                  {browseOnly ? (
+                    // "Self-pickup available" only when it is true for THIS branch.
+                    <span
+                      className="mt-2 inline-flex w-fit rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300"
+                      data-testid="branch-browse-only-badge"
+                    >
+                      {branch.pickup_enabled
+                        ? t("nearestHome.browseOnlyPickupBadge")
+                        : t("nearestHome.browseOnlyTitle")}
+                    </span>
+                  ) : null}
+                  {closedNow ? (
+                    <p className="mt-2 text-xs font-medium text-amber-600 dark:text-amber-400" data-testid="branch-status-note">
+                      {t("nearestBranch.opensAt", { time: opensAtById.get(branch.id) ?? branch.opening_time ?? "" })}
+                    </p>
+                  ) : null}
+
                   <BranchLocationPanel
                     branchName={branch.name}
                     address={branch.address}
@@ -218,73 +262,17 @@ export default async function CustomerBranchesPage({
                     mapsKey={mapsKey}
                   />
 
-                  <div className="mt-3 pt-1">
-                    <ButtonLink
-                      href={`/customer/branches/${branch.id}/menu`}
+                  <div className="mt-auto pt-3">
+                    <BrowseBranchButton
+                      branchId={branch.id}
                       className="w-full"
                       size="sm"
+                      variant={orderable ? "primary" : "outline"}
+                      data-testid="branch-view-menu"
                     >
-                      {t("common.view")} →
-                    </ButtonLink>
+                      {t("nearestHome.viewMenu")} →
+                    </BrowseBranchButton>
                   </div>
-                </div>
-              </div>
-            ) : (
-              <div
-                key={branch.id}
-                aria-disabled="true"
-                tabIndex={-1}
-                data-testid="branch-disabled"
-                className="flex flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface-card opacity-60 shadow-card"
-              >
-                <div className="relative flex h-28 items-center justify-center bg-gradient-to-br from-ink-900 to-ink-950">
-                  {logo ? (
-                    <Image src={logo} alt={branch.name} width={64} height={64} className="size-16 rounded-2xl object-cover" />
-                  ) : (
-                    <span className="text-4xl">🏪</span>
-                  )}
-                </div>
-                <div className="flex flex-1 flex-col p-4">
-                  <h3 className="font-semibold text-fg-muted">{branch.name}</h3>
-                  <p className="mt-0.5 line-clamp-1 text-sm text-fg-muted">📍 {branch.address}</p>
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-fg-subtle">
-                    <span data-testid="branch-brand">{branch.brand_type}</span>
-                    <span>📞 {branch.phone}</span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-fg-subtle">
-                    <span data-testid="branch-hours">
-                      {branch.opening_time && branch.closing_time
-                        ? `🕒 ${branch.opening_time} – ${branch.closing_time}`
-                        : t("outOfZone.hoursUnknown")}
-                    </span>
-                    <span>{t("customer.deliveryRadius", { km: fmt.num(branch.delivery_radius_km) })}</span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
-                    <span className="text-fg-subtle" data-testid="branch-distance">
-                      {distanceById.get(branch.id) != null
-                        ? t("outOfZone.distanceKm", { km: fmt.num(distanceById.get(branch.id)!) })
-                        : t("outOfZone.distanceUnknown")}
-                    </span>
-                    <span
-                      className="font-medium text-amber-600 dark:text-amber-400"
-                      data-testid="branch-delivery-availability"
-                    >
-                      {t("outOfZone.deliveryUnavailable")}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xs font-medium text-amber-600 dark:text-amber-400" data-testid="branch-disabled-note">
-                    {covered && !open
-                      ? t("nearestBranch.opensAt", { time: opensAtById.get(branch.id) ?? branch.opening_time ?? "" })
-                      : t("nearestBranch.disabledNote")}
-                  </p>
-                  <BranchLocationPanel
-                    branchName={branch.name}
-                    address={branch.address}
-                    distanceKm={distanceById.get(branch.id) ?? null}
-                    covered={covered}
-                    locationKnown={!noLocation}
-                    mapsKey={mapsKey}
-                  />
                 </div>
               </div>
             );

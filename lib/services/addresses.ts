@@ -2,6 +2,10 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import type { CustomerAddress } from "@prisma/client";
 
+import { prisma } from "@/lib/db";
+import { findLocality } from "@/lib/services/area-master";
+import { isValidLatLng } from "@/lib/services/geo";
+
 
 /** Serialize a customer address (req #17). */
 export function serializeAddress(a: CustomerAddress) {
@@ -52,4 +56,66 @@ export async function ensureRegistrationAddress(
   await tx.customerAddress.create({
     data: { userId, label: "Home", address: trimmed, isDefault: true, isActive: true },
   });
+}
+
+/** One row of the storefront deliver-to picker. */
+export interface SavedAddressOption {
+  id: number;
+  label: string;
+  address: string;
+  isDefault: boolean;
+  /** True when the row has a usable map pin — for display wording only. */
+  hasCoordinates: boolean;
+  /**
+   * False when NEITHER a map pin NOR a master-list locality can resolve a
+   * branch — matches resolveDeliverTo()'s own `point || locality` rule
+   * (lib/services/customer-branch.ts), so a pinless address whose area/sub-
+   * area names a real locality is still selectable here, exactly as it
+   * already is at checkout (coverageForAddress). Disabling on hasCoordinates
+   * alone used to block every pinless address from ever being chosen.
+   */
+  isSelectable: boolean;
+}
+
+/**
+ * The customer's active addresses, reduced to what the homepage picker
+ * draws. Deliberately NOT serializeAddress(): the bar needs a handful of
+ * fields and renders on every homepage load for every signed-in customer, so
+ * it should not carry twenty-five columns of address detail through the RSC
+ * payload.
+ *
+ * Ordered the way the address book orders them — default first, then oldest —
+ * so the list reads the same in both places.
+ */
+export async function savedAddressOptions(userId: number): Promise<SavedAddressOption[]> {
+  const rows = await prisma.customerAddress.findMany({
+    where: { userId, isActive: true },
+    select: {
+      id: true,
+      label: true,
+      customLabel: true,
+      address: true,
+      isDefault: true,
+      latitude: true,
+      longitude: true,
+      mainArea: true,
+      subArea: true,
+    },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+  });
+  return Promise.all(
+    rows.map(async (a) => {
+      const hasCoordinates =
+        a.latitude != null && a.longitude != null && isValidLatLng(Number(a.latitude), Number(a.longitude));
+      const locality = hasCoordinates ? null : await findLocality(a.mainArea, a.subArea);
+      return {
+        id: a.id,
+        label: a.label === "Others" && a.customLabel ? a.customLabel : a.label,
+        address: a.address,
+        isDefault: a.isDefault,
+        hasCoordinates,
+        isSelectable: hasCoordinates || locality != null,
+      };
+    }),
+  );
 }

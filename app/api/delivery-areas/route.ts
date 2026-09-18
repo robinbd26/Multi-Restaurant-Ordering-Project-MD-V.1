@@ -37,6 +37,8 @@ export const POST = handle(async (req: Request) => {
     center_lat?: number;
     center_lng?: number;
     is_active?: unknown;
+    coverage_window?: unknown;
+    locality_id?: unknown;
   };
   const area = await createArea(me, {
     branchId: body.branch_id,
@@ -46,6 +48,8 @@ export const POST = handle(async (req: Request) => {
     centerLat: body.center_lat,
     centerLng: body.center_lng,
     isActive: body.is_active,
+    coverageWindow: body.coverage_window,
+    localityId: body.locality_id,
   });
   return created(serializeArea(area));
 });

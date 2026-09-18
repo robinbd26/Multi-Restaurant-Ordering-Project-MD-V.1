@@ -15,10 +15,19 @@ export const SETTING_KEYS = {
   // inventing a deduction nobody authorised.
   taxRatePercent: "tax_rate_percent",
   serviceChargePercent: "service_charge_percent",
+  // PHASE 4 — a flat platform fee (Tk) added to EVERY order, delivery and pickup
+  // alike. Global and super-admin owned, with an optional per-branch override.
+  platformFee: "platform_fee",
 } as const;
 
 /** Default per-delivery rider commission (Tk) until the super admin sets one. */
 export const DEFAULT_RIDER_COMMISSION = "50.00";
+
+/** PHASE 4 — the platform fee until the super admin sets another (Tk per order). */
+export const DEFAULT_PLATFORM_FEE = "5.00";
+
+/** A platform fee above this is a typo, not a fee; it is refused at the edge. */
+export const MAX_PLATFORM_FEE = 1000;
 
 /** Tax / service charge default to nil until finance configures a real rate. */
 export const DEFAULT_TAX_RATE_PERCENT = "0.00";
@@ -175,6 +184,85 @@ export async function chargeRates(): Promise<ChargeRates> {
     taxPercent: decimalSetting(tax, DEFAULT_TAX_RATE_PERCENT, MAX_CHARGE_PERCENT),
     servicePercent: decimalSetting(service, DEFAULT_SERVICE_CHARGE_PERCENT, MAX_CHARGE_PERCENT),
   };
+}
+
+/**
+ * PHASE 4 — per-branch platform fee override key. Same namespacing as the rider
+ * commission override: no schema change, and an absent override always falls
+ * back to the global fee, so a branch can never end up with no fee rule.
+ */
+export function branchPlatformFeeKey(branchId: number): string {
+  return `${SETTING_KEYS.platformFee}:branch:${branchId}`;
+}
+
+/**
+ * The platform fee an order at this branch pays, as an exact Decimal.
+ *
+ * UNLIKE tax and service charge (which are extraction rates over prices that
+ * already include them), this IS a surcharge: it is added to the order total.
+ * That is why every order snapshots it into its own column — reports must be
+ * able to separate it from food revenue rather than count it as sales.
+ */
+export async function platformFeeFor(branchId?: number | null): Promise<Prisma.Decimal> {
+  const globalFee = decimalSetting(
+    await getSetting(SETTING_KEYS.platformFee),
+    DEFAULT_PLATFORM_FEE,
+    MAX_PLATFORM_FEE,
+  );
+  if (branchId == null) return globalFee;
+  const override = await getSetting(branchPlatformFeeKey(branchId));
+  return override === null ? globalFee : decimalSetting(override, globalFee.toFixed(2), MAX_PLATFORM_FEE);
+}
+
+/** One branch platform fee rule: its own fee, or the inherited global one. */
+export interface BranchPlatformFeeRule {
+  branchId: number;
+  branchName: string;
+  /** null when the branch inherits — never a copy of the global fee. */
+  override: Prisma.Decimal | null;
+  effective: Prisma.Decimal;
+  updatedAt: Date | null;
+}
+
+/** The global fee and every live branch rule, in two queries. */
+export async function platformFeeRules(): Promise<{
+  defaultFee: Prisma.Decimal;
+  updatedAt: Date | null;
+  branches: BranchPlatformFeeRule[];
+}> {
+  const [branches, rows, globalRow] = await Promise.all([
+    prisma.branch.findMany({
+      where: { isArchived: false },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.systemSetting.findMany({
+      where: { key: { startsWith: `${SETTING_KEYS.platformFee}:branch:` } },
+    }),
+    prisma.systemSetting.findUnique({ where: { key: SETTING_KEYS.platformFee } }),
+  ]);
+  const defaultFee = decimalSetting(globalRow?.value ?? null, DEFAULT_PLATFORM_FEE, MAX_PLATFORM_FEE);
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  return {
+    defaultFee,
+    updatedAt: globalRow?.updatedAt ?? null,
+    branches: branches.map((b) => {
+      const row = byKey.get(branchPlatformFeeKey(b.id));
+      const override = row ? decimalSetting(row.value, defaultFee.toFixed(2), MAX_PLATFORM_FEE) : null;
+      return {
+        branchId: b.id,
+        branchName: b.name,
+        override,
+        effective: override ?? defaultFee,
+        updatedAt: row?.updatedAt ?? null,
+      };
+    }),
+  };
+}
+
+/** Remove a branch override so the branch inherits the global fee again. */
+export async function clearBranchPlatformFee(branchId: number): Promise<void> {
+  await prisma.systemSetting.deleteMany({ where: { key: branchPlatformFeeKey(branchId) } });
 }
 
 /**

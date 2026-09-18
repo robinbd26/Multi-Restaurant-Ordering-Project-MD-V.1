@@ -17,6 +17,8 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
     center_lat?: number;
     center_lng?: number;
     is_active?: unknown;
+    coverage_window?: unknown;
+    locality_id?: unknown;
   };
   const area = await updateArea(me, Number(id), {
     ...(body.name !== undefined ? { name: body.name } : {}),
@@ -25,6 +27,8 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
     ...(body.center_lat !== undefined ? { centerLat: body.center_lat } : {}),
     ...(body.center_lng !== undefined ? { centerLng: body.center_lng } : {}),
     ...(body.is_active !== undefined ? { isActive: body.is_active } : {}),
+    ...(body.coverage_window !== undefined ? { coverageWindow: body.coverage_window } : {}),
+    ...(body.locality_id !== undefined ? { localityId: body.locality_id } : {}),
   });
   return json(serializeArea(area));
 });

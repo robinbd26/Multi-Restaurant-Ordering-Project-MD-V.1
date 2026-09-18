@@ -26,6 +26,7 @@ interface ReportPayload {
     sales: string;
     delivery_revenue: string;
     food_revenue: string;
+    platform_fee_revenue?: string;
     refunds: string;
     commission: string;
     withdrawals_paid: string;
@@ -131,6 +132,8 @@ export default async function AccountsReportsPage({ searchParams }: Params) {
         <SummaryCard title={t("accounts.foodRevenue")} value={fmt.money(report.totals.food_revenue)} icon={<Icon name="list" />} accent="brand" />
         {/* WS-2.2 — delivery-charge collections, previously absent from every finance figure. */}
         <SummaryCard title={t("accounts.deliveryRevenue")} value={fmt.money(report.totals.delivery_revenue)} icon={<Icon name="bike" />} accent="info" />
+        {/* PHASE 4 — platform fees, reported apart from food so they are never counted as sales of food. */}
+        <SummaryCard title={t("accounts.platformFeeRevenue")} value={fmt.money(report.totals.platform_fee_revenue ?? "0")} icon={<Icon name="money" />} accent="info" />
         <SummaryCard title={t("accounts.refundsLabel")} value={fmt.money(report.totals.refunds)} icon={<Icon name="x" />} accent="danger" />
         <SummaryCard title={t("wallet.totalCommission")} value={fmt.money(report.totals.commission)} icon={<Icon name="bike" />} accent="warning" />
         <SummaryCard title={t("financials.expensesLabel")} value={fmt.money(report.totals.expenses)} icon={<Icon name="list" />} accent="neutral" />

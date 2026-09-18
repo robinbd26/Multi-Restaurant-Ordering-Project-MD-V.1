@@ -1,11 +1,31 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
-import type { Campaign, Coupon } from "@prisma/client";
+import type { Campaign, Coupon, User } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
-import { notFound, sk, validationError } from "@/lib/http/errors";
+import { forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { haversineKm, isValidLatLng, type LatLng } from "@/lib/services/geo";
+import { branchForManager } from "@/lib/selectors";
 import { notifyCampaignAudience, claimCampaignNotificationClick } from "@/lib/services/notifications";
+
+/**
+ * PHASE 5 — where a coupon is in its life RIGHT NOW. Derived, never stored, so
+ * a coupon goes live and ends on its own schedule without a job to flip it.
+ * "End now" works by stamping endsAt, which makes it ended through this same
+ * rule rather than through a second, competing flag.
+ */
+export type CouponState = "archived" | "ended" | "paused" | "scheduled" | "live";
+
+export function couponState(
+  c: { isArchived: boolean; isActive: boolean; startsAt: Date | null; endsAt: Date | null },
+  now: Date = new Date(),
+): CouponState {
+  if (c.isArchived) return "archived";
+  if (c.endsAt && c.endsAt <= now) return "ended";
+  if (!c.isActive) return "paused";
+  if (c.startsAt && c.startsAt > now) return "scheduled";
+  return "live";
+}
 
 export function serializeCoupon(c: {
   id: number;
@@ -22,6 +42,9 @@ export function serializeCoupon(c: {
   perCustomerLimit: number | null;
   isArchived: boolean;
   createdAt: Date;
+  // PHASE 5 — null = platform-wide; set = valid at that branch only.
+  branchId: number | null;
+  branch?: { name: string } | null;
 }) {
   return {
     id: c.id,
@@ -37,6 +60,9 @@ export function serializeCoupon(c: {
     per_customer_limit: c.perCustomerLimit,
     is_archived: c.isArchived,
     created_at: c.createdAt.toISOString(),
+    branch_id: c.branchId,
+    branch_name: c.branch?.name ?? null,
+    state: couponState(c),
   };
 }
 
@@ -48,10 +74,35 @@ export function parseCouponBody(body: Record<string, unknown>) {
   if (Number.isNaN(value) || value <= 0 || (discountType === "percent" && value > 100)) {
     throw validationError({ value: sk("errors.ops.discountValueInvalid") });
   }
-  // WS-7.2 — per-customer cap. Absent / empty / 0 all mean "no cap", matching
-  // how max_uses treats 0, so an existing coupon form that never sends the field
-  // keeps behaving exactly as it did.
-  const perCustomerRaw = Math.floor(Number(body.per_customer_limit ?? 0) || 0);
+  // PHASE 5 — ONE redemption per customer unless the coupon says otherwise.
+  // Absent or empty means that default; an explicit 0 means no per-customer cap,
+  // which is also how an existing uncapped coupon round-trips on edit.
+  const perRaw = body.per_customer_limit;
+  const perCustomerRaw =
+    perRaw === undefined || perRaw === null || perRaw === ""
+      ? 1
+      : Math.max(0, Math.floor(Number(perRaw) || 0));
+  // PHASE 5 — null = platform-wide. The route decides whether THIS user may
+  // choose it; a branch manager's submission is overridden with their own branch.
+  const branchRaw = body.branch_id;
+  const branchId =
+    branchRaw === undefined || branchRaw === null || branchRaw === "" ? null : Number(branchRaw);
+  if (branchId != null && (!Number.isSafeInteger(branchId) || branchId <= 0)) {
+    throw validationError({ branch_id: sk("errors.catalog.selectBranch") });
+  }
+  // PHASE 5 — start and end are full instants (date AND time). A junk value is a
+  // field error, not a 500 from the database layer.
+  const instant = (raw: unknown, field: string): Date | null => {
+    if (raw === undefined || raw === null || raw === "") return null;
+    const d = new Date(String(raw));
+    if (Number.isNaN(d.getTime())) throw validationError({ [field]: sk("errors.ops.dateInvalid") });
+    return d;
+  };
+  const startsAt = instant(body.starts_at, "starts_at");
+  const endsAt = instant(body.ends_at, "ends_at");
+  if (startsAt && endsAt && endsAt <= startsAt) {
+    throw validationError({ ends_at: sk("errors.ops.endTimeAfterStart") });
+  }
   return {
     code,
     discountType,
@@ -59,9 +110,10 @@ export function parseCouponBody(body: Record<string, unknown>) {
     minOrder: new Prisma.Decimal(Number(body.min_order ?? 0).toFixed(2)),
     maxUses: Math.max(0, Math.floor(Number(body.max_uses ?? 0) || 0)),
     perCustomerLimit: perCustomerRaw > 0 ? perCustomerRaw : null,
-    startsAt: body.starts_at ? new Date(String(body.starts_at)) : null,
-    endsAt: body.ends_at ? new Date(String(body.ends_at)) : null,
+    startsAt,
+    endsAt,
     isActive: body.is_active === undefined ? true : Boolean(body.is_active),
+    branchId,
   };
 }
 
@@ -1044,7 +1096,7 @@ export const LIVE_COUPON_WHERE: Prisma.CouponWhereInput = { isArchived: false };
 export async function validateCoupon(
   code: string,
   subtotal: number,
-  opts: { customerId?: number; client?: Prisma.TransactionClient } = {},
+  opts: { customerId?: number; client?: Prisma.TransactionClient; branchId?: number | null } = {},
 ): Promise<{ coupon: Coupon; discount: number }> {
   const db: Prisma.TransactionClient = opts.client ?? prisma;
   const coupon = await db.coupon.findUnique({ where: { code: code.trim().toUpperCase() } });
@@ -1054,6 +1106,12 @@ export async function validateCoupon(
   if (coupon.startsAt && coupon.startsAt > now) throw fail();
   if (coupon.endsAt && coupon.endsAt < now) throw fail();
   if (coupon.maxUses > 0 && coupon.usedCount >= coupon.maxUses) throw fail();
+  // PHASE 5 — a branch coupon is valid only at its own branch. Strict: a caller
+  // that does not say which branch it is ordering from cannot use one at all.
+  // Checked before the per-customer count, so the customer is told the real reason.
+  if (coupon.branchId != null && coupon.branchId !== opts.branchId) {
+    throw validationError({ coupon_code: sk("errors.ops.couponWrongBranch") });
+  }
   // WS-7.2 — per-customer cap, counted from the redemption trail rather than
   // inferred from usedCount (which cannot tell WHO used the coupon).
   if (opts.customerId != null && coupon.perCustomerLimit != null && coupon.perCustomerLimit > 0) {
@@ -1097,11 +1155,12 @@ export async function validateCoupon(
  */
 export async function claimCouponForOrder(
   tx: Prisma.TransactionClient,
-  input: { code: string; subtotal: number; customerId: number; orderId: number },
+  input: { code: string; subtotal: number; customerId: number; orderId: number; branchId?: number | null },
 ): Promise<{ couponId: number; discount: Prisma.Decimal }> {
   const { coupon, discount } = await validateCoupon(input.code, input.subtotal, {
     customerId: input.customerId,
     client: tx,
+    branchId: input.branchId ?? null,
   });
   // 0 = unlimited, so the ceiling only joins the WHERE clause when there is one.
   const ceiling: Prisma.CouponWhereInput =
@@ -1183,4 +1242,58 @@ export async function archiveOrDeleteCoupon(couponId: number): Promise<"archived
   }
   await prisma.coupon.delete({ where: { id: couponId } });
   return "deleted";
+}
+
+/**
+ * PHASE 5 — ONE coupon system, scoped by role.
+ *
+ * A branch manager sees and changes only coupons scoped to their own branch;
+ * anything they create is forced to that branch whatever they submit, so no id
+ * in a request can widen their reach. Super admin and marketing see everything
+ * and may create platform-wide coupons (branchId null) or branch-scoped ones.
+ * A coupon outside the caller's scope is reported as NOT FOUND rather than
+ * forbidden, so its existence is not disclosed either.
+ */
+export async function couponScopeForUser(user: User): Promise<{
+  where: Prisma.CouponWhereInput;
+  /** The only branch this user may scope a coupon to; null = any, incl. platform-wide. */
+  lockedBranchId: number | null;
+}> {
+  if (user.role === "branch_manager") {
+    const branch = await branchForManager(user.id);
+    if (!branch) throw forbidden(sk("errors.catalog.noBranchAssigned"));
+    return { where: { branchId: branch.id }, lockedBranchId: branch.id };
+  }
+  return { where: {}, lockedBranchId: null };
+}
+
+/**
+ * The branch a coupon being written ends up scoped to, for this caller.
+ * `current` is the coupon's existing branch on an edit: keeping it is always
+ * allowed, even if that branch has since been archived, so an unrelated edit
+ * never fails or silently widens the coupon.
+ */
+export async function couponBranchFor(
+  requested: number | null,
+  scope: { lockedBranchId: number | null },
+  current?: number | null,
+): Promise<number | null> {
+  if (scope.lockedBranchId != null) return scope.lockedBranchId;
+  if (requested == null) return null;
+  if (current != null && requested === current) return current;
+  const branch = await prisma.branch.findFirst({
+    where: { id: requested, isArchived: false },
+    select: { id: true },
+  });
+  if (!branch) throw validationError({ branch_id: sk("errors.catalog.selectBranch") });
+  return branch.id;
+}
+
+/** PHASE 5 — branches a coupon can be scoped to, for the scope selector. */
+export async function couponBranchOptions(): Promise<{ id: number; name: string }[]> {
+  return prisma.branch.findMany({
+    where: { isArchived: false },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
 }

@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
+import { activeZonesWithLocalities } from "@/lib/services/area-master";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
@@ -14,6 +15,8 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function BranchCreatePage() {
   await requireRole("super_admin");
   const { t } = await getT();
+  // ITEM 7 — the master zone list, for the branch's location-tag field.
+  const zones = await activeZonesWithLocalities();
 
   return (
     <>
@@ -27,7 +30,7 @@ export default async function BranchCreatePage() {
       />
       <Card className="max-w-3xl">
         <CardContent className="py-6">
-          <BranchForm />
+          <BranchForm zones={zones.map((z) => ({ id: z.id, name: z.name }))} />
         </CardContent>
       </Card>
     </>

@@ -242,6 +242,26 @@ export const PRODUCT_VARIATION_TYPES = ["THICK", "THIN", "BOTH"] as const;
 export const PRODUCT_VARIATION_TYPE_DEFAULT = "THICK";
 export type ProductVariationType = (typeof PRODUCT_VARIATION_TYPES)[number];
 
+/**
+ * Phase 2 — which delivery shift a branch coverage row applies to.
+ *
+ * Operations runs two coverage lists per branch: a DAY list (11:00–22:45) and a
+ * NIGHT list (22:45–04:00, last order 03:45), because fewer branches staff the
+ * overnight shift and they cover wider ground when they do. "both" means the row
+ * applies around the clock, and is the documented default so every coverage row
+ * written before this existed keeps behaving exactly as it did.
+ *
+ * Stored as a string (SQLite has no enum), validated here. See
+ * lib/services/coverage-window.ts for the clock that picks the active one.
+ */
+export const COVERAGE_WINDOWS = ["day", "night", "both"] as const;
+export type CoverageWindow = (typeof COVERAGE_WINDOWS)[number];
+export const COVERAGE_WINDOW_DEFAULT: CoverageWindow = "both";
+
+export function isCoverageWindow(v: string): v is CoverageWindow {
+  return (COVERAGE_WINDOWS as readonly string[]).includes(v);
+}
+
 export function isProductVariationType(v: string): v is ProductVariationType {
   return (PRODUCT_VARIATION_TYPES as readonly string[]).includes(v);
 }

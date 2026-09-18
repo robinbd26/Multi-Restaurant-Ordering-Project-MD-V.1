@@ -42,7 +42,14 @@ const RULES: FieldRules = {
 const FILES = { logo: false };
 
 /** Full-page create/edit form for a branch (super admin only). */
-export function BranchForm({ branch }: { branch?: Branch }) {
+export function BranchForm({
+  branch,
+  zones = [],
+}: {
+  branch?: Branch;
+  /** ITEM 7 — the master zone list, for the branch's location-tag field. */
+  zones?: { id: number; name: string }[];
+}) {
   const { t } = useTranslation();
   const action = saveBranchAction.bind(null, branch?.id ?? null);
   const [state, formAction, pending] = useActionState(action, initialActionState);
@@ -78,6 +85,20 @@ export function BranchForm({ branch }: { branch?: Branch }) {
             <option value="cheez">{t("brands.cheez")}</option>
             <option value="madchef">{t("brands.madchef")}</option>
             <option value="combined">{t("brands.combined")}</option>
+          </Select>
+        </Field>
+        {/* ITEM 7 — which master zone this branch is based in (Gulshan, Banani,
+            …). A location tag, not a coverage grant: it seeds the "Suggest
+            areas for my branch" helper on the delivery-areas page and nothing
+            else. Optional — a branch may have none. */}
+        <Field label={t("branches.zoneField")} name="zone_id" hint={t("branches.zoneFieldHint")}>
+          <Select name="zone_id" defaultValue={branch?.zone_id != null ? String(branch.zone_id) : ""}>
+            <option value="">{t("branches.zoneNone")}</option>
+            {zones.map((z) => (
+              <option key={z.id} value={z.id}>
+                {z.name}
+              </option>
+            ))}
           </Select>
         </Field>
       </div>

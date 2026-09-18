@@ -253,7 +253,16 @@ export interface FinancialTotals {
   sales: Prisma.Decimal;
   /** Σ Order.deliveryCharge — the delivery SLICE of `sales`, never additive to it. */
   deliveryRevenue: Prisma.Decimal;
-  /** sales − deliveryRevenue: the food slice, already net of coupon/coin discount. */
+  /**
+   * PHASE 4 — Σ Order.platformFee: the platform fee SLICE of `sales`. Like
+   * delivery, it is inside totalAmount and never additive to it.
+   */
+  platformFeeRevenue: Prisma.Decimal;
+  /**
+   * sales − deliveryRevenue − platformFeeRevenue: the food slice, already net of
+   * coupon/coin discount. Without subtracting the platform fee, every order
+   * would have reported its fee as food sold.
+   */
   foodRevenue: Prisma.Decimal;
   /** Σ Refund.amount processed in the window (recognised when paid out, not when ordered). */
   refunds: Prisma.Decimal;
@@ -339,6 +348,7 @@ const MONEY_ORDER_SELECT = {
   createdAt: true,
   totalAmount: true,
   deliveryCharge: true,
+  platformFee: true,
   paymentMethod: true,
   paymentStatus: true,
   paidAmount: true,
@@ -516,15 +526,17 @@ export async function periodFinancials(
 
   let sales = ZERO;
   let deliveryRevenue = ZERO;
+  let platformFeeRevenue = ZERO;
   let collected = ZERO;
   let verified = ZERO;
   let settled = ZERO;
   let cashCollected = ZERO;
 
   for (const o of orders) {
-    // totalAmount ALREADY contains deliveryCharge (orders.ts: items + delivery −
-    // discount), so delivery revenue is a slice of sales, never an addition.
-    const food = o.totalAmount.minus(o.deliveryCharge);
+    // totalAmount ALREADY contains deliveryCharge and, since Phase 4, the platform
+    // fee (orders.ts: items + delivery − discount + platform fee), so both are
+    // slices of sales, never additions — and neither is food.
+    const food = o.totalAmount.minus(o.deliveryCharge).minus(o.platformFee);
     const isCash = o.paymentMethod === CASH_METHOD;
     const isConfirmed = CONFIRMED_PAYMENT_STATUSES.includes(o.paymentStatus);
     // COD is collected by the rider at the door, so delivery IS the collection
@@ -533,6 +545,7 @@ export async function periodFinancials(
 
     sales = sales.plus(o.totalAmount);
     deliveryRevenue = deliveryRevenue.plus(o.deliveryCharge);
+    platformFeeRevenue = platformFeeRevenue.plus(o.platformFee);
     if (isCollected) collected = collected.plus(o.totalAmount);
     if (isCash && isCollected) cashCollected = cashCollected.plus(o.totalAmount);
     if (isConfirmed) verified = verified.plus(o.totalAmount);
@@ -612,7 +625,8 @@ export async function periodFinancials(
       orders: orders.length,
       sales,
       deliveryRevenue,
-      foodRevenue: sales.minus(deliveryRevenue),
+      platformFeeRevenue,
+      foodRevenue: sales.minus(deliveryRevenue).minus(platformFeeRevenue),
       refunds: refundTotal,
       commission,
       expenses: expenseTotal,
@@ -889,6 +903,7 @@ const DEDUCTION_ORDER_SELECT = {
   deliveryCharge: true,
   discountAmount: true,
   coinDiscountAmount: true,
+  platformFee: true,
   couponId: true,
   branch: { select: { name: true } },
   coupon: { select: { code: true } },
@@ -1015,7 +1030,8 @@ export async function deductionsAndCharges(
     // The charge base is the FOOD slice, net of both discounts: a delivery
     // charge funds the rider and the route, and VAT on a discount the customer
     // never paid would be tax on money that does not exist.
-    const foodBase = o.totalAmount.minus(o.deliveryCharge);
+    // PHASE 4 — the platform fee is not food either, so no tax is extracted from it.
+    const foodBase = o.totalAmount.minus(o.deliveryCharge).minus(o.platformFee);
     const split = splitCharges(foodBase.lessThan(0) ? ZERO : foodBase, rates);
     const promotional = o.couponId != null && promotionalCouponIds.has(o.couponId);
 

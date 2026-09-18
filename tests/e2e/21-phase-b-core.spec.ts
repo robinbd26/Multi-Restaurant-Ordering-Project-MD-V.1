@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { newSession } from "./helpers";
+import { newSession, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
 
 /**
  * PHASE B CORE — delivery zones + nearest pickup (B1), prep-time snapshot (B2),
@@ -19,6 +19,11 @@ async function branches(req: APIRequestContext) {
   for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
   return map;
 }
+
+// PHASE 3 — 03:45–04:00 Dhaka: a delivery order is refused by design.
+test.beforeEach(() => {
+  test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+});
 
 test.describe("Phase B Core", () => {
   // ── B1 delivery coverage + nearest pickup ──────────────────────────────

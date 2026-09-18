@@ -1,5 +1,22 @@
-import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
-import { newSession, setLocale, ROLE_HOME, atPath, login } from "./helpers";
+import {
+  test,
+  expect,
+  type APIRequestContext,
+  type BrowserContext,
+  type Page,
+} from "@playwright/test";
+import {
+  newSession,
+  setLocale,
+  ROLE_HOME,
+  atPath,
+  login,
+  E2E_ORIGIN,
+  inNightOrderBlackout,
+  NIGHT_BLACKOUT_REASON,
+  isDhakaFullClosureWindow,
+  FULL_CLOSURE_REASON,
+} from "./helpers";
 
 /**
  * NEAREST-BRANCH HOMEPAGE — an authenticated customer sees, and can order, the
@@ -265,12 +282,21 @@ test.describe("Location and coverage states", () => {
     if (state === "no-location") {
       await expect(customer.page.getByTestId("home-use-location")).toBeVisible();
       await expect(customer.page.getByTestId("home-select-address")).toBeVisible();
-      expect(names, "no products without a location").toEqual([]);
+      // WS-8.14 — a signed-in customer with NO location browses the SAME guest
+      // showcase, because seeing less than a logged-out visitor is backwards.
+      // The location strip is the invitation; ordering still enforces coverage
+      // server-side. This used to assert an empty grid, which stopped being true
+      // when that rule shipped and left the test failing against real behaviour.
+      expect(names.length, "browsing is open without a location").toBeGreaterThan(0);
+    } else {
+      // A LOCATED customer is scoped to one branch, so a mixed catalogue there
+      // would be the leak this suite guards against. A no-location customer is
+      // deliberately shown every branch (above), so the check only applies here.
+      expect(
+        names.includes(world.aProduct.name) && names.includes(world.bProduct.name),
+        "never both branches at once",
+      ).toBe(false);
     }
-    expect(
-      names.includes(world.aProduct.name) && names.includes(world.bProduct.name),
-      "never both branches at once",
-    ).toBe(false);
 
     await admin.context.close();
     await customer.context.close();
@@ -288,7 +314,7 @@ test.describe("Location and coverage states", () => {
       "out-of-zone",
     );
     await expect(customer.page.getByTestId("home-retry-location")).toBeVisible();
-    await expect(customer.page.getByTestId("home-view-branches")).toBeVisible();
+    await expect(customer.page.getByTestId("home-browse-branch")).toBeVisible();
 
     const names = await customer.page.locator("article h4").allInnerTexts();
     expect(names, "no fallback catalogue whatsoever").toEqual([]);
@@ -422,6 +448,11 @@ test.describe("Forged requests are refused", () => {
   });
 
   test("ordering another branch's product is rejected", async ({ browser }) => {
+    // Needs a SUCCESSFUL own-branch order as its control, so it cannot run in
+    // the 03:45–04:00 window where delivery orders are refused by design, nor
+    // in the 04:00–11:00 full-platform-closure window (item 5).
+    test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+    test.skip(isDhakaFullClosureWindow(), FULL_CLOSURE_REASON);
     const admin = await newSession(browser, "super_admin");
     const world = await buildWorld(admin);
     const customer = await newSession(browser, "customer");
@@ -557,6 +588,10 @@ test.describe("Admin changes reach the right branch", () => {
   });
 
   test("existing orders are unchanged by later product edits", async ({ browser }) => {
+    // 03:45–04:00 Dhaka: a delivery order is refused by design (night last order).
+    // 04:00–11:00 Dhaka: the whole platform is closed by design (item 5).
+    test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+    test.skip(isDhakaFullClosureWindow(), FULL_CLOSURE_REASON);
     const admin = await newSession(browser, "super_admin");
     const world = await buildWorld(admin);
     const customer = await newSession(browser, "customer");
@@ -605,4 +640,297 @@ test.describe("Login behaviour is unchanged", () => {
       expect(new URL(page.url()).pathname).toBe(ROLE_HOME[role]);
     });
   }
+});
+
+/**
+ * DELIVER-TO SELECTION — the customer may now point the homepage at one of their
+ * own saved addresses, or at any live branch, through the "mad_scope" cookie.
+ *
+ * The two things these tests hold down are opposites, and both matter:
+ *   1. the selection really does move the catalogue, including to a branch that
+ *      cannot reach the customer (the whole reason the feature exists);
+ *   2. it is a VIEW scope and nothing more — it never widens what the APIs
+ *      return, and a scope the customer is not entitled to is ignored rather
+ *      than honoured.
+ */
+test.describe("The homepage follows the customer's deliver-to selection", () => {
+  /** Marks addresses this suite creates, so a later run can clear its own leftovers. */
+  const PROBE_PREFIX = "ScopeProbe Rd";
+  /** Also matches probes written by earlier revisions of this suite. */
+  const PROBE_RE = /^Scope(Probe)? Rd-/;
+
+  /** Point a session at a branch or a saved address, the way the picker does. */
+  async function setScope(context: BrowserContext, value: string) {
+    await context.addCookies([{ name: "mad_scope", value, url: E2E_ORIGIN }]);
+  }
+
+  /**
+   * A saved address at a given point.
+   *
+   * Saved addresses are capped (LIMITS.maxSavedAddresses = 5) and the test
+   * database is persistent, so probes left by earlier runs eventually fill the
+   * quota and every later run fails at creation. Clear this suite own probes
+   * first, which keeps the suite idempotent without touching a customer real
+   * addresses.
+   */
+  async function makeAddress(req: APIRequestContext, point: { lat: number; lng: number }) {
+    const existing = await (await req.get("/api/customer/addresses/?page_size=100")).json();
+    const rows = (existing.results ?? existing.addresses ?? []) as { id: number; address: string }[];
+    for (const row of rows) {
+      if (typeof row.address === "string" && PROBE_RE.test(row.address)) {
+        await req.delete(`/api/customer/addresses/${row.id}/`);
+      }
+    }
+    const res = await req.post("/api/customer/addresses/", {
+      data: {
+        label: "Office",
+        address: uniq(PROBE_PREFIX),
+        latitude: String(point.lat),
+        longitude: String(point.lng),
+      },
+    });
+    expect(res.status(), `address created (${await res.text()})`).toBe(201);
+    return (await res.json()) as { id: number };
+  }
+
+  test("browsing another branch swaps the catalogue and says it cannot deliver", async ({
+    browser,
+  }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+
+    // Standing at A, deliberately looking at B — "I will be there at five".
+    await setScope(customer.context, `b:${world.branchB.id}`);
+    const names = await homeNames(customer.page);
+
+    expect(names, "the chosen branch's products").toContain(world.bProduct.name);
+    expect(names, "not the branch they are standing in").not.toContain(world.aProduct.name);
+
+    const bar = customer.page.getByTestId("home-branch-bar");
+    await expect(bar).toHaveAttribute("data-branch-state", "ok");
+    await expect(bar).toHaveAttribute("data-browse-only", "true");
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText(world.branchB.name);
+    await expect(customer.page.getByTestId("home-browse-only")).toBeVisible();
+    // No distance and no fee: both describe a delivery that cannot happen here.
+    await expect(customer.page.getByTestId("home-branch-distance")).toHaveCount(0);
+    await expect(customer.page.getByTestId("home-branch-fee")).toHaveCount(0);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
+
+  test("a saved address near another branch reprices, it does not merely browse", async ({
+    browser,
+  }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+
+    // The "ordering for someone across town" case: the destination is a real row.
+    const address = await makeAddress(customer.req, world.pointB);
+    await setScope(customer.context, `a:${address.id}`);
+    const names = await homeNames(customer.page);
+
+    expect(names, "the address's branch").toContain(world.bProduct.name);
+    expect(names, "not the phone's branch").not.toContain(world.aProduct.name);
+
+    const bar = customer.page.getByTestId("home-branch-bar");
+    await expect(bar).toHaveAttribute("data-browse-only", "false");
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText(world.branchB.name);
+    // A real destination, so the delivery facts are real too.
+    await expect(customer.page.getByTestId("home-branch-distance")).toBeVisible();
+
+    await admin.context.close();
+    await customer.context.close();
+  });
+
+  test("another customer's address id is ignored", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+
+    const other = await newSession(browser, "qa_upload_1");
+    const stolen = await makeAddress(other.req, world.pointB);
+
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+    await setScope(customer.context, `a:${stolen.id}`);
+    const names = await homeNames(customer.page);
+
+    // Falls back to their own point rather than honouring a row they do not own.
+    expect(names, "their own branch").toContain(world.aProduct.name);
+    expect(names, "never the other customer's branch").not.toContain(world.bProduct.name);
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText(world.branchA.name);
+
+    await admin.context.close();
+    await other.context.close();
+    await customer.context.close();
+  });
+
+  test("an archived branch id is ignored", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+    const doomed = await makeBranch(admin.req);
+    expect((await admin.req.delete(`/api/branches/${doomed.id}/`)).status()).toBe(200);
+
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+    await setScope(customer.context, `b:${doomed.id}`);
+
+    await customer.page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText(world.branchA.name);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
+
+  test("a malformed scope cookie resolves normally", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+    await setScope(customer.context, "b:not-a-number");
+
+    await customer.page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText(world.branchA.name);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
+
+  test("the scope is a view lens, never an authorisation change", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+    // Browsing B in the strongest possible sense — and it must buy nothing.
+    await setScope(customer.context, `b:${world.branchB.id}`);
+
+    const list = await customer.req.get(`/api/products/?branch_id=${world.branchB.id}&page_size=200`);
+    expect(list.status()).toBe(200);
+    const names = ((await list.json()).results as { name: string }[]).map((p) => p.name);
+    expect(names, "the API still answers for the RESOLVED branch").not.toContain(
+      world.bProduct.name,
+    );
+    expect(names).toContain(world.aProduct.name);
+
+    expect(
+      (await customer.req.get(`/api/products/${world.bProduct.id}/`)).status(),
+      "the browsed branch's product detail is still not readable",
+    ).toBe(404);
+
+    expect(
+      (await customer.req.get(`/api/orders/`, { failOnStatusCode: false })).status(),
+      "sanity: the session is live",
+    ).toBe(200);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
+
+  test("ordering the browsed branch's product for DELIVERY is still refused", async ({
+    browser,
+  }) => {
+    const admin = await newSession(browser, "super_admin");
+    const world = await buildWorld(admin);
+    const customer = await newSession(browser, "customer");
+    await setLocation(customer.req, world.pointA);
+    await setScope(customer.context, `b:${world.branchB.id}`);
+
+    const res = await customer.req.post("/api/orders/", {
+      data: {
+        branch_id: world.branchB.id,
+        items: [{ product_id: world.bProduct.id, quantity: 1 }],
+        payment_method: "cash_on_delivery",
+        delivery_address: "Scope test",
+        fulfillment_type: "delivery",
+        lat: world.pointA.lat,
+        lng: world.pointA.lng,
+      },
+    });
+    expect(res.status(), "coverage is enforced from the trusted point, not the cookie").toBe(400);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
+
+  // BUG FIX — a saved address with NO map pin used to be permanently disabled
+  // in this picker (gated on hasCoordinates alone), even though resolveDeliverTo
+  // already resolves a branch for it by NAME when its area/sub-area matches a
+  // master-list locality — exactly how checkout's own coverage-by-name works
+  // (coverageForAddress). Pins that a pinless address whose area a branch lists
+  // is selectable here too, and that picking it actually moves the catalogue.
+  test("a pinless address naming a covered locality is selectable, and moves the catalogue", async ({
+    browser,
+  }) => {
+    const admin = await newSession(browser, "super_admin");
+    const branch = await makeBranch(admin.req);
+    const cat = await makeCategory(admin.req, branch.id);
+    const product = await makeProduct(admin.req, branch.id, cat.id);
+
+    // A BRAND NEW zone + locality, made just for this test. Picking from the
+    // shared master list risks a locality Main Branch (or another leftover
+    // branch from an earlier run — this test DB is never truly wiped) already
+    // covers too, which would make IT the nearest match instead of this test's
+    // own branch. A fresh pair guarantees nothing has ever covered it before.
+    const zoneRes = await admin.req.post("/api/area-zones", { data: { name: uniq("PinlessZone") } });
+    expect(zoneRes.status()).toBe(201);
+    const zoneBody = (await zoneRes.json()) as { id: number; name: string };
+    const zoneId = zoneBody.id;
+    const zoneName = zoneBody.name;
+    const localityRes = await admin.req.post("/api/area-localities", {
+      data: { zone_id: zoneId, name: uniq("PinlessLoc") },
+    });
+    expect(localityRes.status()).toBe(201);
+    const locality = (await localityRes.json()) as { id: number; name: string };
+    const areaRes = await admin.req.post("/api/delivery-areas", {
+      data: {
+        branch_id: branch.id,
+        name: locality.name,
+        locality_id: locality.id,
+        coverage_window: "both",
+        estimated_delivery_minutes: 40,
+        delivery_charge: 45,
+      },
+    });
+    expect(areaRes.status()).toBe(201);
+
+    const customer = await newSession(browser, "customer");
+    // Standing nowhere near the branch's own geometry — coverage below can only
+    // come from the named locality, never the branch's radius. A random point
+    // far out at sea, NOT a fixed "parked far away" landmark: several other
+    // specs reuse fixed coordinates for that purpose, and this test DB is never
+    // truly wiped between runs, so a fixed point can collide with a leftover
+    // branch's real geometry from an earlier run and falsely cover the customer.
+    await setLocation(customer.req, { lat: -10 + Math.random(), lng: -20 + Math.random() });
+    // The 5-address cap is real and this shared fixture account accumulates
+    // addresses across the whole suite's runs — free a slot the same way
+    // makeAddress() keeps its own probes from piling up.
+    const existingAddrs = (await (await customer.req.get("/api/customer/addresses/?page_size=100")).json())
+      .results as { id: number }[];
+    for (const row of existingAddrs) {
+      await customer.req.delete(`/api/customer/addresses/${row.id}/`);
+    }
+    const addrRes = await customer.req.post("/api/customer/addresses/", {
+      data: { label: "Home", address: uniq("PinlessRd"), main_area: zoneName, sub_area: locality.name },
+    });
+    expect(addrRes.status(), `pinless address saved (${await addrRes.text()})`).toBe(201);
+    const address = (await addrRes.json()) as { id: number };
+
+    await customer.page.goto("/", { waitUntil: "domcontentloaded" });
+    await customer.page.getByTestId("home-select-address").click();
+    const row = customer.page.getByTestId(`deliver-to-address-${address.id}`);
+    await expect(row).toBeVisible();
+    await expect(row, "a pinless address that names a covered locality must be pickable").toBeEnabled();
+    await row.click();
+
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText(branch.name);
+    const names = await customer.page.locator("article h4").allInnerTexts();
+    expect(names, "the picked address's branch").toContain(product.name);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
 });

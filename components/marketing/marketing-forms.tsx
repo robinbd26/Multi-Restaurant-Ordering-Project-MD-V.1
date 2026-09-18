@@ -9,10 +9,8 @@ import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { FieldError } from "@/components/ui/field-error";
 import {
   deleteCampaignAction,
-  deleteCouponAction,
   deleteSegmentAction,
   saveCampaignAction,
-  saveCouponAction,
   saveSegmentAction,
   sendSegmentNotificationAction,
 } from "@/lib/api/actions";
@@ -24,18 +22,14 @@ import {
   afterField,
   date as dateRule,
   integer,
-  max,
   maxLength,
   min,
-  money,
   oneOf,
-  positive,
   required,
 } from "@/lib/validation/rules";
 import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-validation";
 
 const CAMPAIGN_TYPES = ["discount", "offer", "promotion"];
-const DISCOUNT_TYPES = ["percent", "fixed"];
 
 const CAMPAIGN_RULES: FieldRules = {
   title: [required, maxLength(120)],
@@ -144,126 +138,6 @@ export function CampaignForm({
         </Field>
         {/* "must be after the start date" lands here — the field to change. */}
         <Field label={t("marketingX.endsLabel")} name="ends_at" required error={errors.ends_at}>
-          <Input name="ends_at" type="date" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
-        </Field>
-      </div>
-      <label className="flex items-center gap-2 text-sm text-fg-muted">
-        <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="size-4 rounded border-border-strong text-brand-500" />
-        {t("marketingX.activeLabel")}
-      </label>
-      <div className="flex justify-end gap-3">
-        <Button type="button" variant="outline" onClick={() => router.back()}>{t("common.cancel")}</Button>
-        <Button type="submit" disabled={pending}>{pending ? t("common.saving") : t("common.save")}</Button>
-      </div>
-    </form>
-  );
-}
-
-export interface CouponInitial {
-  id: number;
-  code: string;
-  discount_type: string;
-  value: string;
-  min_order: string;
-  max_uses: number;
-  starts_at: string | null;
-  ends_at: string | null;
-  is_active: boolean;
-}
-
-export function CouponForm({ initial }: { initial: CouponInitial | null }) {
-  const { t } = useTranslation();
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const [code, setCode] = useState(initial?.code ?? "");
-  const [discountType, setDiscountType] = useState(initial?.discount_type ?? "percent");
-  const [value, setValue] = useState(initial?.value ?? "");
-  const [minOrder, setMinOrder] = useState(initial?.min_order ?? "0");
-  const [maxUses, setMaxUses] = useState(initial ? String(initial.max_uses) : "0");
-  const [startsAt, setStartsAt] = useState(initial?.starts_at ? initial.starts_at.slice(0, 10) : "");
-  const [endsAt, setEndsAt] = useState(initial?.ends_at ? initial.ends_at.slice(0, 10) : "");
-  const [isActive, setIsActive] = useState(initial?.is_active ?? true);
-  const [error, setError] = useState<string | null>(null);
-  const [serverErrors, setServerErrors] = useState<FieldErrors>({});
-  const [submissionId, setSubmissionId] = useState(0);
-
-  /** A percentage discount can never exceed 100. */
-  const validatePercent = useCallback((): FieldErrors => {
-    const v = Number(value);
-    if (discountType === "percent" && Number.isFinite(v) && v > LIMITS.percentMax) {
-      return { value: t("marketingX.errPercent") };
-    }
-    return {};
-  }, [discountType, value, t]);
-
-  const RULES: FieldRules = {
-    code: [required, maxLength(24)],
-    discount_type: [required, oneOf(DISCOUNT_TYPES)],
-    value: [required, money, positive],
-    min_order: [required, money],
-    max_uses: [required, integer, min(0), max(LIMITS.pointsMax)],
-    starts_at: [dateRule],
-    ends_at: [dateRule, afterField("starts_at")],
-  };
-
-  const submit = useCallback(
-    (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      setError(null);
-      start(async () => {
-        const res = await saveCouponAction(initial?.id ?? null, {
-          code: code.trim().toUpperCase(),
-          discount_type: discountType,
-          value,
-          min_order: minOrder || "0",
-          max_uses: Number(maxUses),
-          starts_at: startsAt ? `${startsAt}T00:00:00` : undefined,
-          ends_at: endsAt ? `${endsAt}T23:59:59` : undefined,
-          is_active: isActive,
-        });
-        setSubmissionId((n) => n + 1);
-        // A duplicate coupon code comes back keyed `code` and lands there.
-        setServerErrors(res?.fieldErrors ?? {});
-        if (res?.error) setError(res.error);
-      });
-    },
-    [code, discountType, endsAt, initial, isActive, maxUses, minOrder, startsAt, value],
-  );
-
-  const { errors, formProps } = useFormValidation(RULES, {
-    validate: validatePercent,
-    onSubmitValid: submit,
-    serverErrors,
-    submissionId,
-    pending,
-  });
-
-  return (
-    <form {...formProps} className="space-y-4">
-      <Alert tone="error" message={error} />
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t("marketingX.codeLabel")} name="code" required error={errors.code}>
-          <Input name="code" className="uppercase" value={code} onChange={(e) => setCode(e.target.value)} maxLength={24} />
-        </Field>
-        <Field label={t("marketingX.discountTypeLabel")} name="discount_type" required error={errors.discount_type}>
-          <Select name="discount_type" value={discountType} onChange={(e) => setDiscountType(e.target.value)}>
-            <option value="percent">{t("marketingX.percent")}</option>
-            <option value="fixed">{t("marketingX.fixed")}</option>
-          </Select>
-        </Field>
-        <Field label={t("marketingX.valueLabel")} name="value" required error={errors.value}>
-          <Input name="value" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
-        </Field>
-        <Field label={t("marketingX.minOrderLabel")} name="min_order" required error={errors.min_order}>
-          <Input name="min_order" inputMode="decimal" value={minOrder} onChange={(e) => setMinOrder(e.target.value)} />
-        </Field>
-        <Field label={t("marketingX.maxUsesLabel")} name="max_uses" required error={errors.max_uses}>
-          <Input name="max_uses" inputMode="numeric" value={maxUses} onChange={(e) => setMaxUses(e.target.value)} />
-        </Field>
-        <Field label={t("marketingX.startsLabel")} name="starts_at" error={errors.starts_at}>
-          <Input name="starts_at" type="date" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
-        </Field>
-        <Field label={t("marketingX.endsLabel")} name="ends_at" error={errors.ends_at}>
           <Input name="ends_at" type="date" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
         </Field>
       </div>
@@ -472,28 +346,6 @@ export function CampaignDeleteButton({ campaignId }: { campaignId: number }) {
       confirmLabel={t("common.delete")}
       action={async () => {
         const res = await deleteCampaignAction(campaignId);
-        router.refresh();
-        return res;
-      }}
-    />
-  );
-}
-
-export function CouponDeleteButton({ couponId }: { couponId: number }) {
-  const { t } = useTranslation();
-  const router = useRouter();
-  return (
-    <ConfirmModal
-      trigger={
-        <Button size="sm" variant="ghost" className="text-red-600">
-          {t("common.delete")}
-        </Button>
-      }
-      title={t("marketingX.deleteCouponTitle")}
-      description={t("marketingX.deleteCouponDesc")}
-      confirmLabel={t("common.delete")}
-      action={async () => {
-        const res = await deleteCouponAction(couponId);
         router.refresh();
         return res;
       }}

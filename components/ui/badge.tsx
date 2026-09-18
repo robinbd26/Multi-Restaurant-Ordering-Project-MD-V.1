@@ -48,11 +48,13 @@ export function Badge({
   /** The mockup's status pills carry a leading dot; plain labels don't. */
   dot = false,
   children,
+  "data-testid": testId,
 }: {
   tone?: Tone;
   className?: string;
   dot?: boolean;
   children: ReactNode;
+  "data-testid"?: string;
 }) {
   return (
     // .status-pill — 4px 10px, pill radius, 11.5px semibold
@@ -62,6 +64,7 @@ export function Badge({
         TONES[tone],
         className,
       )}
+      data-testid={testId}
     >
       {dot ? <span className={cn("size-1.5 shrink-0 rounded-full", DOTS[tone])} /> : null}
       {children}

@@ -6,6 +6,8 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
+import { syncAreaMaster } from "@/lib/services/area-master";
+
 const prisma = new PrismaClient();
 
 const SEED_PASSWORD = "Admin12345@##";
@@ -315,6 +317,12 @@ async function main() {
       data: { branchId: branch.id, name: zoneName, centerLat: new Prisma.Decimal("23.7925000"), centerLng: new Prisma.Decimal("90.4078000"), radiusKm: new Prisma.Decimal("2.5"), deliveryFee: new Prisma.Decimal("40.00") },
     });
   }
+  // Phase 2 — the MASTER zone / locality list, shared by every branch. Additive
+  // and idempotent: it creates what is missing and never renames or deletes, so a
+  // super admin edit always outlives a later seed run.
+  const master = await syncAreaMaster(prisma);
+  console.log("✔ Area master: " + master.zones + " zones, " + master.localities + " localities (" + master.created + " new)");
+
   // Named delivery areas for the Main Branch (req #1/#6): one normal, one with a
   // higher charge/estimate, and one HELD (blocks new delivery orders) so the
   // checkout area selector + held-area block can be exercised end-to-end.

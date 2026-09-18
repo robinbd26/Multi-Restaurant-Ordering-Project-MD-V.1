@@ -19,7 +19,12 @@ import { getT } from "@/lib/i18n/server";
 import type { Brand } from "@/lib/home/types";
 import { getCompanyLogoUrl } from "@/lib/services/settings";
 import { BranchBar, type BranchBarContext } from "@/components/home/BranchBar";
-import { browsesWithoutLocation, resolveCustomerBranch } from "@/lib/services/customer-branch";
+import { readBrowseScope } from "@/lib/browse-scope/server";
+import { isFullClosureWindow } from "@/lib/services/coverage-window";
+import { isBranchOpenNow } from "@/lib/services/branch-hours";
+import { savedAddressOptions } from "@/lib/services/addresses";
+import { activeZonesWithLocalities } from "@/lib/services/area-master";
+import { browsesWithoutLocation, resolveHomeBranch } from "@/lib/services/customer-branch";
 import { branchMenu, publicMenu } from "@/lib/services/public-catalog";
 import { publicHomeBranches } from "@/lib/selectors";
 import { siteOrigin } from "@/lib/seo/site";
@@ -66,12 +71,21 @@ export default async function HomePage() {
   // req #8 — real branches from the database (no hardcoded demo branches). An
   // empty result renders an empty state rather than fabricated data.
   const branches = await publicHomeBranches();
-  // BRANCH SCOPE. An authenticated CUSTOMER orders from exactly one branch — the
-  // nearest eligible one, resolved server-side from their own trusted GPS fix or
-  // default saved address. The catalogue is scoped to it, so every section (cards,
-  // category tabs, nav search) is drawn from the same single-branch query and no
-  // section can show a product the customer cannot buy. Resolution is per request
-  // and never cached: it depends on one customer's private coordinates.
+  // BRANCH SCOPE. An authenticated CUSTOMER browses exactly one branch at a time.
+  // By default that is the nearest eligible one, resolved server-side from their
+  // own trusted GPS fix or default saved address; they may also point the page at
+  // a saved address of theirs (which reprices the whole page against that point)
+  // or at any live branch they want to look at. The catalogue is scoped to
+  // whichever branch that resolves to, so every section (cards, category tabs,
+  // nav search) is drawn from the same single-branch query. Resolution is per
+  // request and never cached: it depends on one customer's private coordinates.
+  //
+  // The SELECTION IS A VIEW SCOPE, NOT AN AUTHORISATION ONE. Browsing a branch
+  // that cannot reach the customer is allowed and honest — the bar marks it
+  // browse-only and self-pickup still works — but it buys nothing extra: a
+  // delivery order still has its branch, coverage and fee derived server-side
+  // from the trusted coordinate, with the client's branch_id ignored. Nothing
+  // outside this page reads the scope.
   //
   // Guests keep the existing all-branches showcase. WS-8.14 — a customer with
   // NO usable location at all browses that SAME showcase (a signed-in customer
@@ -96,7 +110,9 @@ export default async function HomePage() {
   // stay in the admin product pages.
   const isCustomer = user?.role === "customer";
   const catalogueMode = isCustomer ? "customer_nearest_branch" : "all_branches";
-  const branchContext = isCustomer ? await resolveCustomerBranch(user.id) : null;
+  // What the customer chose to look at — a saved address, or any live branch —
+  // rides in a cookie. Absent or invalid, this resolves exactly as it did before.
+  const branchContext = isCustomer ? await resolveHomeBranch(user.id, await readBrowseScope()) : null;
   const menu =
     catalogueMode === "customer_nearest_branch"
       ? branchContext?.branchId != null
@@ -140,8 +156,33 @@ export default async function HomePage() {
         prepTimeMinutes: branchContext.branch?.prepTimeMinutes ?? null,
         open: branchContext.open,
         opensAt: branchContext.opensAt,
+        selection: branchContext.selection,
+        browseOnly: branchContext.browseOnly,
+        deliverToLabel: branchContext.deliverToLabel,
+        coveredAddress: branchContext.coveredAddress,
       }
     : null;
+
+  // The picker's two lists, both rendered server-side into props so the bar makes
+  // no client fetch. The branches are the SAME publicHomeBranches() rows the
+  // coverage and hours sections below already use — the real, super-admin-managed,
+  // active and unarchived set — so a branch created or archived in the admin shows
+  // up or disappears here with no code change. Open-now comes from the one shared
+  // hours decision, not a second reading of the clock.
+  const pickerAddresses = isCustomer ? await savedAddressOptions(user.id) : [];
+  // The master list the checkout add-address form offers (Phase 3: names only).
+  const checkoutZones = isCustomer ? await activeZonesWithLocalities() : [];
+  // ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery and
+  // pickup alike. Computed server-side (Dhaka time, not the visitor's clock)
+  // and handed to the drawer so it can block placing an order honestly, the
+  // moment checkout opens, rather than only after a failed API call.
+  const platformClosed = isFullClosureWindow();
+  const pickerBranches = branches.map((b) => ({
+    id: b.id,
+    name: b.name,
+    brandType: b.brandType,
+    open: isBranchOpenNow(b).orderable,
+  }));
   const origin = await siteOrigin();
 
   // PHASE B — structured data built from the REAL branch rows, so what search
@@ -174,13 +215,19 @@ export default async function HomePage() {
         // Server-rendered from our own data; no user input is interpolated.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <HomeCartProvider initialBrand={initialBrand}>
+      <HomeCartProvider
+        initialBrand={initialBrand}
+        activeBranchId={branchContext?.branchId ?? null}
+        activeBranchName={branchContext?.branch?.name ?? null}
+      >
         <Header user={user} logoUrl={logoUrl} searchIndex={menu.search} />
         <main>
           <HeroSection />
           {/* One slim band, in the storefront's own palette — branch context for
               a signed-in customer without a new dashboard section. */}
-          {branchBar ? <BranchBar context={branchBar} /> : null}
+          {branchBar ? (
+            <BranchBar context={branchBar} addresses={pickerAddresses} branches={pickerBranches} />
+          ) : null}
           <MenuSection
             branchCount={branches.length}
             categories={menu.categories}
@@ -197,6 +244,8 @@ export default async function HomePage() {
           signedIn={Boolean(user)}
           customerName={user?.full_name ?? null}
           customerPhone={user?.phone ?? null}
+          zones={checkoutZones}
+          platformClosed={platformClosed}
         />
         <CartToast />
         <BranchSwitchDialog />

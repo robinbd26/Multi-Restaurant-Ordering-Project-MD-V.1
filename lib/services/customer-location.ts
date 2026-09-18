@@ -7,6 +7,7 @@ import { validationError, sk } from "@/lib/http/errors";
 import { haversineKm, isValidLatLng, roundKm, type LatLng } from "@/lib/services/geo";
 import { coverageFor } from "@/lib/services/delivery";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
+import { branchesCoveringLocality } from "@/lib/services/locality-coverage";
 
 /**
  * WS-4.9 — how a stored fix was obtained. A subset of the picker's
@@ -157,6 +158,42 @@ export async function trustedCustomerPointDetailed(userId: number): Promise<Trus
     if (isValidLatLng(lat, lng)) return { lat, lng, source: "address", deviceGps: false };
   }
   return null;
+}
+
+/**
+ * The point of ONE saved address the customer picked, for the storefront's
+ * deliver-to selector.
+ *
+ * The function above answers "where is this customer?" and deliberately knows
+ * only two sources, the newest of which wins. This one answers a different
+ * question — "where did they SAY to deliver?" — so it reads the chosen row
+ * directly and does not fall through to the GPS fix: a customer ordering to
+ * their office is not corrected by the fact that their phone is at home.
+ *
+ * Scoped to THIS customer's own addresses, so an address id lifted from another
+ * account (or from a cookie left behind on a shared browser) resolves to null
+ * and the caller falls back to the ordinary trusted point. Coordinates are
+ * re-validated, so a row saved without a map pin cannot resolve a wrong branch.
+ */
+export async function pointForCustomerAddress(
+  userId: number,
+  addressId: number,
+): Promise<TrustedPoint | null> {
+  if (!Number.isSafeInteger(addressId) || addressId <= 0) return null;
+  const addr = await prisma.customerAddress.findFirst({
+    where: {
+      id: addressId,
+      userId,
+      isActive: true,
+      latitude: { not: null },
+      longitude: { not: null },
+    },
+  });
+  if (addr?.latitude == null || addr.longitude == null) return null;
+  const lat = Number(addr.latitude);
+  const lng = Number(addr.longitude);
+  if (!isValidLatLng(lat, lng)) return null;
+  return { lat, lng, source: "address", deviceGps: false };
 }
 
 // ── WS-4.2 · provenance of an order's delivery coordinate ───────────────
@@ -386,7 +423,23 @@ export async function nearestEligibleBranchForPoint(
   return covered[0] ? { id: covered[0].id, distanceKm: roundKm(covered[0].dist) } : null;
 }
 
-export async function nearestEligibleBranch(userId: number): Promise<{
+/**
+ * @param pointOverride A deliver-to point the CUSTOMER chose (a saved address
+ *   picked in the storefront selector), used in place of their trusted point.
+ *   Callers must have resolved it from a row they own — pointForCustomerAddress()
+ *   is the only supported producer. Omitted by every ordering path, which keeps
+ *   deriving the point from the customer's own record.
+ */
+export async function nearestEligibleBranch(
+  userId: number,
+  pointOverride?: TrustedPoint | null,
+  /**
+   * The master locality the deliver-to address names, when it names one. A
+   * branch that lists it for the shift running now counts as covering, even
+   * with no coordinates at all — which is the whole point of named areas.
+   */
+  localityId?: number | null,
+): Promise<{
   point: LatLng | null;
   /** Which source the point came from, for UI wording. Null when unresolved. */
   pointSource: PointSource | null;
@@ -395,30 +448,41 @@ export async function nearestEligibleBranch(userId: number): Promise<{
   /** True when covered branches exist but every one of them is closed right now. */
   allCoveredClosed: boolean;
 }> {
-  const point = await trustedCustomerPointDetailed(userId);
+  const point = pointOverride ?? (await trustedCustomerPointDetailed(userId));
   const branches = await prisma.branch.findMany({
     where: { isActive: true, isArchived: false },
     orderBy: { name: "asc" },
   });
 
   const zonesByBranch = await activeZonesByBranch(branches.map((b) => b.id));
+  // Named-area coverage, for the shift running now. Unioned with geometry rather
+  // than replacing it: every coverage row starts with no locality attached, so a
+  // straight swap would un-cover every customer until each branch had ticked its
+  // list. See lib/services/locality-coverage.ts.
+  const byLocality = localityId != null
+    ? await branchesCoveringLocality(localityId, { branchIds: branches.map((b) => b.id) })
+    : null;
   const results: (BranchEligibility & { _dist: number | null })[] = [];
   for (const b of branches) {
     // Open-now is independent of the customer's location, so compute it even for
     // branches we can't distance-rank (no point / no branch coords).
     const hours = isBranchOpenNow(b);
+    const listed = byLocality?.has(b.id) ?? false;
     if (!point || b.latitude == null || b.longitude == null) {
-      results.push({ id: b.id, name: b.name, distance_km: null, eligible: false, covered: false, open_now: hours.orderable, opens_at: hours.opensAt, is_nearest: false, _dist: null });
+      // No usable geometry. A listed locality still covers — with no distance,
+      // because there is no honest one to report.
+      results.push({ id: b.id, name: b.name, distance_km: null, eligible: listed, covered: listed, open_now: hours.orderable, opens_at: hours.opensAt, is_nearest: false, _dist: null });
       continue;
     }
     const cov = coverageFor(b, zonesByBranch.get(b.id) ?? [], point);
     const dist = haversineKm({ lat: Number(b.latitude), lng: Number(b.longitude) }, point);
+    const covered = cov.covered || listed;
     results.push({
       id: b.id,
       name: b.name,
       distance_km: roundKm(dist),
-      eligible: cov.covered,
-      covered: cov.covered,
+      eligible: covered,
+      covered,
       open_now: hours.orderable,
       opens_at: hours.opensAt,
       is_nearest: false,
@@ -430,9 +494,18 @@ export async function nearestEligibleBranch(userId: number): Promise<{
   // covered branch is closed we still surface the nearest COVERED one as primary
   // (so the UI has a branch to show with "Opens at …"); coverage — not hours —
   // defines "out of zone", so a covered-but-closed area is not out of zone.
-  const covered = results
-    .filter((r) => r.covered && r._dist != null)
+  // A locality can cover without any coordinates, so "nearest" is no longer
+  // always answerable. Distance still decides wherever it exists; the rest fall
+  // in behind, ordered by name, rather than being ranked by an invented distance
+  // or dropped from selection entirely.
+  const coveredRows = results.filter((r) => r.covered);
+  const measured = coveredRows
+    .filter((r) => r._dist != null)
     .sort((a, b) => a._dist! - b._dist! || a.id - b.id);
+  const unmeasured = coveredRows
+    .filter((r) => r._dist == null)
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id);
+  const covered = [...measured, ...unmeasured];
   const coveredOpen = covered.filter((r) => r.open_now);
   const nearestId = (coveredOpen[0] ?? covered[0])?.id ?? null;
   const allCoveredClosed = covered.length > 0 && coveredOpen.length === 0;

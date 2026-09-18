@@ -95,13 +95,16 @@ async function openBrandTab(page: Page, label: RegExp) {
 }
 
 /**
- * Click a card's ADD control. The card also has a full-size overlay button
- * ("View details for X") that matches the product name, so the add button is
- * addressed by its own label rather than by the name alone.
+ * Click a card's ADD control (data-testid="card-place-order"). The card also
+ * has a full-size overlay button ("View details for X") that matches the
+ * product name, so the add button is addressed by its own testid — its
+ * accessible name is now the fixed "🛒 Place Order" label (req #1's card-level
+ * quantity redesign), not "Add {name} to cart", and is identical on every
+ * card, so it cannot disambiguate by name at all.
  */
 async function addToCart(page: Page, productName: string) {
   const card = page.locator("article").filter({ hasText: productName }).first();
-  await card.getByRole("button", { name: /^Add .* to cart$/ }).click();
+  await card.getByTestId("card-place-order").click();
 }
 
 test.describe("The reported defect: an all-Madchef catalogue", () => {
@@ -233,11 +236,11 @@ test.describe("Cart is locked to one branch", () => {
     await openHome(admin.page);
     await openBrandTab(admin.page, /Madchef/);
 
-    // First add locks the cart to branch A.
+    // First add locks the cart to branch A. Placing an order also opens the
+    // drawer (openCart(), req #1), so there is no separate cart button to click.
     await addToCart(admin.page, productA.name);
-    await admin.page.getByTestId("home-cart-button").click();
     await expect(admin.page.getByTestId("cart-branch")).toContainText(a.name);
-    await admin.page.getByRole("button", { name: "Close" }).click();
+    await admin.page.getByTestId("drawer-close").click();
 
     // A product from branch B must not slip in silently.
     await addToCart(admin.page, productB.name);
@@ -247,10 +250,10 @@ test.describe("Cart is locked to one branch", () => {
     await expect(dialog).toContainText(a.name);
     await expect(dialog).toContainText(b.name);
 
-    // Cancelling leaves the cart on branch A, unchanged.
+    // Cancelling leaves the cart on branch A, unchanged. The drawer is already
+    // open behind the dialog (the blocked add still ran openCart()).
     await admin.page.getByTestId("branch-switch-cancel").click();
     await expect(dialog).toHaveCount(0);
-    await admin.page.getByTestId("home-cart-button").click();
     await expect(admin.page.getByTestId("cart-branch")).toContainText(a.name);
     await expect(admin.page.locator("aside")).not.toContainText(productB.name);
 
@@ -267,11 +270,13 @@ test.describe("Cart is locked to one branch", () => {
 
     await openHome(admin.page);
     await openBrandTab(admin.page, /Madchef/);
+    // The first add opens the drawer (openCart()); close it so its backdrop
+    // does not intercept the click on productB's card underneath.
     await addToCart(admin.page, productA.name);
+    await admin.page.getByTestId("drawer-close").click();
     await addToCart(admin.page, productB.name);
     await admin.page.getByTestId("branch-switch-confirm").click();
 
-    await admin.page.getByTestId("home-cart-button").click();
     const drawer = admin.page.locator("aside");
     await expect(admin.page.getByTestId("cart-branch")).toContainText(b.name);
     await expect(drawer, "the new branch's product is in").toContainText(productB.name);

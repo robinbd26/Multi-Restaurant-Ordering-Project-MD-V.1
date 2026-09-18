@@ -90,6 +90,13 @@ export function DeliveryAreaExplorer({
   const committedSearch = useRef<string | null>(null);
   const requestedQuery = deliveryAreaQueryParams(query).toString();
   const loadErrorMessage = t("deliveryArea.loadError");
+  // Which shift a coverage row applies to. Worded once for both layouts.
+  const windowLabel = (value: string) =>
+    value === "day"
+      ? t("deliveryArea.windowDay")
+      : value === "night"
+        ? t("deliveryArea.windowNight")
+        : t("deliveryArea.windowBoth");
   const hasFilters = Boolean(
     query.search ||
       query.branchId ||
@@ -518,6 +525,7 @@ export function DeliveryAreaExplorer({
                 headers={[
                   t("deliveryArea.name"),
                   ...(isSuperAdmin ? [t("deliveryArea.branch")] : []),
+                  t("deliveryArea.coverageWindow"),
                   t("deliveryArea.minutesShort"),
                   t("deliveryArea.charge"),
                   t("deliveryArea.deliveryState"),
@@ -545,6 +553,25 @@ export function DeliveryAreaExplorer({
                         ) : null}
                       </Td>
                     ) : null}
+                    <Td>
+                      <Badge
+                        tone={
+                          area.coverage_window === "night"
+                            ? "slate"
+                            : area.coverage_window === "day"
+                              ? "blue"
+                              : "green"
+                        }
+                      >
+                        {windowLabel(area.coverage_window)}
+                      </Badge>
+                      {area.locality_name ? (
+                        <span className="mt-0.5 block max-w-44 truncate text-xs text-fg-subtle">
+                          {area.zone_name ? area.zone_name + " · " : ""}
+                          {area.locality_name}
+                        </span>
+                      ) : null}
+                    </Td>
                     <Td mono>
                       {fmt.num(area.estimated_delivery_minutes)}{" "}
                       {t("deliveryArea.min")}
@@ -600,6 +627,22 @@ export function DeliveryAreaExplorer({
                     {statusBadges(area)}
                   </div>
                   <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <dt className="text-xs text-fg-subtle">
+                        {t("deliveryArea.coverageWindow")}
+                      </dt>
+                      <dd className="mt-0.5 font-medium text-fg-base">
+                        {windowLabel(area.coverage_window)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-fg-subtle">
+                        {t("deliveryArea.locality")}
+                      </dt>
+                      <dd className="mt-0.5 font-medium text-fg-base">
+                        {area.locality_name ?? t("deliveryArea.noLocality")}
+                      </dd>
+                    </div>
                     <div>
                       <dt className="text-xs text-fg-subtle">
                         {t("deliveryArea.minutesShort")}

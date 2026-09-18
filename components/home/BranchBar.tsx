@@ -1,8 +1,12 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
+import { BrowsingPicker, type BrowseBranchOption } from "@/components/home/BrowsingPicker";
+import { DeliverToPicker, type DeliverToAddress } from "@/components/home/DeliverToPicker";
 import { NearestPickupCallout } from "@/components/maps/nearest-pickup-callout";
+import { updateBrowseScope } from "@/lib/browse-scope/client";
+import type { BrowseScope } from "@/lib/browse-scope/config";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { useLocationRequest } from "@/lib/hooks/use-location-request";
 
@@ -18,6 +22,14 @@ export interface BranchBarContext {
   open: boolean;
   /** Opening time ("HH:MM") shown when the branch is currently closed. */
   opensAt: string | null;
+  /** The deliver-to + browsing choices in force after server validation. */
+  selection: BrowseScope;
+  /** The branch on screen cannot deliver to the deliver-to point. */
+  browseOnly: boolean;
+  /** The saved address this page is priced for, when one was chosen. */
+  deliverToLabel: string | null;
+  /** A saved address the browsed branch CAN reach, offered as the one-click fix. */
+  coveredAddress: { id: number; label: string } | null;
 }
 
 /**
@@ -29,12 +41,28 @@ export interface BranchBarContext {
  *
  * It carries the three states the server can resolve — a branch, no usable
  * location, or a location outside every coverage area — and in each case offers
- * only the actions that can actually change the outcome. It never lets the
- * customer pick a different branch: delivery is assigned to the nearest eligible
- * branch, server-side.
+ * only the actions that can actually change the outcome.
+ *
+ * It also carries the customer's two independent CHOICES, one control each:
+ *   "Deliver to" — their live location or a saved address; where the order goes.
+ *   "Browsing"   — any live branch; whose menu is on screen. This replaced the
+ *                  old "View branches" button, which asked the same question by
+ *                  sending the customer off to another page.
+ * Picking a branch that cannot reach the deliver-to point is allowed and says so.
+ * What neither choice does is move the delivery decision into the browser: a
+ * delivery order still has its branch, coverage and fee derived server-side.
  */
-export function BranchBar({ context }: { context: BranchBarContext }) {
+export function BranchBar({
+  context,
+  addresses,
+  branches,
+}: {
+  context: BranchBarContext;
+  addresses: DeliverToAddress[];
+  branches: BrowseBranchOption[];
+}) {
   const { t, fmt } = useTranslation();
+  const router = useRouter();
   // Same shared live-location flow the location card uses — no second location
   // system, no client-side distance maths. The server re-derives the nearest
   // branch on the refresh the hook performs.
@@ -57,11 +85,44 @@ export function BranchBar({ context }: { context: BranchBarContext }) {
   const action =
     "rounded-lg border border-white/15 px-3 py-1.5 text-[0.78rem] font-semibold text-white transition-colors hover:border-brand-500 hover:bg-white/5 disabled:opacity-60";
 
+  const browsingChosen = context.selection.branchId != null;
+
+  // Each trigger states what the SERVER did, never what was merely requested.
+  const deliverToValue =
+    context.deliverToLabel ??
+    (context.state === "no-location" ? t("nearestHome.notSetYet") : t("nearestHome.currentLocation"));
+  // Nothing chosen: with a branch resolved, that branch; with no location, the
+  // guest showcase of every branch; out of zone, an invitation to pick one.
+  const browsingValue =
+    browsingChosen || context.state === "ok"
+      ? (context.branchName ?? t("nearestHome.chooseBranch"))
+      : context.state === "no-location"
+        ? t("nearestHome.allBranches")
+        : t("nearestHome.chooseBranch");
+
+  const controls = (
+    <>
+      <DeliverToPicker
+        deliverTo={context.selection.deliverTo}
+        addresses={addresses}
+        value={deliverToValue}
+        onUseCurrentLocation={request}
+        busy={busy}
+      />
+      <BrowsingPicker
+        branchId={context.selection.branchId}
+        branches={branches}
+        value={browsingValue}
+      />
+    </>
+  );
+
   return (
     <section
       className="border-b border-white/8 bg-[#111115] px-4 py-3"
       data-testid="home-branch-bar"
       data-branch-state={context.state}
+      data-browse-only={context.browseOnly ? "true" : "false"}
       aria-label={t("nearestHome.regionLabel")}
     >
       <div className="mx-auto flex max-w-300 flex-wrap items-center gap-x-4 gap-y-2 text-[0.82rem]">
@@ -69,7 +130,9 @@ export function BranchBar({ context }: { context: BranchBarContext }) {
           <>
             <span className="flex min-w-0 items-center gap-2">
               <span aria-hidden>📍</span>
-              <span className="text-[#a0a0b0]">{t("nearestHome.yourBranch")}</span>
+              <span className="text-[#a0a0b0]">
+                {browsingChosen ? t("nearestHome.browsingFrom") : t("nearestHome.yourBranch")}
+              </span>
               <span className="truncate font-bold text-white" data-testid="home-branch-name">
                 {context.branchName}
               </span>
@@ -99,17 +162,12 @@ export function BranchBar({ context }: { context: BranchBarContext }) {
             ) : null}
             {context.deliveryFee != null ? (
               <span className="text-[#a0a0b0]" data-testid="home-branch-fee">
-                {t("nearestHome.deliveryFee", { fee: fmt.money(context.deliveryFee) })}
+                {context.deliveryFee === 0
+                  ? t("nearestHome.freeDelivery")
+                  : t("nearestHome.deliveryFee", { fee: fmt.money(context.deliveryFee) })}
               </span>
             ) : null}
-            <span className="ms-auto flex flex-wrap items-center gap-2">
-              <button type="button" onClick={request} disabled={busy} className={action}>
-                {busy ? t("nearestHome.locating") : t("nearestHome.changeLocation")}
-              </button>
-              <Link href="/customer/addresses" className={action}>
-                {t("nearestHome.selectAddress")}
-              </Link>
-            </span>
+            <span className="ms-auto flex flex-wrap items-center gap-2">{controls}</span>
           </>
         ) : null}
 
@@ -121,6 +179,7 @@ export function BranchBar({ context }: { context: BranchBarContext }) {
               <span className="truncate text-[#a0a0b0]">{t("nearestHome.locationRequiredBody")}</span>
             </span>
             <span className="ms-auto flex flex-wrap items-center gap-2">
+              {/* The one action that unlocks everything stays a single visible click. */}
               <button
                 type="button"
                 onClick={request}
@@ -130,12 +189,7 @@ export function BranchBar({ context }: { context: BranchBarContext }) {
               >
                 {busy ? t("nearestHome.locating") : t("nearestHome.useCurrentLocation")}
               </button>
-              <Link href="/customer/addresses" className={action} data-testid="home-select-address">
-                {t("nearestHome.selectAddress")}
-              </Link>
-              <Link href="/customer/addresses" className={action}>
-                {t("nearestHome.addAddress")}
-              </Link>
+              {controls}
             </span>
           </>
         ) : null}
@@ -157,16 +211,62 @@ export function BranchBar({ context }: { context: BranchBarContext }) {
               >
                 {busy ? t("nearestHome.locating") : t("outOfZone.retry")}
               </button>
-              <Link href="/customer/addresses" className={action}>
-                {t("outOfZone.updateAddress")}
-              </Link>
-              <Link href="/customer/branches" className={action} data-testid="home-view-branches">
-                {t("nearestHome.viewBranches")}
-              </Link>
+              {controls}
             </span>
           </>
         ) : null}
       </div>
+
+      {/* The honest second line. A branch the customer chose to look at may not
+          be able to deliver to them — that is the point of being allowed to look
+          — so say it plainly instead of letting them build a cart that checkout
+          would refuse, and offer the two things that DO work: self-pickup from
+          this branch, or delivering to a saved address this branch can reach. */}
+      {context.browseOnly ? (
+        <div
+          className="mx-auto mt-2 flex max-w-300 flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-[0.78rem]"
+          data-testid="home-browse-only"
+        >
+          <span className="font-semibold text-amber-300">{t("nearestHome.browseOnlyTitle")}</span>
+          <span className="text-[#c8c8d4]">
+            {context.deliverToLabel
+              ? t("nearestHome.browseOnlyBodyAddress", {
+                  branch: context.branchName ?? "",
+                  label: context.deliverToLabel,
+                })
+              : t("nearestHome.browseOnlyBody", { branch: context.branchName ?? "" })}
+            {context.pickupEnabled ? ` ${t("nearestHome.browseOnlyPickup")}` : ""}
+          </span>
+          <span className="ms-auto flex flex-wrap items-center gap-2">
+            {context.coveredAddress ? (
+              <button
+                type="button"
+                data-testid="home-deliver-to-covered"
+                onClick={() => {
+                  updateBrowseScope({
+                    deliverTo: { mode: "address", addressId: context.coveredAddress!.id },
+                  });
+                  router.refresh();
+                }}
+                className={action}
+              >
+                {t("nearestHome.deliverToInstead", { label: context.coveredAddress.label })}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              data-testid="home-back-to-nearest"
+              onClick={() => {
+                updateBrowseScope({ branchId: null });
+                router.refresh();
+              }}
+              className={action}
+            >
+              {t("nearestHome.backToNearestBranch")}
+            </button>
+          </span>
+        </div>
+      ) : null}
 
       {/* WS-4.4 — the strip states the problem; this states the alternative. The
           nearest pickup branch is named with its distance and a route link,

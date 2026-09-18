@@ -18,7 +18,40 @@ const FLOW: OrderStatus[] = [
   "delivered",
 ];
 
-function StatusTimeline({ status, t, fmt }: { status: OrderStatus; t: TranslateFn; fmt: Formatters }) {
+/**
+ * ITEM 6 — a pickup order has no rider and no "on the way": the 7-step
+ * delivery flow was built for a rail this order never travels. Five steps
+ * instead, ending at "Picked Up (Done)" — the exact moment the customer walks
+ * out with the food, which is what "delivered" already means for a pickup
+ * order server-side (lib/services/orders.ts allows ready → delivered directly
+ * for fulfillmentType "pickup", so a pickup order never actually sits at
+ * "picked_up"/"on_the_way" going forward; PICKUP_STATUS_MAP only exists so an
+ * order that reached one of those values before this change still renders
+ * sensibly, at the final step).
+ */
+const PICKUP_FLOW: OrderStatus[] = ["pending", "accepted", "preparing", "ready", "delivered"];
+const PICKUP_LABEL_KEY: Partial<Record<OrderStatus, string>> = {
+  ready: "orderStatus.readyForPickup",
+  delivered: "orderStatus.pickedUpDone",
+};
+const PICKUP_STATUS_MAP: Partial<Record<OrderStatus, OrderStatus>> = {
+  picked_up: "delivered",
+  on_the_way: "delivered",
+  delayed: "delivered",
+};
+
+function StatusTimeline({
+  status,
+  pickup,
+  t,
+  fmt,
+}: {
+  status: OrderStatus;
+  /** ITEM 6 — order.fulfillment_type === "pickup". Picks which flow renders. */
+  pickup: boolean;
+  t: TranslateFn;
+  fmt: Formatters;
+}) {
   if (status === "cancelled") {
     return (
       <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 ring-1 ring-red-200">
@@ -26,20 +59,27 @@ function StatusTimeline({ status, t, fmt }: { status: OrderStatus; t: TranslateF
       </p>
     );
   }
+  const flow = pickup ? PICKUP_FLOW : FLOW;
   // WS-5.2 — a delayed order has not gone backwards: it is still on its way,
   // just later than promised. The timeline holds at the on-the-way step and an
-  // amber notice above it explains the hold-up.
-  const effective: OrderStatus = status === "delayed" ? "on_the_way" : status;
-  const currentIndex = FLOW.indexOf(effective);
+  // amber notice above it explains the hold-up. (Pickup orders never reach
+  // "delayed" — there is no rider to report one — but PICKUP_STATUS_MAP covers
+  // it defensively all the same.)
+  const effective: OrderStatus = pickup
+    ? (PICKUP_STATUS_MAP[status] ?? status)
+    : status === "delayed"
+      ? "on_the_way"
+      : status;
+  const currentIndex = flow.indexOf(effective);
   return (
     <>
-      {status === "delayed" ? (
+      {!pickup && status === "delayed" ? (
         <p className="mb-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/25">
           {t("orders.orderDelayedNotice")}
         </p>
       ) : null}
-      <ol className="flex flex-wrap items-center gap-y-3">
-        {FLOW.map((step, i) => (
+      <ol className="flex flex-wrap items-center gap-y-3" data-testid="order-status-timeline">
+        {flow.map((step, i) => (
           <li key={step} className="flex items-center">
             <span
               className={
@@ -57,9 +97,9 @@ function StatusTimeline({ status, t, fmt }: { status: OrderStatus; t: TranslateF
                   : "mx-2 text-xs text-fg-subtle"
               }
             >
-              {t(`orderStatus.${step}`)}
+              {t(pickup ? (PICKUP_LABEL_KEY[step] ?? `orderStatus.${step}`) : `orderStatus.${step}`)}
             </span>
-            {i < FLOW.length - 1 ? (
+            {i < flow.length - 1 ? (
               <span
                 className={i < currentIndex ? "mr-2 h-0.5 w-5 bg-brand-400" : "mr-2 h-0.5 w-5 bg-slate-200"}
               />
@@ -90,7 +130,7 @@ export async function OrderDetailCard({ order, children }: { order: Order; child
           action={children}
         />
         <CardContent>
-          <StatusTimeline status={order.status} t={t} fmt={fmt} />
+          <StatusTimeline status={order.status} pickup={order.fulfillment_type === "pickup"} t={t} fmt={fmt} />
         </CardContent>
       </Card>
 
@@ -161,13 +201,17 @@ export async function OrderDetailCard({ order, children }: { order: Order; child
                 <p className="mt-1 text-fg-base">{order.food_notes}</p>
               </div>
             ) : null}
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{t("orders.rider")}</p>
-              <p className="mt-1 text-fg-base">
-                {order.rider_name || t("orders.notAssignedYet")}
-                {order.rider_phone ? ` • ${order.rider_phone}` : ""}
-              </p>
-            </div>
+            {/* ITEM 6 — a pickup order has no rider at all; "Not assigned yet"
+                read as a promise one was coming. */}
+            {order.fulfillment_type !== "pickup" ? (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{t("orders.rider")}</p>
+                <p className="mt-1 text-fg-base">
+                  {order.rider_name || t("orders.notAssignedYet")}
+                  {order.rider_phone ? ` • ${order.rider_phone}` : ""}
+                </p>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>

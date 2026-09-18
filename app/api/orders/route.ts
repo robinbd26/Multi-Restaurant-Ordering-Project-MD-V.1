@@ -56,6 +56,10 @@ export const POST = handle(async (req: Request) => {
     // WS-4.2 — a saved address the customer chose. The SERVER reads that row's
     // coordinates; lat/lng below are only used when no address was picked.
     customer_address_id?: number;
+    // ITEM 8 — a one-time address for this order only, never saved to the
+    // address book. Read only when customer_address_id is absent.
+    main_area?: string;
+    sub_area?: string;
     // WS-4.2 — where the picker says the coordinate came from. Passed on as a
     // HINT: the service re-derives the provenance and can only downgrade it.
     coord_source?: string;
@@ -84,6 +88,8 @@ export const POST = handle(async (req: Request) => {
     lat: body.lat ?? null,
     lng: body.lng ?? null,
     customerAddressId: body.customer_address_id ?? null,
+    oneTimeMainArea: body.main_area ?? null,
+    oneTimeSubArea: body.sub_area ?? null,
     coordSourceHint: body.coord_source ?? null,
     deliveryAreaId: body.delivery_area_id ?? null,
     // PHASE R — optional per-attempt key; a retry with the same key returns

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { login, newSession, setLocale, API_BASE, PASSWORD } from "./helpers";
+import { login, newSession, setLocale, API_BASE, PASSWORD, clearCustomerAddresses } from "./helpers";
 import {
   disconnectResetDb,
   mintResetToken,
@@ -198,15 +198,25 @@ test.describe("Delete My Account (customer punch-list #13)", () => {
 test.describe("Address icons differ per label (customer punch-list #4)", () => {
   test("Home and Office addresses render distinct icons", async ({ browser }) => {
     const { page, context } = await newSession(browser, "customer");
+    // The seeded customer is capped at five addresses and the test database
+    // persists, so this spec clears its own leftovers before adding more.
+    const PROBE = /123 Test Road/;
+    await clearCustomerAddresses(page.request, PROBE);
     await page.goto("/customer/addresses");
 
     // Create Home + Office (idempotent enough for a demo run).
-    for (const preset of [/^home$/i, /^office$/i]) {
-      await page.getByRole("button", { name: /new address/i }).first().click();
-      await page.getByRole("button", { name: preset }).click();
-      await page.locator("textarea").fill("123 Test Road, Dhaka");
-      await page.getByRole("button", { name: /^save$/i }).click();
-      await page.waitForTimeout(600);
+    // PHASE 3 — the nickname is a three-way SELECT (Home / Office / Custom), not
+    // the preset buttons this spec used to click, and the area now comes from the
+    // master list, so both have to be chosen before the form will save.
+    for (const preset of ["home", "office"]) {
+      await page.getByTestId("add-address").click();
+      await page.getByTestId("mode-manual").click();
+      await page.getByTestId("addr-nickname").selectOption(preset);
+      await page.getByTestId("addr-main-area").selectOption({ index: 1 });
+      await page.getByTestId("addr-sub-area").selectOption({ index: 1 });
+      await page.getByTestId("addr-road-lane").fill("123 Test Road");
+      await page.getByTestId("save-address").click();
+      await expect(page.getByTestId("address-form")).toBeHidden();
     }
 
     // Collect the SVG path shapes used by the address-card icons.
@@ -215,6 +225,7 @@ test.describe("Address icons differ per label (customer punch-list #4)", () => {
     );
     const distinct = new Set(paths.filter(Boolean));
     expect(distinct.size).toBeGreaterThan(1); // icons are no longer all identical
+    await clearCustomerAddresses(page.request, PROBE);
     await context.close();
   });
 });

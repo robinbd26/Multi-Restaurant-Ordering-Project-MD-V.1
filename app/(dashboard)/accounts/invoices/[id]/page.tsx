@@ -49,12 +49,14 @@ export default async function InvoicePage({ params }: Params) {
   // subtotal, no delivery charge, no discount, and a total that ignored both.
   //
   // Every figure below is a real computed Decimal, and the ladder sums exactly:
-  //   subtotal + delivery − coupon − coins (± rounding) = grand total.
+  //   subtotal + delivery + platform fee − coupon − coins (± rounding) = grand total.
   const itemsSubtotal = order.items.reduce(
     (acc, i) => acc.plus(i.unitPrice.times(i.quantity)),
     ZERO,
   );
   const deliveryCharge = order.deliveryCharge;
+  // PHASE 4 — the platform fee is part of the grand total (0 on older orders).
+  const platformFee = order.platformFee;
   const couponDiscount = order.discountAmount;
   // WS-7.1 — coins are a real Taka discount of their own, kept apart from the
   // coupon's so the invoice can show what each one paid for.
@@ -65,7 +67,11 @@ export default async function InvoicePage({ params }: Params) {
   // stored grand total can differ from the ladder by a hair. Showing that
   // residual as its own line is what keeps the printed page self-consistent
   // instead of quietly disagreeing with itself.
-  const computed = itemsSubtotal.plus(deliveryCharge).minus(couponDiscount).minus(coinDiscount);
+  const computed = itemsSubtotal
+    .plus(deliveryCharge)
+    .plus(platformFee)
+    .minus(couponDiscount)
+    .minus(coinDiscount);
   const rounding = grandTotal.minus(computed);
 
   // Tax and the service charge are INCLUDED in the prices above — the order
@@ -74,7 +80,9 @@ export default async function InvoicePage({ params }: Params) {
   // the same helper the deductions report uses, so an invoice and the report can
   // never disagree about a single order.
   const rates = await chargeRates();
-  const foodSlice = grandTotal.minus(deliveryCharge);
+  // Neither the delivery charge nor the platform fee is food, so tax and service
+  // charge are never extracted from them.
+  const foodSlice = grandTotal.minus(deliveryCharge).minus(platformFee);
   const charges = splitCharges(foodSlice.lessThan(0) ? ZERO : foodSlice, rates);
   const hasCharges = charges.tax.greaterThan(0) || charges.serviceCharge.greaterThan(0);
 
@@ -174,6 +182,12 @@ export default async function InvoicePage({ params }: Params) {
               <div className="flex justify-between">
                 <span className="text-fg-muted">{t("accounts.deliveryRevenue")}</span>
                 <span>{fmt.money(deliveryCharge.toFixed(2))}</span>
+              </div>
+            ) : null}
+            {platformFee.greaterThan(0) ? (
+              <div className="flex justify-between">
+                <span className="text-fg-muted">{t("home.order.platformFee")}</span>
+                <span>{fmt.money(platformFee.toFixed(2))}</span>
               </div>
             ) : null}
             {couponDiscount.greaterThan(0) ? (

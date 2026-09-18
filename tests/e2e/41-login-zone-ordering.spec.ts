@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, login, API_BASE, PASSWORD, ROLE_HOME, atPath } from "./helpers";
+import { newSession, apiLogin, login, API_BASE, PASSWORD, ROLE_HOME, atPath, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
 
 /**
  * PHASES O, P, Q, R — login destination, the out-of-zone experience, ordering
@@ -81,6 +81,13 @@ async function loginWithCallback(page: import("@playwright/test").Page, username
   }).toPass({ timeout: 20_000 });
 }
 
+// PHASE 3 — for the quarter hour before 04:00 Dhaka, a delivery order is
+// refused on purpose (the night shift's last order is 03:45). Skip rather than
+// report the rule as a failure.
+test.beforeEach(() => {
+  test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+});
+
 test.describe("Phase O — login destination", () => {
   // One test per role: seven full sign-ins in a single test share one time
   // budget, and on a loaded machine the last of them runs out of it. Split, each
@@ -129,7 +136,7 @@ test.describe("Phase O — login destination", () => {
 });
 
 test.describe("Phase P — out of every delivery zone", () => {
-  test("the page explains why, lists real branches, and keeps delivery disabled", async ({ browser }) => {
+  test("the page explains why, lists real branches to browse, and keeps delivery disabled", async ({ browser }) => {
     const customer = await newSession(browser, "customer");
     await setLocation(customer.req, FAR_AWAY);
 
@@ -139,24 +146,23 @@ test.describe("Phase P — out of every delivery zone", () => {
     await expect(customer.page.getByTestId("out-of-zone-retry")).toBeVisible();
 
     // Real branches from the database, with real detail — never a demo fallback.
-    const cards = customer.page.getByTestId("branch-disabled");
+    const cards = customer.page.getByTestId("branch-not-orderable");
     expect(await cards.count(), "real branches are still listed").toBeGreaterThan(0);
     await expect(cards.first().getByTestId("branch-brand")).not.toBeEmpty();
     await expect(cards.first().getByTestId("branch-hours")).not.toBeEmpty();
     await expect(cards.first().getByTestId("branch-distance")).not.toBeEmpty();
     await expect(cards.first().getByTestId("branch-delivery-availability")).not.toBeEmpty();
 
-    // Nothing is orderable: no enabled card exists at all.
+    // Nothing is orderable for delivery: no orderable card exists at all.
     expect(await customer.page.getByTestId("branch-enabled").count(), "no branch is orderable").toBe(0);
-    // Disabled by mouse AND by keyboard.
-    await expect(cards.first()).toHaveAttribute("aria-disabled", "true");
-    await expect(cards.first()).toHaveAttribute("tabindex", "-1");
-    expect(await cards.first().evaluate((el) => getComputedStyle(el).pointerEvents)).toBe("none");
-    // The card carries an informational directions link (PHASE F), which is not
-    // an ordering action. What must not exist is a route into the branch menu.
-    expect(await cards.first().locator('a[href*="/menu"]').count(), "no way into the menu").toBe(0);
-    const hrefs = await cards.first().locator("a").evaluateAll((els) => els.map((e) => e.getAttribute("href") ?? ""));
-    expect(hrefs.every((h) => !h.startsWith("/customer/branches/")), "no in-app branch link").toBe(true);
+    // But every branch can still be BROWSED, and the card says plainly that it is
+    // browse-only. The way in is the storefront browse scope, not a menu route —
+    // delivery refusal itself is proven server-side by the next test.
+    await expect(cards.first().getByTestId("branch-browse-only-badge")).toBeVisible();
+    await expect(cards.first()).not.toHaveAttribute("aria-disabled", "true");
+    const browse = cards.first().getByTestId("branch-view-menu");
+    await expect(browse).toBeVisible();
+    await expect(browse).toHaveAttribute("href", "/#menu-section");
   });
 
   test("the API refuses an order from outside every zone, however it is called", async ({ browser }) => {
@@ -232,7 +238,8 @@ test.describe("Phase Q/R — a nearby customer can complete an order", () => {
     const quoted = await quote.json();
     expect(quoted.branch.id, "the server picked the branch").toBe(branch.id);
     expect(quoted.subtotal, "2 × 450").toBe(900);
-    expect(quoted.total).toBe(900 + quoted.delivery_charge);
+    // PHASE 4 — the flat platform fee is added on top of food and delivery.
+    expect(quoted.total).toBe(900 + quoted.delivery_charge + quoted.platform_fee);
 
     // 4. The order goes through, priced by the server.
     const placed = await customer.req.post(`${API_BASE}/api/orders/`, {

@@ -1,6 +1,13 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, API_BASE } from "./helpers";
+import {
+  newSession,
+  API_BASE,
+  inNightOrderBlackout,
+  NIGHT_BLACKOUT_REASON,
+  isDhakaFullClosureWindow,
+  FULL_CLOSURE_REASON,
+} from "./helpers";
 
 /**
  * req #20 (nearest branch enforced server-side in order creation) + req #6
@@ -109,6 +116,16 @@ async function createEligibleBranch(req: APIRequestContext, pt: { lat: number; l
 }
 
 // ── req #20 — nearest branch enforced in order creation ────────────────────
+// PHASE 3 — for the quarter hour before 04:00 Dhaka, a delivery order is
+// refused on purpose (the night shift's last order is 03:45). Skip rather than
+// report the rule as a failure.
+// ITEM 5 — 04:00–11:00 Dhaka, the whole platform (delivery AND pickup) is
+// closed on purpose too. Same treatment: skip, don't fail.
+test.beforeEach(() => {
+  test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+  test.skip(isDhakaFullClosureWindow(), FULL_CLOSURE_REASON);
+});
+
 test.describe("#20 server-derived delivery branch (order creation)", () => {
   test("client branch_id is IGNORED — the branch is derived from the cart's product", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
@@ -248,7 +265,9 @@ test.describe("#6 checkout quote (server-derived)", () => {
     const q = await res.json();
     expect(q.delivery_charge).toBeCloseTo(Number(active.delivery_charge), 2);
     expect(q.delivery_estimate_minutes).toBe(active.estimated_delivery_minutes);
-    expect(q.total).toBeCloseTo(q.subtotal + q.delivery_charge, 2);
+    // PHASE 4 — the flat platform fee is added on top of food and delivery.
+    const platformFee = Number((q as unknown as { platform_fee?: number }).platform_fee ?? 0);
+    expect(q.total).toBeCloseTo(q.subtotal + q.delivery_charge + platformFee, 2);
     expect(q.prep_time_minutes).not.toBeNull();
     // Overall estimate = prep + delivery time.
     expect(q.overall_estimate_minutes).toBe(q.prep_time_minutes + q.delivery_estimate_minutes);

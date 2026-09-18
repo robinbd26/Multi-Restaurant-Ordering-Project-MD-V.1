@@ -129,7 +129,8 @@
     "deliveryAreas": "Delivery Areas",
     "commissions": "Commissions",
     "deductions": "Deductions",
-    "inventory": "Inventory"
+    "inventory": "Inventory",
+    "deliveryZones": "Delivery Zones"
   },
   "navGroup": {
     "people": "People",
@@ -170,7 +171,9 @@
     "on_the_way": "On the Way",
     "delayed": "Delayed",
     "delivered": "Delivered",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "readyForPickup": "Ready for Pickup",
+    "pickedUpDone": "Picked Up (Done)"
   },
   "payment": {
     "cash": "Cash on Delivery",
@@ -654,7 +657,23 @@
       "pickupTimeOptionLabel": "{time} (in {minutes} min)",
       "pickupLocation": "Pickup Location",
       "freePickup": "Free (Pickup)",
-      "errPickupBranchRequired": "Pickup details are still loading. Please wait a moment."
+      "errPickupBranchRequired": "Pickup details are still loading. Please wait a moment.",
+      "outsideAreaTitle": "Outside delivery area — pickup only",
+      "outsideAreaBody": "{branch} does not deliver to this address on the current shift. You can still collect the order yourself.",
+      "switchToPickup": "Switch to self-pickup",
+      "pickupNotOffered": "This branch does not offer self-pickup either.",
+      "checkingCoverage": "Checking delivery…",
+      "deliversHereBadge": "Delivers here",
+      "pickupOnlyBadge": "Pickup only",
+      "coverageCheckFailed": "Could not check delivery for this address. Please try again.",
+      "platformFee": "Platform fee",
+      "freeDelivery": "Free delivery",
+      "platformClosedTitle": "Closed until 11:00 AM",
+      "platformClosedBody": "We reopen at 11:00 AM. Delivery and self-pickup are both paused until then — your cart is safe, come back and check out any time.",
+      "useOneTimeAddress": "Use a one-time address",
+      "oneTimeAddressLabel": "One-time address",
+      "oneTimeAddressNotice": "Used for this order only — not added to your saved addresses.",
+      "useOneTimeAddressConfirm": "Use for this order"
     }
   },
   "superAdmin": {
@@ -864,7 +883,8 @@
     "totalMoneyOutHint": "Withdrawals + refunds",
     "outflowWindowNote": "Withdrawal requests in the selected date range",
     "windowDaysNote": "Last {days} days (Dhaka time)",
-    "paidOn": "Paid: {date}"
+    "paidOn": "Paid: {date}",
+    "platformFeeRevenue": "Platform fee revenue"
   },
   "customer": {
     "dashboardTitle": "Customer Dashboard",
@@ -971,7 +991,8 @@
     "couponPlaceholder": "Coupon code (optional)",
     "nagadHint": "Pay to the branch's Nagad number",
     "rocketHint": "Pay to the branch's Rocket number",
-    "bankHint": "Transfer to the branch's bank account — the branch verifies the payment before preparation."
+    "bankHint": "Transfer to the branch's bank account — the branch verifies the payment before preparation.",
+    "nextPickedUpDone": "Mark Picked Up (Done)"
   },
   "branches": {
     "title": "Branches",
@@ -1031,7 +1052,10 @@
     "deleteNamed": "You are about to delete the branch “{name}”.",
     "deleteArchiveWarning": "If this branch has any orders, products, delivery areas or other historical data it will be ARCHIVED (kept for reporting, hidden from customers) instead of permanently deleted.",
     "logoKeepHint": "Leave empty to keep the current logo",
-    "archivedBadge": "Archived"
+    "archivedBadge": "Archived",
+    "zoneField": "Zone / Area",
+    "zoneFieldHint": "Which master zone this branch is based in (Gulshan, Banani, …). Seeds the \"Suggest areas\" helper on Delivery Areas.",
+    "zoneNone": "No zone set"
   },
   "catalog": {
     "title": "Products",
@@ -1759,7 +1783,10 @@
       "notFound": "Order not found.",
       "invalidQuantity": "Quantity must be a whole number between {min} and {max}.",
       "invalidPaymentMethod": "That payment method is not available.",
-      "branchOnHold": "This branch has paused taking new orders. Please try again shortly."
+      "branchOnHold": "This branch has paused taking new orders. Please try again shortly.",
+      "outsideDeliveryArea": "This branch does not deliver to that address. Self-pickup is still available.",
+      "nightLastOrderPassed": "Night delivery takes its last order at 3:45 AM. Self-pickup is still available while the branch is open.",
+      "platformClosed": "We are closed right now. Delivery and self-pickup both reopen at 11:00 AM — you can still browse and build your cart."
     },
     "catalog": {
       "onlyAssignedManagerCanModifyCatalog": "Only the assigned branch manager can modify the catalog.",
@@ -1841,7 +1868,8 @@
       "enterAdjustmentReason": "Enter a reason for the adjustment.",
       "currentPasswordIncorrect": "The current password is incorrect.",
       "enterValidRate": "Enter a valid rate.",
-      "chargeRatesTooHigh": "VAT and service charge together cannot take up the whole price."
+      "chargeRatesTooHigh": "VAT and service charge together cannot take up the whole price.",
+      "invalidPlatformFee": "Enter a platform fee between 0 and {max}."
     },
     "ops": {
       "couponCodeExists": "A coupon with this code already exists.",
@@ -1911,7 +1939,9 @@
       "couponPerCustomerLimit": "You have already used this coupon {limit} time(s).",
       "campaignNotSendable": "This campaign has ended or been archived, so it can no longer be sent.",
       "segmentNotFound": "Segment not found.",
-      "maxAddressesReached": "You can save a maximum of 5 delivery addresses."
+      "maxAddressesReached": "You can save a maximum of 5 delivery addresses.",
+      "couponWrongBranch": "This coupon is not valid at this branch.",
+      "couponScopeForbidden": "You can only manage coupons for your own branch."
     },
     "rider": {
       "selectBranch": "Select a branch to go on duty.",
@@ -1977,7 +2007,9 @@
       "inactive": "That delivery area is inactive.",
       "held": "Delivery to this area is on hold right now.",
       "pointNotCovered": "This location is outside every delivery area for this branch.",
-      "notForPoint": "The selected area does not cover this location. Choose the area your address falls in."
+      "notForPoint": "The selected area does not cover this location. Choose the area your address falls in.",
+      "invalidWindow": "Choose a valid delivery shift.",
+      "localityNotFound": "That area is not on the master list."
     },
     "branchSettings": {
       "invalidNumber": "Enter a valid number.",
@@ -2054,7 +2086,15 @@
     "push": {
       "invalidSubscription": "This push subscription is not valid."
     },
-    "sessionExpired": "Your session has ended. Please sign in again."
+    "sessionExpired": "Your session has ended. Please sign in again.",
+    "deliveryZone": {
+      "forbidden": "Only a super admin can edit the master list.",
+      "nameRequired": "Enter a name.",
+      "invalidNameLength": "Use between {min} and {max} characters.",
+      "duplicate": "That name is already on the list.",
+      "notFound": "That zone or area no longer exists.",
+      "invalidActive": "Choose a valid status."
+    }
   },
   "states": {
     "loading": "Loading…",
@@ -2646,7 +2686,14 @@
     "useCurrentLocation": "Use Current Location",
     "preset_home2": "Home-2",
     "preset_home3": "Home-3",
-    "preset_others": "Others"
+    "preset_others": "Others",
+    "nicknameField": "Save as",
+    "nicknameHome": "Home",
+    "nicknameOffice": "Office",
+    "nicknameCustom": "Custom",
+    "nicknameCustomField": "Custom name",
+    "nicknameCustomPlaceholder": "e.g. Mom's House",
+    "selectMasterArea": "Pick your area from the list"
   },
   "rewards": {
     "title": "Reward Coins",
@@ -3113,7 +3160,26 @@
     "comment": "Comment",
     "campaignsTitle": "Campaigns",
     "couponsTitle": "Coupons & Promos",
-    "couponArchivedResult": "The coupon was archived because it has already been used."
+    "couponArchivedResult": "The coupon was archived because it has already been used.",
+    "scopeLabel": "Applies to",
+    "scopeAll": "All branches (platform-wide)",
+    "scopeBranchOnly": "Only {branch}",
+    "perCustomerLabel": "Uses per customer",
+    "perCustomerHint": "Default 1. Enter 0 for no per-customer limit.",
+    "totalCapHint": "Total uses across all customers. 0 means unlimited.",
+    "scheduleHint": "Leave the end empty to run until you end it manually.",
+    "endNow": "End now",
+    "endNowTitle": "End {code} now?",
+    "endNowBody": "Customers can no longer use this coupon. Orders already placed keep their discount.",
+    "stateLive": "Live",
+    "stateScheduled": "Scheduled",
+    "stateEnded": "Ended",
+    "statePaused": "Paused",
+    "stateArchived": "Archived",
+    "perCustomerShort": "{count} per customer",
+    "perCustomerUnlimited": "No per-customer limit",
+    "branchCouponsSub": "Coupons that apply to your branch only",
+    "noCouponsReadOnlyDesc": "No coupons currently apply to your branch."
   },
   "mgmtReports": {
     "hubSub": "Every business report in one place",
@@ -3147,7 +3213,9 @@
       "complaints": "Complaints Report",
       "marketing": "Marketing Report",
       "delivery": "Delivery Performance",
-      "attendance": "Attendance Report"
+      "attendance": "Attendance Report",
+      "expenses": "Expenses Report",
+      "withdrawals": "Rider Withdrawals Report"
     },
     "sub": {
       "sales": "Sales by day for the selected period",
@@ -3160,7 +3228,9 @@
       "complaints": "By status and recipient",
       "marketing": "Coupons and campaigns",
       "delivery": "Average delivery time",
-      "attendance": "Rider duty days"
+      "attendance": "Rider duty days",
+      "expenses": "Branch expenses by category",
+      "withdrawals": "Rider withdrawal requests by status"
     },
     "col": {
       "date": "Date",
@@ -3196,7 +3266,25 @@
       "clicked": "Clicked",
       "conversions": "Conversions",
       "discountCost": "Discount cost",
-      "category": "Category"
+      "category": "Category",
+      "entries": "Entries",
+      "commission": "Commission",
+      "expenses": "Expenses",
+      "refunds": "Refunds",
+      "profit": "Profit",
+      "requests": "Requests",
+      "pending": "Pending",
+      "approved": "Approved",
+      "paid": "Paid",
+      "rejected": "Rejected",
+      "measured": "Measured",
+      "person": "Person",
+      "post": "Post",
+      "present": "Present",
+      "late": "Late",
+      "absent": "Absent",
+      "leave": "Leave",
+      "halfDay": "Half day"
     },
     "kind": {
       "campaign": "Campaign",
@@ -3729,7 +3817,25 @@
     "updated": "Delivery area updated.",
     "resumed": "Delivery resumed for this area.",
     "held": "Delivery held for this area.",
-    "errNameRequired": "Please enter an area name."
+    "errNameRequired": "Please enter an area name.",
+    "coverageWindow": "Shift",
+    "windowDay": "Day",
+    "windowNight": "Night",
+    "windowBoth": "All day",
+    "filterWindow": "Shift",
+    "allWindows": "All shifts",
+    "locality": "Area on master list",
+    "noLocality": "Not linked",
+    "coverageWindowHint": "Day runs 11:00 to 22:45, night 22:45 to 04:00. All day covers both shifts.",
+    "localityHint": "Link this row to the master list so an address in that area is matched automatically.",
+    "suggestNoZone": "Set a Zone / Area on your branch profile to use the area suggestion helper.",
+    "suggestAreas": "Suggest areas for my branch",
+    "suggestTitle": "Suggested areas — {zone}",
+    "suggestSubtitle": "From your branch's zone. Review, edit or remove any row — nothing is saved until you choose Save.",
+    "suggestAllCovered": "Every area in your zone is already covered.",
+    "suggestSave": "Save selected areas",
+    "suggestSaved": "{count} area(s) saved.",
+    "suggestNoneSelected": "Select at least one area to save."
   },
   "assignment": {
     "newOrderTitle": "New order assigned",
@@ -3748,7 +3854,6 @@
     "explainerNoLocation": "Set your delivery location to see which branch can serve you.",
     "setLocation": "Set location",
     "nearestBadge": "Nearest",
-    "disabledNote": "Not your nearest branch — ordering is locked to the nearest eligible one.",
     "opensAt": "Opens at {time}",
     "finding": "Finding restaurants near you…"
   },
@@ -3927,7 +4032,8 @@
     "queueEmptyDesc": "Manual bKash submissions appear here the moment a customer sends one.",
     "rejectReasonHint": "The customer sees this word for word, so say what they should do next.",
     "rejectReasonPlaceholder": "e.g. This TrxID is not in our bKash statement.",
-    "errRejectReasonRequired": "Write why the payment is being rejected — the customer will see this."
+    "errRejectReasonRequired": "Write why the payment is being rejected — the customer will see this.",
+    "codNoticePickup": "Pay {amount} in cash when you collect your order."
   },
   "orderWorkflow": {
     "history": "Status history",
@@ -4099,19 +4205,42 @@
     "distance": "{km} km away",
     "deliveryFee": "Delivery {fee}",
     "changeLocation": "Change location",
-    "selectAddress": "Select an address",
-    "addAddress": "Add address",
     "useCurrentLocation": "Use current location",
     "locating": "Finding your nearest branch…",
     "locationRequired": "Location required",
     "locationRequiredBody": "Share your location or pick a saved address so we can show the menu from your nearest branch.",
     "outOfZoneBody": "Delivery is unavailable for this location.",
-    "viewBranches": "View branches",
     "deniedUseAddress": "Location permission was denied. We will use your default saved address instead — or pick one below.",
     "noProductsForBranch": "No products are currently available from this branch.",
     "productsFromBranch": "Products from your nearest branch",
     "branchChanged": "Your nearest branch has changed.",
-    "cartBranchChanged": "Some cart products are unavailable for the new branch."
+    "cartBranchChanged": "Some cart products are unavailable for the new branch.",
+    "deliverTo": "Deliver to",
+    "browsingFrom": "Browsing",
+    "useMyLocation": "Use my current location",
+    "savedAddressesGroup": "Saved addresses",
+    "otherBranchesGroup": "Browse another branch",
+    "manageAddresses": "Add or manage addresses",
+    "noSavedAddresses": "No saved addresses yet.",
+    "noCoordinates": "No map pin saved",
+    "branchOpen": "Open",
+    "branchClosed": "Closed",
+    "browseOnlyTitle": "Browsing only",
+    "browseOnlyBody": "{branch} does not deliver to your current location.",
+    "browseOnlyPickup": "Self-pickup from this branch still works.",
+    "deliverToInstead": "Deliver to {label} instead",
+    "currentLocation": "Current location",
+    "notSetYet": "Not set yet",
+    "nearestBranchOption": "My nearest branch",
+    "allBranches": "All branches",
+    "chooseBranch": "Choose a branch",
+    "deliverToMenuLabel": "Choose where to deliver",
+    "browseMenuLabel": "Choose which branch menu to browse",
+    "browseOnlyBodyAddress": "{branch} does not deliver to {label}.",
+    "backToNearestBranch": "Back to my nearest branch",
+    "browseOnlyPickupBadge": "Browsing only — self-pickup available",
+    "viewMenu": "View menu",
+    "freeDelivery": "Free delivery"
   },
   "brandType": {
     "cheez": "Cheez! Pizza",
@@ -4123,7 +4252,10 @@
     "switchTitle": "Switch order branch?",
     "switchBody": "Your cart contains products from {current}. “{product}” is sold by {next}. An order belongs to one branch, so switching clears the current cart.",
     "clearAndSwitch": "Clear cart and switch branch",
-    "differentBranch": "Product belongs to another branch"
+    "differentBranch": "Product belongs to another branch",
+    "browseSwitchTitle": "Switch to {next}?",
+    "browseSwitchBody": "Your cart has items from {current}. Switching branches clears the cart so you can order from {next} instead.",
+    "keepCurrentBranch": "Keep browsing {current}"
   },
   "catalogue": {
     "allBranches": "All branches",
@@ -4131,5 +4263,48 @@
     "allOrderableProducts": "All customer-orderable products",
     "noEligibleProducts": "No eligible products found.",
     "manageProducts": "Manage products"
+  },
+  "deliveryZone": {
+    "title": "Delivery Zones",
+    "subtitle": "The master list of zones and areas every branch picks its coverage from",
+    "zonesCount": "Zones",
+    "localitiesCount": "Areas",
+    "activeLabel": "Active",
+    "inactiveLabel": "Inactive",
+    "addZone": "+ New zone",
+    "addLocality": "+ New area",
+    "zoneName": "Zone",
+    "localityName": "Area",
+    "localitiesIn": "Areas in {zone}",
+    "noZones": "No zones yet",
+    "noZonesDesc": "Add the first zone to start building the master list.",
+    "noLocalities": "No areas in this zone yet",
+    "coveredByBranches": "Branches covering",
+    "nameLabel": "Name",
+    "namePlaceholder": "For example: Mirpur-10",
+    "zoneLabel": "Zone",
+    "selectZone": "Select a zone",
+    "saved": "Saved",
+    "deactivate": "Deactivate",
+    "reactivate": "Reactivate",
+    "deactivateTitle": "Deactivate {name}?",
+    "deactivateBody": "Customers stop seeing it when saving an address, and branches stop covering it. Existing addresses and orders keep their saved text.",
+    "masterHint": "Editing here is the authority: a later reseed never renames or removes what you change."
+  },
+  "platformFee": {
+    "title": "Platform Fee",
+    "subtitle": "A flat fee added to every order, delivery and pickup alike",
+    "globalLabel": "Platform fee per order",
+    "globalHint": "Applies to every branch without its own override.",
+    "save": "Save",
+    "saved": "Saved",
+    "branchOverrides": "Branch overrides",
+    "branchOverridesHint": "Leave a branch on Inherit to use the platform-wide fee.",
+    "inherits": "Inherits",
+    "override": "Override",
+    "effective": "Charged now",
+    "setOverride": "Set",
+    "clearOverride": "Inherit",
+    "branch": "Branch"
   }
 }

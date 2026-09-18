@@ -8,13 +8,13 @@ export const ROLE_PAGES: Record<string, string[]> = {
   super_admin: [
     "/admin/dashboard", "/admin/users", "/admin/customers", "/admin/staff",
     "/admin/products", "/admin/reports/sales", "/admin/reports/attendance",
-    "/admin/notices", "/admin/rewards", "/admin/complaints",
+    "/admin/notices", "/admin/rewards", "/admin/complaints", "/admin/coupons",
   ],
   branch_manager: [
     "/branch-manager/dashboard", "/branch-manager/orders", "/branch-manager/riders",
     "/branch-manager/delivery-zone", "/branch-manager/delivery-hours",
     "/branch-manager/attendance", "/branch-manager/table-reservations",
-    "/branch-manager/duty-history", "/branch-manager/complaints",
+    "/branch-manager/duty-history", "/branch-manager/complaints", "/branch-manager/coupons",
   ],
   rider: [
     "/rider/dashboard", "/rider/wallet", "/rider/earnings", "/rider/withdrawals",

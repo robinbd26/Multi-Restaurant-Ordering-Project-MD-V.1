@@ -43,7 +43,7 @@ export const GET = handle(async (req: Request) => {
 
   const [count, branches] = await Promise.all([
     prisma.branch.count({ where }),
-    prisma.branch.findMany({ where, include: { manager: true }, orderBy: { createdAt: "desc" }, skip, take }),
+    prisma.branch.findMany({ where, include: { manager: true, zone: true }, orderBy: { createdAt: "desc" }, skip, take }),
   ]);
   return paginated(branches.map(serializeBranch), { page, pageSize, count });
 });
@@ -97,10 +97,20 @@ export const POST = handle(async (req: Request) => {
     data.longitude = new Prisma.Decimal(lng.toFixed(7));
   }
   if (fields.delivery_radius_km) data.deliveryRadiusKm = new Prisma.Decimal(fields.delivery_radius_km);
+  // ITEM 7 — the branch's location tag. "" clears it (a branch may have none).
+  if (fields.zone_id !== undefined && fields.zone_id !== "") {
+    const zoneId = Number(fields.zone_id);
+    if (!Number.isSafeInteger(zoneId) || zoneId <= 0) {
+      throw validationError({ zone_id: sk("errors.deliveryZone.notFound") });
+    }
+    const zone = await prisma.deliveryZone.findFirst({ where: { id: zoneId, isActive: true } });
+    if (!zone) throw validationError({ zone_id: sk("errors.deliveryZone.notFound") });
+    data.zone = { connect: { id: zoneId } };
+  }
 
   const logo = file("logo");
   if (logo) data.logo = await saveUpload(logo, "branch_logos", "logo");
 
-  const branch = await prisma.branch.create({ data, include: { manager: true } });
+  const branch = await prisma.branch.create({ data, include: { manager: true, zone: true } });
   return created(serializeBranch(branch));
 });
