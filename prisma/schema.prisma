@@ -1204,10 +1204,17 @@ model Category {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  // Brand scope for the product form's Brand → Category filter: "cheez" or
+  // "madchef". NULL (the default) = the category serves BOTH brands, which is
+  // exactly what every pre-existing row means — so this column is purely
+  // additive and needs no data backfill. Assigned by the super admin at
+  // creation time (see components/admin/admin-category-form.tsx).
+  brand             String?
   products Product[]
 
   @@index([branchId])
   @@index([normalizedName])
+  @@index([brand])
 }
 
 model Product {

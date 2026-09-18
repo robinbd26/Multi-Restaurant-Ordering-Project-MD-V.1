@@ -66,7 +66,7 @@
     "branches": "Branches",
     "branchManagement": "Branch Management",
     "newBranch": "New Branch",
-    "catalog": "Catalog",
+    "catalog": "Products",
     "orders": "Orders",
     "myDeliveries": "My Deliveries",
     "restaurants": "Restaurants",
@@ -134,7 +134,7 @@
   },
   "navGroup": {
     "people": "People",
-    "catalog": "Catalog",
+    "catalog": "Products",
     "orders": "Orders",
     "customers": "Customer",
     "delivery": "Delivery Operations",
@@ -1058,7 +1058,7 @@
     "zoneNone": "No zone set"
   },
   "catalog": {
-    "title": "Catalog Management",
+    "title": "Products",
     "subtitle": "Your branch's categories and products",
     "category": "Category",
     "product": "Product",
@@ -1108,9 +1108,17 @@
     "branch": "Branch",
     "brand": "Brand",
     "selectBrand": "Select brand",
+    "basePrice": "Base Price (৳)",
+    "basePriceHint": "Synced with the default variation's price.",
+    "categoryBrand": "Brand Scope",
+    "categoryBrandHint": "Only products of the chosen brand list this category. \"Both\" keeps it available to every brand.",
     "variations": "Variations",
     "variationsHint": "Add at least one purchasable size/option.",
     "addVariation": "Add Variation",
+    "variationsSummary": "{n} saved",
+    "showVariations": "Show variations",
+    "hideVariations": "Hide variations",
+    "variationsOptional": "Optional — expand only if this product comes in different sizes or options.",
     "variationName": "Name",
     "variationNamePlaceholder": "e.g. Small",
     "variationSize": "Size label",
@@ -1132,6 +1140,8 @@
     "selectCategory": "Select a category",
     "globalCategory": "Global",
     "noCategoriesContactAdmin": "No categories are available for this branch yet. Please contact the Super Admin.",
+    "noCategoriesForBrand": "No categories match this brand yet. Pick a category that serves both brands, or ask the Super Admin to add one.",
+    "branchLockedHint": "Locked to your logged-in branch.",
     "deleteProductConfirm": "Delete “{name}” from {branch}? This is a soft delete: the product disappears from the menu, search and checkout immediately, historical orders keep their snapshot, and it stays visible to administrators under Deactivated.",
     "imageKeepHint": "Leave empty to keep the current image",
     "actionsFor": "Actions for {name}",
@@ -1160,7 +1170,9 @@
     "variationNumber": "Variation {n}",
     "saveChanges": "Save Changes",
     "backToProducts": "Back to Products",
-    "imageFormatsHint": "JPG, PNG, WebP or AVIF · up to {n} MB · converted to WebP"
+    "imageFormatsHint": "JPG, PNG, WebP or AVIF · up to {n} MB · converted to WebP",
+    "imageDropTitle": "Drag & drop or click to upload",
+    "imageChange": "Replace image"
   },
   "users": {
     "allUsers": "All Users",
@@ -1803,6 +1815,7 @@
       "selectedManagerNotFoundOrNotApproved": "The selected manager was not found or is not approved.",
       "selectBrand": "Please select a brand.",
       "brandNotAllowedForBranch": "This brand is not allowed for the selected branch.",
+      "categoryBrandMismatch": "The selected category belongs to a different brand. Choose a category of the same brand, or one that serves both brands.",
       "invalidBrandType": "Invalid brand type.",
       "variationsInvalid": "Variation data is invalid.",
       "variationsRequired": "At least one variation is required.",
@@ -3492,7 +3505,9 @@
   "brands": {
     "cheez": "CHEEZ",
     "madchef": "MADCHEF",
-    "combined": "Combined (CHEEZ + MADCHEF)"
+    "combined": "Combined (CHEEZ + MADCHEF)",
+    "combinedOption": "COMBINED BRANCH (BOTH)",
+    "both": "Both (CHEEZ + MADCHEF)"
   },
   "b1": {
     "checkCoverageTitle": "Delivery coverage",

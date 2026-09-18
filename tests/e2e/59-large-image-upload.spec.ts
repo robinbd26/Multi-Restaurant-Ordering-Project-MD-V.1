@@ -161,6 +161,11 @@ test("a 2 MB image uploads through the product CREATE FORM (the failing path)", 
   await admin.page.getByLabel(/^Branch/i).selectOption(String(branch.id));
   await admin.page.getByLabel(/^Product name/i).fill(name);
   await admin.page.getByLabel(/^Category/i).selectOption({ index: 1 });
+
+  // req #4 — Variations is optional and collapsed by default; open it first.
+  const toggle = admin.page.getByTestId("variations-toggle");
+  if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+
   await admin.page.getByTestId("variation-name").fill("Regular");
   await admin.page.getByTestId("variation-price").fill("150");
 

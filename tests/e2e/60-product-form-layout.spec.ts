@@ -47,6 +47,11 @@ test.describe("The card fills the content column", () => {
     await admin.page.goto(CREATE, { waitUntil: "domcontentloaded" });
     await expect(admin.page.getByLabel(/^Product name/i)).toBeVisible();
 
+    // req #4 — Variations is optional and collapsed by default; open it so the
+    // row box below is the real, visible one.
+    const toggle = admin.page.getByTestId("variations-toggle");
+    if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+
     const name = (await admin.page.getByLabel(/^Product name/i).boundingBox())!;
     const branch = (await admin.page.getByLabel(/^Branch/i).boundingBox())!;
     const variations = (await admin.page.getByTestId("variation-row").first().boundingBox())!;
@@ -90,6 +95,9 @@ test.describe("The card fills the content column", () => {
     const admin = await newSession(browser, "super_admin");
     await admin.page.setViewportSize({ width: 1500, height: 1000 });
     await admin.page.goto(CREATE, { waitUntil: "domcontentloaded" });
+    // Collapsed by default (req #4) — expand before measuring the row inputs.
+    const toggle = admin.page.getByTestId("variations-toggle");
+    if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
     await expect(admin.page.getByTestId("variation-price")).toBeVisible();
 
     const price = (await admin.page.getByTestId("variation-price").boundingBox())!;
@@ -183,6 +191,9 @@ test.describe("Responsive and still usable", () => {
     const name = `LayoutProduct-${Date.now()}`;
     await admin.page.getByLabel(/^Category/i).selectOption({ index: 1 });
     await admin.page.getByLabel(/^Product name/i).fill(name);
+    // req #4 — Variations is optional and collapsed by default; open it first.
+    const toggle = admin.page.getByTestId("variations-toggle");
+    if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
     await admin.page.getByTestId("variation-name").fill("Regular");
     await admin.page.getByTestId("variation-price").fill("175");
     await admin.page.getByRole("button", { name: /add product/i }).click();

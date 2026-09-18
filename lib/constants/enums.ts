@@ -184,6 +184,50 @@ export function isProductBrand(v: string): v is ProductBrand {
 }
 
 /**
+ * The brand choices a PRODUCT may carry in the dashboard form.
+ *
+ * `cheez` / `madchef` are the real brand tags. `combined` is the explicit
+ * "sold under BOTH brands" choice — a product that is listed in both storefront
+ * brand tabs (see `brandsOf` in lib/services/public-catalog.ts). It is only
+ * ever offered or stored on a COMBINED branch; a single-brand branch still
+ * forces its own brand (see `resolveProductBrand` in lib/services/catalog.ts).
+ */
+export const PRODUCT_BRAND_CHOICES = ["cheez", "madchef", "combined"] as const;
+export type ProductBrandChoice = (typeof PRODUCT_BRAND_CHOICES)[number];
+
+export function isProductBrandChoice(v: string): v is ProductBrandChoice {
+  return (PRODUCT_BRAND_CHOICES as readonly string[]).includes(v);
+}
+
+/**
+ * A CATEGORY's brand scope. Stored on `Category.brand`; NULL means "serves both
+ * brands" (the default for every pre-existing row).
+ */
+export function isCategoryBrand(v: string): v is ProductBrand {
+  return isProductBrand(v);
+}
+
+/**
+ * May a category tagged `categoryBrand` be used on a product whose brand choice
+ * is `productBrand`
+ *
+ * - a brand-less (NULL) category serves everyone, so it always matches;
+ * - a product sold under `combined` (both brands) may use any category;
+ * - otherwise the tags must be equal.
+ *
+ * Kept here beside the enums so the dashboard filter and the server-side write
+ * check can never drift apart.
+ */
+export function categoryBrandMatchesProductBrand(
+  categoryBrand: string | null | undefined,
+  productBrand: string,
+): boolean {
+  if (!categoryBrand) return true;
+  if (productBrand === "combined") return true;
+  return categoryBrand === productBrand;
+}
+
+/**
  * req #4 — product crust/thickness policy. STABLE internal values (never the
  * translated label); display text resolves through i18n `variationType.*`.
  * THICK / THIN = the product has that single fixed crust and the server rejects

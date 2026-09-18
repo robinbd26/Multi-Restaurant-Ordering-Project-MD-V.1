@@ -61,6 +61,16 @@ export function AdminCategoryForm({ branches }: { branches: { id: number; name: 
       <Field label={t("adminExtras.categoryName")} name="name" required error={errors.name}>
         <Input name="name" maxLength={80} />
       </Field>
+      {/* req #3 — the super admin assigns a category to a brand: CHEEZ, MADCHEF,
+          or "Both" (the default — stored as NULL, which serves every brand and
+          keeps every pre-existing category working unchanged). */}
+      <Field label={t("catalog.categoryBrand")} name="brand" hint={t("catalog.categoryBrandHint")}>
+        <Select name="brand" defaultValue="" data-testid="category-brand-select">
+          <option value="">{t("brands.both")}</option>
+          <option value="cheez">{t("brands.cheez")}</option>
+          <option value="madchef">{t("brands.madchef")}</option>
+        </Select>
+      </Field>
       <Field label={t("adminExtras.categoryDesc")} name="description" error={errors.description}>
         <Textarea name="description" rows={2} />
       </Field>

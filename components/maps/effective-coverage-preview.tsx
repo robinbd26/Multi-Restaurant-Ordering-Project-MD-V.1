@@ -14,7 +14,7 @@ import { MapPicker, type PickedPoint } from "./map-picker";
  *
  * The branch manager edits two overlapping things: delivery ZONES (circles that
  * decide coverage) on this page, and named delivery AREAS (which carry the money
- * and the ETA) on /branch-manager/delivery-areas. Nothing ever showed them the
+ * and the ETA) on delivery zones. Nothing ever showed them the
  * COMBINATION, so a zone could admit a customer that an area then priced —
  * or, worse, a fee typed on a zone could look authoritative while the order was
  * billed from somewhere else entirely.

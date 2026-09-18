@@ -3016,6 +3016,9 @@ test.describe("Full page audit — Super Admin", () => {
     await page.getByLabel(/^Branch/i).selectOption(String(branch.id));
     await page.getByLabel(/^Product name/i).fill(name);
     await page.getByLabel(/^Category/i).selectOption({ index: 1 });
+    // req #4 — Variations is optional and collapsed by default; open it first.
+    const toggle = page.getByTestId("variations-toggle");
+    if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
     await page.getByTestId("variation-name").fill("Regular");
     await page.getByTestId("variation-price").fill("321");
     await page.getByRole("button", { name: /add product/i }).click();

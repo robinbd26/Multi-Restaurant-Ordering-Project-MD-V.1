@@ -103,6 +103,8 @@ export interface Category {
   branch: number | null; // null = global ("Main Branch")
   branch_name: string | null;
   is_global: boolean;
+  /** "cheez" | "madchef" — null = serves BOTH brands (the default). */
+  brand: "cheez" | "madchef" | null;
   name: string;
   description: string;
   is_active: boolean;
