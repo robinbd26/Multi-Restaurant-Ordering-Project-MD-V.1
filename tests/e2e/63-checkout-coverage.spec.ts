@@ -1,6 +1,14 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { API_BASE, newSession, setLocale, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
+import {
+  API_BASE,
+  newSession,
+  setLocale,
+  inNightOrderBlackout,
+  NIGHT_BLACKOUT_REASON,
+  isDhakaFullClosureWindow,
+  FULL_CLOSURE_REASON,
+} from "./helpers";
 
 /**
  * PHASE 3 — checkout enforces coverage by NAME as well as by geometry.
@@ -134,6 +142,9 @@ function items(productId: number) {
 // report the rule as a failure.
 test.beforeEach(() => {
   test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+  // ITEM 5 — 04:00–11:00 Dhaka, the whole platform (delivery AND pickup) is
+  // closed on purpose too. Same treatment: skip, don't fail.
+  test.skip(isDhakaFullClosureWindow(), FULL_CLOSURE_REASON);
 });
 
 test.describe("Checkout enforces coverage by name", () => {

@@ -1,6 +1,13 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
+import {
+  newSession,
+  API_BASE,
+  inNightOrderBlackout,
+  NIGHT_BLACKOUT_REASON,
+  isDhakaFullClosureWindow,
+  FULL_CLOSURE_REASON,
+} from "./helpers";
 
 /**
  * req #20 (nearest branch enforced server-side in order creation) + req #6
@@ -112,8 +119,11 @@ async function createEligibleBranch(req: APIRequestContext, pt: { lat: number; l
 // PHASE 3 — for the quarter hour before 04:00 Dhaka, a delivery order is
 // refused on purpose (the night shift's last order is 03:45). Skip rather than
 // report the rule as a failure.
+// ITEM 5 — 04:00–11:00 Dhaka, the whole platform (delivery AND pickup) is
+// closed on purpose too. Same treatment: skip, don't fail.
 test.beforeEach(() => {
   test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+  test.skip(isDhakaFullClosureWindow(), FULL_CLOSURE_REASON);
 });
 
 test.describe("#20 server-derived delivery branch (order creation)", () => {

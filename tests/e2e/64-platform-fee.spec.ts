@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { API_BASE, newSession, setLocale } from "./helpers";
+import { API_BASE, newSession, setLocale, isDhakaFullClosureWindow, FULL_CLOSURE_REASON } from "./helpers";
 
 /**
  * PHASE 4 — the platform fee.
@@ -15,6 +15,11 @@ import { API_BASE, newSession, setLocale } from "./helpers";
  */
 
 test.beforeEach(async ({ context }) => setLocale(context, "en"));
+// ITEM 5 — 04:00–11:00 Dhaka, the whole platform (delivery AND pickup) is
+// closed on purpose. Skip an order/quote-touching test rather than fail it.
+test.beforeEach(() => {
+  test.skip(isDhakaFullClosureWindow(), FULL_CLOSURE_REASON);
+});
 
 const DEFAULT_FEE = "5.00";
 

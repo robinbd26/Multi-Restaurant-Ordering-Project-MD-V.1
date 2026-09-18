@@ -6,9 +6,11 @@ import { coverageForAddress } from "@/lib/services/address-coverage";
 import { resolveEffectiveDelivery } from "@/lib/services/delivery";
 
 // POST /api/delivery/address-coverage  { branch_id, customer_address_id }
+//   or  { branch_id, main_area, sub_area?, lat?, lng? }  — ITEM 8, a one-time
+//   address for this order only, checked the SAME way, never saved.
 //
 // The LIVE check the checkout drawer runs while an address is being chosen:
-// can the cart's branch deliver to this saved address, on the shift running
+// can the cart's branch deliver to this destination, on the shift running
 // now? Computed on every request, never cached on the address — the same
 // address can be covered by one branch and not another, or by day and not
 // by night.
@@ -21,13 +23,19 @@ export const POST = handle(async (req: Request) => {
   const body = (await req.json().catch(() => ({}))) as {
     branch_id?: unknown;
     customer_address_id?: unknown;
+    main_area?: unknown;
+    sub_area?: unknown;
+    lat?: unknown;
+    lng?: unknown;
   };
   const branchId = Number(body.branch_id);
-  const addressId = Number(body.customer_address_id);
   if (!Number.isSafeInteger(branchId) || branchId <= 0) {
     throw validationError({ branch_id: sk("errors.orders.selectBranch") });
   }
-  if (!Number.isSafeInteger(addressId) || addressId <= 0) {
+  const oneTimeMainArea = typeof body.main_area === "string" ? body.main_area.trim() : "";
+  const addressId = Number(body.customer_address_id);
+  const hasAddressId = Number.isSafeInteger(addressId) && addressId > 0;
+  if (!hasAddressId && !oneTimeMainArea) {
     throw validationError({ customer_address_id: sk("errors.orders.provideDeliveryAddress") });
   }
 
@@ -38,7 +46,14 @@ export const POST = handle(async (req: Request) => {
 
   const coverage = await coverageForAddress(branch, {
     customerId: me.id,
-    customerAddressId: addressId,
+    ...(hasAddressId
+      ? { customerAddressId: addressId }
+      : {
+          mainArea: oneTimeMainArea,
+          subArea: typeof body.sub_area === "string" ? body.sub_area.trim() : "",
+          lat: body.lat != null ? Number(body.lat) : null,
+          lng: body.lng != null ? Number(body.lng) : null,
+        }),
   });
 
   // The fee the quote will charge: a name-granted coverage row carries its own

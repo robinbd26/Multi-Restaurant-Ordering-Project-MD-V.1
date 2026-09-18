@@ -59,6 +59,15 @@ export async function coverageForAddress(
     customerAddressId?: number | null;
     lat?: number | null;
     lng?: number | null;
+    /**
+     * ITEM 8 — a ONE-TIME address for this order only, never saved to the
+     * address book. Read ONLY when customerAddressId is absent: a saved
+     * address, once chosen, is still authoritative over anything the body
+     * carries (WS-4.2) — these fields exist for the customer's OWN typed
+     * text on an order that has no saved row to be authoritative instead.
+     */
+    mainArea?: string | null;
+    subArea?: string | null;
   },
 ): Promise<AddressCoverage> {
   const window = currentCoverageWindow();
@@ -90,6 +99,16 @@ export async function coverageForAddress(
         localityId = locality.id;
         localityName = locality.name;
       }
+    }
+  } else if (target.mainArea) {
+    // ITEM 8 — the one-time path: no saved row, so the customer's own typed
+    // area/sub-area pair (this request only) is matched the SAME way a saved
+    // address's stored pair is — by name, against the master list. A point
+    // already resolved from target.lat/lng above (e.g. a map pick) stands.
+    const locality = await findLocality(target.mainArea, target.subArea ?? "");
+    if (locality) {
+      localityId = locality.id;
+      localityName = locality.name;
     }
   }
 

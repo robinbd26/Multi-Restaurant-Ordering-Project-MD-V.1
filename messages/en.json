@@ -669,7 +669,11 @@
       "platformFee": "Platform fee",
       "freeDelivery": "Free delivery",
       "platformClosedTitle": "Closed until 11:00 AM",
-      "platformClosedBody": "We reopen at 11:00 AM. Delivery and self-pickup are both paused until then — your cart is safe, come back and check out any time."
+      "platformClosedBody": "We reopen at 11:00 AM. Delivery and self-pickup are both paused until then — your cart is safe, come back and check out any time.",
+      "useOneTimeAddress": "Use a one-time address",
+      "oneTimeAddressLabel": "One-time address",
+      "oneTimeAddressNotice": "Used for this order only — not added to your saved addresses.",
+      "useOneTimeAddressConfirm": "Use for this order"
     }
   },
   "superAdmin": {

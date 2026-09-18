@@ -20,6 +20,9 @@ export const POST = handle(async (req: Request) => {
     lng?: number | string;
     delivery_area_id?: number | null;
     customer_address_id?: number | null;
+    // ITEM 8 — a one-time address for this order only, never saved.
+    main_area?: string | null;
+    sub_area?: string | null;
   };
   const quote = await quoteOrder({
     branchId: Number(body.branch_id),
@@ -34,6 +37,8 @@ export const POST = handle(async (req: Request) => {
     // PHASE 3 — the saved address being checked out to. A pinless address can
     // still be quoted when this branch lists its locality for the current shift.
     customerAddressId: body.customer_address_id ?? null,
+    oneTimeMainArea: body.main_area ?? null,
+    oneTimeSubArea: body.sub_area ?? null,
   });
   return json(quote);
 });

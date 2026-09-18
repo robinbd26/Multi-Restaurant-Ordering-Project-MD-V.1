@@ -127,38 +127,39 @@ test.describe("Suggest areas for my branch", () => {
 
   test("suggests the branch's zone localities, excludes already-covered ones, and saves only what is selected", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
-    const zone = await firstActiveZone(admin.req);
     const main = await mainBranch(admin.req);
     let manager: Awaited<ReturnType<typeof newSession>> | null = null;
-    // Real, PRE-EXISTING coverage this test deactivates to get exact candidate
-    // counts — every id here is reactivated in `finally`, whatever happens.
-    const deactivatedForTest: number[] = [];
     let coveredAreaId: number | null = null;
     let savedSuggestionId: number | null = null;
 
-    try {
-      const existingAreas = (await (await admin.req.get(`${API_BASE}/api/delivery-areas?branch_id=${main.id}&page_size=200`)).json()).results as {
-        id: number;
-        locality_id: number | null;
-      }[];
-      const zoneLocalityIds = new Set(zone.localities.filter((l) => l.isActive).map((l) => l.id));
-      for (const area of existingAreas) {
-        if (area.locality_id != null && zoneLocalityIds.has(area.locality_id)) {
-          const off = await admin.req.patch(`${API_BASE}/api/delivery-areas/${area.id}`, { data: { is_active: false } });
-          expect(off.status()).toBe(200);
-          deactivatedForTest.push(area.id);
-        }
-      }
+    // A BRAND NEW zone with two brand-new localities, made just for this test.
+    // Main Branch has real seeded coverage across the shared master list (and
+    // other specs add more over a long run), and the duplicate-area check is
+    // on (branchId, normalizedName, window) regardless of isActive — so
+    // reusing any existing locality name here risks colliding with coverage
+    // this test did not create and must not touch. A fresh zone sidesteps
+    // that entirely: nothing has ever covered these two localities.
+    const zoneRes = await admin.req.post(`${API_BASE}/api/area-zones`, { data: { name: uniq("SuggestZone") } });
+    expect(zoneRes.status()).toBe(201);
+    const zoneId = ((await zoneRes.json()) as { id: number }).id;
+    const localityNames = [uniq("SuggestLoc"), uniq("SuggestLoc")];
+    const localities: { id: number; name: string }[] = [];
+    for (const name of localityNames) {
+      const res = await admin.req.post(`${API_BASE}/api/area-localities`, { data: { zone_id: zoneId, name } });
+      expect(res.status()).toBe(201);
+      localities.push({ id: ((await res.json()) as { id: number }).id, name });
+    }
+    const firstLocality = localities[0];
 
+    try {
       // Pre-cover ONE locality so the helper must exclude it from its suggestions.
-      const firstLocality = zone.localities.find((l) => l.isActive)!;
       const covered = await admin.req.post(`${API_BASE}/api/delivery-areas`, {
         data: { branch_id: main.id, name: firstLocality.name, locality_id: firstLocality.id, coverage_window: "both", estimated_delivery_minutes: 30, delivery_charge: 20 },
       });
       expect(covered.status()).toBe(201);
       coveredAreaId = ((await covered.json()) as { id: number }).id;
 
-      await admin.req.patch(`${API_BASE}/api/branches/${main.id}/`, { data: { zone_id: String(zone.id) } });
+      await admin.req.patch(`${API_BASE}/api/branches/${main.id}/`, { data: { zone_id: String(zoneId) } });
 
       manager = await newSession(browser, "branch_manager");
       await manager.page.goto("/branch-manager/delivery-areas", { waitUntil: "domcontentloaded" });
@@ -169,8 +170,7 @@ test.describe("Suggest areas for my branch", () => {
       await expect(manager.page.getByTestId(`suggest-area-row-${firstLocality.id}`)).toHaveCount(0);
 
       // A genuinely uncovered locality from the same zone IS offered.
-      const candidate = zone.localities.find((l) => l.isActive && l.id !== firstLocality.id);
-      expect(candidate, "the zone has a second active locality to suggest").toBeTruthy();
+      const candidate = localities[1];
       const row = manager.page.getByTestId(`suggest-area-row-${candidate!.id}`);
       await expect(row).toBeVisible();
 
@@ -191,16 +191,14 @@ test.describe("Suggest areas for my branch", () => {
       savedSuggestionId = savedRow!.id;
     } finally {
       // Leave the shared database exactly as found: drop what this test
-      // created, and reactivate every real row it turned off to get there.
+      // created. Neither row it made ever collides with a real seeded one —
+      // both localities were picked specifically for having no prior coverage.
       await admin.req.patch(`${API_BASE}/api/branches/${main.id}/`, { data: { zone_id: "" } });
       if (savedSuggestionId != null) {
         await admin.req.patch(`${API_BASE}/api/delivery-areas/${savedSuggestionId}`, { data: { is_active: false } });
       }
       if (coveredAreaId != null) {
         await admin.req.patch(`${API_BASE}/api/delivery-areas/${coveredAreaId}`, { data: { is_active: false } });
-      }
-      for (const id of deactivatedForTest) {
-        await admin.req.patch(`${API_BASE}/api/delivery-areas/${id}`, { data: { is_active: true } });
       }
       await admin.context.close();
       await manager?.context.close();

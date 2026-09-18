@@ -451,6 +451,10 @@ export interface CheckoutPayload {
   lng?: number;
   /** WS-4.2 — a saved address; the server reads ITS coordinates, not lat/lng. */
   customer_address_id?: number;
+  /** ITEM 8 — a one-time address for this order only, never saved; read only
+   *  when customer_address_id is absent. */
+  main_area?: string;
+  sub_area?: string;
   /** WS-4.2 — the picker's provenance claim; the server re-derives the truth. */
   coord_source?: string;
   delivery_area_id?: number;

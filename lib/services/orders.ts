@@ -269,6 +269,12 @@ async function resolveBranchForCart(input: {
   customerId?: number;
   /** A saved address of theirs; its own coordinates and locality win. */
   customerAddressId?: number | null;
+  /**
+   * ITEM 8 — a ONE-TIME address for this order only, never saved to the
+   * address book. Read ONLY when customerAddressId is absent.
+   */
+  oneTimeMainArea?: string | null;
+  oneTimeSubArea?: string | null;
 }): Promise<{
   branch: Awaited<ReturnType<typeof servingBranchForCart>>;
   lat: number | null;
@@ -306,6 +312,8 @@ async function resolveBranchForCart(input: {
     customerAddressId: input.customerAddressId ?? null,
     lat: input.lat ?? null,
     lng: input.lng ?? null,
+    mainArea: input.oneTimeMainArea ?? null,
+    subArea: input.oneTimeSubArea ?? null,
   });
   if (!coverage.covered) {
     if (coverage.reason === "no_location") {
@@ -369,6 +377,10 @@ export async function quoteOrder(input: {
   customerId?: number;
   /** The saved address being checked out to, so a pinless address can quote. */
   customerAddressId?: number | null;
+  /** ITEM 8 — a one-time address for this order only; read only when
+   *  customerAddressId is absent. */
+  oneTimeMainArea?: string | null;
+  oneTimeSubArea?: string | null;
 }) {
   const fulfillmentType = input.fulfillmentType === "pickup" ? "pickup" : "delivery";
   const productIds = input.items.map((i) => i.product_id);
@@ -380,6 +392,8 @@ export async function quoteOrder(input: {
     lng: input.lng,
     customerId: input.customerId,
     customerAddressId: input.customerAddressId ?? null,
+    oneTimeMainArea: input.oneTimeMainArea ?? null,
+    oneTimeSubArea: input.oneTimeSubArea ?? null,
   });
   const area = fulfillmentType === "delivery"
     ? await resolveOrderDeliveryArea(branch.id, deliveryAreaIdFor(input.deliveryAreaId, coverage))
@@ -486,6 +500,13 @@ export async function createOrder(input: {
   deliveryAreaId?: number | null; // #1/#13 — selected named delivery area
   /** WS-4.2 — a saved address the customer picked; its stored coordinates win. */
   customerAddressId?: number | null;
+  /**
+   * ITEM 8 — a ONE-TIME address for this order only, never saved to the
+   * address book. Read ONLY when customerAddressId is absent; coverage
+   * matches it by name exactly like a pinless saved address.
+   */
+  oneTimeMainArea?: string | null;
+  oneTimeSubArea?: string | null;
   /** WS-4.2 — the picker's claim about the coordinate. A hint, never trusted. */
   coordSourceHint?: string | null;
   /** PHASE R — one key per checkout attempt; a retry with the same key
@@ -553,6 +574,8 @@ export async function createOrder(input: {
     fulfillmentType,
     customerId: input.customerId,
     customerAddressId: input.customerAddressId ?? null,
+    oneTimeMainArea: input.oneTimeMainArea ?? null,
+    oneTimeSubArea: input.oneTimeSubArea ?? null,
   });
   const branch = resolved.branch;
   const deliveryLat = resolved.lat != null ? new Prisma.Decimal(resolved.lat.toFixed(7)) : null;
