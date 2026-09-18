@@ -14,8 +14,10 @@ export interface DeliverToAddress {
   label: string;
   address: string;
   isDefault: boolean;
-  /** Without a map pin an address cannot resolve a branch, so it cannot be picked. */
+  /** For display wording only — a pinless address can still be selectable. */
   hasCoordinates: boolean;
+  /** False only when NEITHER a map pin NOR a master-list area can resolve a branch. */
+  isSelectable: boolean;
 }
 
 /**
@@ -80,13 +82,14 @@ export function DeliverToPicker({
               <RadioRow
                 key={a.id}
                 checked={deliverTo.mode === "address" && deliverTo.addressId === a.id}
-                // An address with no map pin cannot resolve a branch. Disabled with
-                // the reason shown, rather than hidden — a customer who saved it
-                // should see why it is not on offer.
-                disabled={!a.hasCoordinates}
+                // A pinless address still resolves a branch when its area/sub-area
+                // names a real master-list locality (resolveDeliverTo — the same
+                // rule checkout's own coverage-by-name already uses), so it is only
+                // disabled when NEITHER a pin nor a named area can be matched.
+                disabled={!a.isSelectable}
                 testId={`deliver-to-address-${a.id}`}
                 title={a.label}
-                subtitle={a.hasCoordinates ? a.address : t("nearestHome.noCoordinates")}
+                subtitle={a.isSelectable ? a.address : t("nearestHome.noCoordinates")}
                 onSelect={() => {
                   close();
                   updateBrowseScope({ deliverTo: { mode: "address", addressId: a.id } });

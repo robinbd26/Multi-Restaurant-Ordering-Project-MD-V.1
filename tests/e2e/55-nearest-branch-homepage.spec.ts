@@ -14,6 +14,8 @@ import {
   E2E_ORIGIN,
   inNightOrderBlackout,
   NIGHT_BLACKOUT_REASON,
+  isDhakaFullClosureWindow,
+  FULL_CLOSURE_REASON,
 } from "./helpers";
 
 /**
@@ -447,8 +449,10 @@ test.describe("Forged requests are refused", () => {
 
   test("ordering another branch's product is rejected", async ({ browser }) => {
     // Needs a SUCCESSFUL own-branch order as its control, so it cannot run in
-    // the 03:45–04:00 window where delivery orders are refused by design.
+    // the 03:45–04:00 window where delivery orders are refused by design, nor
+    // in the 04:00–11:00 full-platform-closure window (item 5).
     test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+    test.skip(isDhakaFullClosureWindow(), FULL_CLOSURE_REASON);
     const admin = await newSession(browser, "super_admin");
     const world = await buildWorld(admin);
     const customer = await newSession(browser, "customer");
@@ -585,7 +589,9 @@ test.describe("Admin changes reach the right branch", () => {
 
   test("existing orders are unchanged by later product edits", async ({ browser }) => {
     // 03:45–04:00 Dhaka: a delivery order is refused by design (night last order).
+    // 04:00–11:00 Dhaka: the whole platform is closed by design (item 5).
     test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+    test.skip(isDhakaFullClosureWindow(), FULL_CLOSURE_REASON);
     const admin = await newSession(browser, "super_admin");
     const world = await buildWorld(admin);
     const customer = await newSession(browser, "customer");
@@ -845,6 +851,84 @@ test.describe("The homepage follows the customer's deliver-to selection", () => 
       },
     });
     expect(res.status(), "coverage is enforced from the trusted point, not the cookie").toBe(400);
+
+    await admin.context.close();
+    await customer.context.close();
+  });
+
+  // BUG FIX — a saved address with NO map pin used to be permanently disabled
+  // in this picker (gated on hasCoordinates alone), even though resolveDeliverTo
+  // already resolves a branch for it by NAME when its area/sub-area matches a
+  // master-list locality — exactly how checkout's own coverage-by-name works
+  // (coverageForAddress). Pins that a pinless address whose area a branch lists
+  // is selectable here too, and that picking it actually moves the catalogue.
+  test("a pinless address naming a covered locality is selectable, and moves the catalogue", async ({
+    browser,
+  }) => {
+    const admin = await newSession(browser, "super_admin");
+    const branch = await makeBranch(admin.req);
+    const cat = await makeCategory(admin.req, branch.id);
+    const product = await makeProduct(admin.req, branch.id, cat.id);
+
+    // A BRAND NEW zone + locality, made just for this test. Picking from the
+    // shared master list risks a locality Main Branch (or another leftover
+    // branch from an earlier run — this test DB is never truly wiped) already
+    // covers too, which would make IT the nearest match instead of this test's
+    // own branch. A fresh pair guarantees nothing has ever covered it before.
+    const zoneRes = await admin.req.post("/api/area-zones", { data: { name: uniq("PinlessZone") } });
+    expect(zoneRes.status()).toBe(201);
+    const zoneBody = (await zoneRes.json()) as { id: number; name: string };
+    const zoneId = zoneBody.id;
+    const zoneName = zoneBody.name;
+    const localityRes = await admin.req.post("/api/area-localities", {
+      data: { zone_id: zoneId, name: uniq("PinlessLoc") },
+    });
+    expect(localityRes.status()).toBe(201);
+    const locality = (await localityRes.json()) as { id: number; name: string };
+    const areaRes = await admin.req.post("/api/delivery-areas", {
+      data: {
+        branch_id: branch.id,
+        name: locality.name,
+        locality_id: locality.id,
+        coverage_window: "both",
+        estimated_delivery_minutes: 40,
+        delivery_charge: 45,
+      },
+    });
+    expect(areaRes.status()).toBe(201);
+
+    const customer = await newSession(browser, "customer");
+    // Standing nowhere near the branch's own geometry — coverage below can only
+    // come from the named locality, never the branch's radius. A random point
+    // far out at sea, NOT a fixed "parked far away" landmark: several other
+    // specs reuse fixed coordinates for that purpose, and this test DB is never
+    // truly wiped between runs, so a fixed point can collide with a leftover
+    // branch's real geometry from an earlier run and falsely cover the customer.
+    await setLocation(customer.req, { lat: -10 + Math.random(), lng: -20 + Math.random() });
+    // The 5-address cap is real and this shared fixture account accumulates
+    // addresses across the whole suite's runs — free a slot the same way
+    // makeAddress() keeps its own probes from piling up.
+    const existingAddrs = (await (await customer.req.get("/api/customer/addresses/?page_size=100")).json())
+      .results as { id: number }[];
+    for (const row of existingAddrs) {
+      await customer.req.delete(`/api/customer/addresses/${row.id}/`);
+    }
+    const addrRes = await customer.req.post("/api/customer/addresses/", {
+      data: { label: "Home", address: uniq("PinlessRd"), main_area: zoneName, sub_area: locality.name },
+    });
+    expect(addrRes.status(), `pinless address saved (${await addrRes.text()})`).toBe(201);
+    const address = (await addrRes.json()) as { id: number };
+
+    await customer.page.goto("/", { waitUntil: "domcontentloaded" });
+    await customer.page.getByTestId("home-select-address").click();
+    const row = customer.page.getByTestId(`deliver-to-address-${address.id}`);
+    await expect(row).toBeVisible();
+    await expect(row, "a pinless address that names a covered locality must be pickable").toBeEnabled();
+    await row.click();
+
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText(branch.name);
+    const names = await customer.page.locator("article h4").allInnerTexts();
+    expect(names, "the picked address's branch").toContain(product.name);
 
     await admin.context.close();
     await customer.context.close();
