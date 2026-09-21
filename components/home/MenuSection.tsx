@@ -81,9 +81,18 @@ export function MenuSection({
   emptyMessage?: string;
 }) {
   const { t, fmt } = useTranslation();
-  const { brand, setBrand: setBrandState } = useHomeCart();
+  const { brand, setBrand: setBrandState, servedBrands } = useHomeCart();
   const [active, setActive] = useState<CategoryKey | "all">("all");
   const [query, setQuery] = useState("");
+  // The active brand can change from outside this component — a hero brand
+  // card, the navbar search, or the browsed branch changing. A category chosen
+  // under the previous brand matches nothing under the new one, so start clean.
+  const [seenBrand, setSeenBrand] = useState(brand);
+  if (seenBrand !== brand) {
+    setSeenBrand(brand);
+    setActive("all");
+    setQuery("");
+  }
   const [configItem, setConfigItem] = useState<MenuItem | null>(null);
 
   const CRUST_GUIDE = [
@@ -186,23 +195,28 @@ export function MenuSection({
       {/* Brand toggle — sticky full-width underline tab bar (below the sticky nav) */}
       <div className="sticky top-14 z-30 border-y border-white/10 bg-[#111115] md:top-18">
         <div className="scrollbar-thin mx-auto flex max-w-300 items-center overflow-x-auto px-4">
-          <BrandTab
-            label="Cheez! Pizza"
-            logo="/images/brand/cheez-logo.webp"
-            count={t("home.menu.itemsCount", { n: fmt.num(brandCounts.cheez) })}
-            active={brand === "cheez"}
-            activeColor="#f5a623"
-            onClick={() => setBrand("cheez")}
-          />
-          <span className="mx-1 h-5 w-px shrink-0 bg-white/10" />
-          <BrandTab
-            label="Madchef"
-            logo="/images/brand/madchef-logo.webp"
-            count={t("home.menu.itemsCount", { n: fmt.num(brandCounts.madchef) })}
-            active={brand === "madchef"}
-            activeColor="#e8192c"
-            onClick={() => setBrand("madchef")}
-          />
+          {/* Only the brands the browsed branch serves get a tab. */}
+          {servedBrands.includes("cheez") ? (
+            <BrandTab
+              label="Cheez! Pizza"
+              logo="/images/brand/cheez-logo.webp"
+              count={t("home.menu.itemsCount", { n: fmt.num(brandCounts.cheez) })}
+              active={brand === "cheez"}
+              activeColor="#f5a623"
+              onClick={() => setBrand("cheez")}
+            />
+          ) : null}
+          {servedBrands.length > 1 ? <span className="mx-1 h-5 w-px shrink-0 bg-white/10" /> : null}
+          {servedBrands.includes("madchef") ? (
+            <BrandTab
+              label="Madchef"
+              logo="/images/brand/madchef-logo.webp"
+              count={t("home.menu.itemsCount", { n: fmt.num(brandCounts.madchef) })}
+              active={brand === "madchef"}
+              activeColor="#e8192c"
+              onClick={() => setBrand("madchef")}
+            />
+          ) : null}
         </div>
       </div>
 

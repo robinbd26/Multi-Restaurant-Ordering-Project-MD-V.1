@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { BrandCardLink } from "@/components/home/BrandCardLink";
+import type { Brand } from "@/lib/home/types";
 import { getT } from "@/lib/i18n/server";
 
 export async function HeroSection() {
@@ -12,8 +14,17 @@ export async function HeroSection() {
     { num: "80", label: t("home.hero.statMenuItems") },
   ];
 
-  const BRAND_CARDS = [
+  const BRAND_CARDS: {
+    brand: Brand;
+    logo: string;
+    name: string;
+    desc: string;
+    tag: string;
+    tagClass: string;
+    hoverClass: string;
+  }[] = [
     {
+      brand: "cheez",
       logo: "/images/brand/cheez-logo.webp",
       name: "Cheez! Pizza",
       desc: t("home.hero.cheezDesc"),
@@ -22,6 +33,7 @@ export async function HeroSection() {
       hoverClass: "hover:border-cheez-gold/35",
     },
     {
+      brand: "madchef",
       logo: "/images/brand/madchef-logo.webp",
       name: "Madchef",
       desc: t("home.hero.madchefDesc"),
@@ -91,9 +103,9 @@ export async function HeroSection() {
 
           <div className="animate-fade-right hidden flex-col gap-4 md:flex">
             {BRAND_CARDS.map((card) => (
-              <a
+              <BrandCardLink
                 key={card.name}
-                href="#menu-section"
+                brand={card.brand}
                 className={`group flex items-center gap-4.5 rounded-[20px] border border-white/8 bg-surface-dark px-6 py-5.5 transition-all hover:translate-x-1.5 hover:shadow-2xl ${card.hoverClass}`}
               >
                 <span className="relative size-15 shrink-0 overflow-hidden rounded-xl border border-white/8">
@@ -109,7 +121,7 @@ export async function HeroSection() {
                   </span>
                 </span>
                 <span className="text-[#606070] transition-transform group-hover:translate-x-1">→</span>
-              </a>
+              </BrandCardLink>
             ))}
             <p className="text-center text-xs text-white/40">
               {t("home.hero.newHere")}{" "}
