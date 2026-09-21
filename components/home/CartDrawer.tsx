@@ -6,6 +6,7 @@ import { useHomeCart } from "@/components/home/home-cart-context";
 import { MapPicker, type PickedPoint } from "@/components/maps/map-picker";
 import { placeOrderAction } from "@/lib/api/actions";
 import { CUSTOMER_PAYMENT_METHODS, paymentMethodDef } from "@/lib/constants";
+import { PICKUP_MIN_LEAD_MINUTES } from "@/lib/constants/orders";
 import {
   CUSTOM_VALUE,
   MAIN_AREA_NAMES,
@@ -790,12 +791,26 @@ export function CartDrawer({
    * coordinates and coord_source="saved_address" (WS-4.2; the server re-derives
    * the truth). On success the cart empties and the receipt panel takes over.
    */
+  /**
+   * The pickup time actually submitted. The preset (e.g. "+30 min") is anchored
+   * to when Self Pickup started, so by the time the customer taps Confirm it has
+   * aged below the server's "at least N minutes from now" rule — the default
+   * option was rejected every time. Clamp to the server's minimum lead (plus a
+   * small buffer for the request's own latency) at the moment of submit.
+   */
+  function resolvePickupAt(): Date {
+    const preset = pickupTimeBase + pickupTimeMinutes * 60000;
+    const earliest = Date.now() + PICKUP_MIN_LEAD_MINUTES * 60000 + 60000;
+    return new Date(Math.max(preset, earliest));
+  }
+
   async function confirmOrder() {
     if (!quote || placing) return;
     if (fulfillmentType === "pickup" ? !pickupBranch : !chosenAddress && !oneTimeAddress) return;
     if (!attemptKeyRef.current) rotateAttemptKey();
     setPlacing(true);
     setPlaceError(null);
+    const pickupAt = fulfillmentType === "pickup" ? resolvePickupAt() : null;
     try {
       const payload =
         fulfillmentType === "pickup"
@@ -806,7 +821,7 @@ export function CartDrawer({
               delivery_address: pickupBranch!.pickupAddress || pickupBranch!.name,
               food_notes: "",
               fulfillment_type: "pickup" as const,
-              pickup_time: new Date(pickupTimeBase + pickupTimeMinutes * 60000).toISOString(),
+              pickup_time: pickupAt!.toISOString(),
               items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
             }
           : oneTimeAddress
@@ -865,7 +880,8 @@ export function CartDrawer({
         fulfillmentType,
         pickupTimeLabel:
           fulfillmentType === "pickup"
-            ? new Date(pickupTimeBase + pickupTimeMinutes * 60000).toLocaleTimeString([], {
+            ? pickupAt!.toLocaleTimeString("en-US", {
+                hour12: true,
                 hour: "numeric",
                 minute: "2-digit",
               })
