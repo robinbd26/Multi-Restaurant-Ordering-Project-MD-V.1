@@ -1783,6 +1783,7 @@
       "invalidCoordinates": "অবৈধ স্থানাঙ্ক।",
       "noEligibleBranch": "এই ঠিকানায় ডেলিভারির জন্য কোনো উপযুক্ত শাখা উপলব্ধ নেই।",
       "branchClosed": "এই শাখা এখন বন্ধ। অনুগ্রহ করে খোলার সময়ের মধ্যে অর্ডার করুন।",
+      "branchClosedOpensAt": "এই শাখা এখন বন্ধ আছে। খুলবে {time}-এ।",
       "variationTypeRequired": "এই আইটেমের জন্য থিক বা থিন বেছে নিন।",
       "variationTypeNotAvailable": "এই পণ্যের জন্য সেই ক্রাস্ট উপলব্ধ নয়।",
       "rejectionReasonRequired": "অর্ডার প্রত্যাখ্যান বা বাতিল করার সময় একটি কারণ আবশ্যক।",

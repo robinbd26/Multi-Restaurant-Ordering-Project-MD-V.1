@@ -19,6 +19,7 @@ import {
   type NicknameKind,
 } from "@/lib/addresses/nickname";
 import { useTranslation } from "@/lib/i18n/use-translation";
+import { parseFieldErrors } from "@/lib/validation/contract";
 import { LIMITS } from "@/lib/validation/limits";
 import { cn } from "@/lib/utils";
 import type { PaymentMethod } from "@/types";
@@ -669,7 +670,10 @@ export function CartDrawer({
       const data: unknown = await res.json().catch(() => ({}));
       if (!res.ok) {
         setQuote(null);
-        setQuoteError(t("home.order.quoteError"));
+        // The server says WHY (e.g. "This branch is currently closed. It opens
+        // at 10:45 PM.") — only fall back to the generic line when it does not.
+        const { fieldErrors, formError } = parseFieldErrors(data);
+        setQuoteError(formError ?? Object.values(fieldErrors)[0] ?? t("home.order.quoteError"));
         return;
       }
       setQuote(data as DrawerQuote);

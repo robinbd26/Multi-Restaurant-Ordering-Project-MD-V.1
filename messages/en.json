@@ -1783,6 +1783,7 @@
       "invalidCoordinates": "Invalid coordinates.",
       "noEligibleBranch": "No eligible branch is available for delivery to this location.",
       "branchClosed": "This branch is closed right now. Please order during its opening hours.",
+      "branchClosedOpensAt": "This branch is currently closed. It opens at {time}.",
       "variationTypeRequired": "Please choose Thick or Thin for this item.",
       "variationTypeNotAvailable": "That crust is not available for this product.",
       "rejectionReasonRequired": "A reason is required when rejecting or cancelling an order.",

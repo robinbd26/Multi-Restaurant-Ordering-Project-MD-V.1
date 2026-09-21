@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { MapPicker, type PickedPoint, type PickerSource } from "@/components/maps/map-picker";
 import { Alert } from "@/components/ui/alert";
+import { parseFieldErrors } from "@/lib/validation/contract";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FieldError } from "@/components/ui/field-error";
@@ -184,6 +185,9 @@ export function CheckoutForm({
   const [areas, setAreas] = useState<AreaOption[]>([]);
   const [areaId, setAreaId] = useState<string>("");
   const [quote, setQuote] = useState<Quote | null>(null);
+  // Why the server refused to quote (branch closed, on hold, …), so the customer
+  // is told instead of watching the totals silently stay empty.
+  const [quoteMessage, setQuoteMessage] = useState<string | null>(null);
 
   const branchId = cart.branchId;
 
@@ -265,7 +269,13 @@ export function CheckoutForm({
           })),
         }),
       });
-      if (!res.ok) { setQuote(null); return; }
+      if (!res.ok) {
+        setQuote(null);
+        const { fieldErrors, formError } = parseFieldErrors(await res.json().catch(() => null));
+        setQuoteMessage(formError ?? Object.values(fieldErrors)[0] ?? null);
+        return;
+      }
+      setQuoteMessage(null);
       setQuote((await res.json()) as Quote);
     } catch {
       setQuote(null);
@@ -511,6 +521,7 @@ export function CheckoutForm({
     <form {...formProps} className="grid gap-6 lg:grid-cols-3">
       <div className="space-y-4 lg:col-span-2">
         <Alert tone="error" message={error} />
+        <Alert tone="warning" message={quoteMessage} />
 
         {prepMinutes != null ? (
           <p className="rounded-xl bg-brand-50 px-4 py-2.5 text-sm text-brand-700 dark:bg-brand-500/10 dark:text-brand-300" data-testid="prep-estimate">
