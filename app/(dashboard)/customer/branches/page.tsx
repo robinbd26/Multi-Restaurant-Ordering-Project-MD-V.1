@@ -210,7 +210,7 @@ export default async function CustomerBranchesPage({
                   <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-fg-subtle">
                     <span data-testid="branch-hours">
                       {branch.opening_time && branch.closing_time
-                        ? `🕒 ${branch.opening_time} – ${branch.closing_time}`
+                        ? `🕒 ${fmt.clock(branch.opening_time)} – ${fmt.clock(branch.closing_time)}`
                         : t("outOfZone.hoursUnknown")}
                     </span>
                     <span>{t("customer.deliveryRadius", { km: fmt.num(branch.delivery_radius_km) })}</span>
@@ -257,7 +257,7 @@ export default async function CustomerBranchesPage({
                   ) : null}
                   {closedNow ? (
                     <p className="mt-2 text-xs font-medium text-amber-600 dark:text-amber-400" data-testid="branch-status-note">
-                      {t("nearestBranch.opensAt", { time: opensAtById.get(branch.id) ?? branch.opening_time ?? "" })}
+                      {t("nearestBranch.opensAt", { time: fmt.clock(opensAtById.get(branch.id) ?? branch.opening_time) })}
                     </p>
                   ) : null}
 

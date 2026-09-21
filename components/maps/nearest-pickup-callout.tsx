@@ -130,7 +130,7 @@ export function NearestPickupCallout({
           <span data-testid={`${testId}-distance`}>{t("outOfZone.pickupDistance", { km: fmt.num(pickup.distance_km) })}</span>
         ) : null}
         {pickup.opening_time && pickup.closing_time ? (
-          <span>🕒 {t("outOfZone.pickupHours", { from: pickup.opening_time, to: pickup.closing_time })}</span>
+          <span>🕒 {t("outOfZone.pickupHours", { from: fmt.clock(pickup.opening_time), to: fmt.clock(pickup.closing_time) })}</span>
         ) : null}
       </p>
       <span className="mt-2 flex flex-wrap gap-2">

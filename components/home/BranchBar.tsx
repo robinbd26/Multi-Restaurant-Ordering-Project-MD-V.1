@@ -161,7 +161,7 @@ export function BranchBar({
                 className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[0.72rem] font-semibold text-amber-300"
                 data-testid="home-branch-closed"
               >
-                🕒 {t("nearestBranch.opensAt", { time: context.opensAt })}
+                🕒 {t("nearestBranch.opensAt", { time: fmt.clock(context.opensAt) })}
               </span>
             ) : null}
             {context.distanceKm != null ? (

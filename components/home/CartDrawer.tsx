@@ -1782,7 +1782,7 @@ export function CartDrawer({
                   >
                     {PICKUP_TIME_OFFSETS.map((minutes) => {
                       const at = new Date(pickupTimeBase + minutes * 60000);
-                      const clock = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+                      const clock = at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
                       return (
                         <option key={minutes} value={minutes}>
                           {t("home.order.pickupTimeOptionLabel", { time: clock, minutes })}
@@ -1829,7 +1829,8 @@ export function CartDrawer({
                     ) : null}
                     <p className="mt-1.5 text-[0.75rem] text-[#a0a0b0]">
                       {t("home.order.pickupTime")}:{" "}
-                      {new Date(pickupTimeBase + pickupTimeMinutes * 60000).toLocaleTimeString([], {
+                      {new Date(pickupTimeBase + pickupTimeMinutes * 60000).toLocaleTimeString("en-US", {
+                        hour12: true,
                         hour: "numeric",
                         minute: "2-digit",
                       })}

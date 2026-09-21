@@ -151,7 +151,7 @@ export async function OperatingHours({ branches }: { branches: PublicHomeBranch[
                     className="font-display text-[1.6rem] font-black leading-none"
                     style={{ color: row.cloud ? "#818cf8" : "#e8192c", letterSpacing: "0.5px" }}
                   >
-                    {row.time}
+                    {fmt.clock(row.time)}
                   </span>
                   <span
                     className="whitespace-nowrap rounded-full border px-2.25 py-0.75 text-[0.62rem] font-bold uppercase"

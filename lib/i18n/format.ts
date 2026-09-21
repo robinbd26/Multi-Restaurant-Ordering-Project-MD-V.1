@@ -26,6 +26,21 @@ export interface Formatters {
   date: (value: string | null | undefined) => string;
   dateTime: (value: string | null | undefined) => string;
   time: (value: string | null | undefined) => string;
+  /** A stored "HH:MM" clock string (e.g. a branch's opening time) → "11:30 PM". */
+  clock: (value: string | null | undefined) => string;
+}
+
+/**
+ * A stored "HH:MM" clock string → "11:30 PM" (12-hour, AM/PM). The one place a
+ * branch/slot time is turned into display text, so every screen and every
+ * server message agrees. Unparseable input → "—".
+ */
+export function formatClock(value: string | null | undefined, locale: Locale = "en"): string {
+  const match = /^(\d{1,2}):(\d{2})/.exec((value ?? "").trim());
+  if (!match) return "—";
+  const h = Number(match[1]);
+  const label = `${h % 12 || 12}:${match[2]} ${h >= 12 ? "PM" : "AM"}`;
+  return locale === "bn" ? toBnDigits(label).replace("AM", "এএম").replace("PM", "পিএম") : label;
 }
 
 export function makeFormatters(locale: Locale): Formatters {
@@ -57,5 +72,6 @@ export function makeFormatters(locale: Locale): Formatters {
         : new Date(value).toLocaleTimeString(bcp, {
             hour: "numeric", minute: "2-digit", hour12: true, ...zone,
           }),
+    clock: (value) => formatClock(value, locale),
   };
 }

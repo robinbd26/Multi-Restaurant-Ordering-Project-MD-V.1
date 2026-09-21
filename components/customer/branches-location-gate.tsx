@@ -45,7 +45,7 @@ export function BranchesLocationGate({
   opensAt: string | null;
   locationInitial: LocationStatus;
 }) {
-  const { t } = useTranslation();
+  const { t, fmt } = useTranslation();
   const { request, phase, busy, saveError } = useLocationRequest();
   const autoFired = useRef(false);
   const { consent } = useLocationConsent();
@@ -118,7 +118,7 @@ export function BranchesLocationGate({
       >
         <p className="font-medium">{t("outOfZone.allClosedTitle")}</p>
         {opensAt ? (
-          <p className="mt-0.5">{t("outOfZone.allClosedBody", { branch: nearestName ?? "", time: opensAt })}</p>
+          <p className="mt-0.5">{t("outOfZone.allClosedBody", { branch: nearestName ?? "", time: fmt.clock(opensAt) })}</p>
         ) : null}
       </div>
     );
