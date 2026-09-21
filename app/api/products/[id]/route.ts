@@ -84,6 +84,7 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
     ...(has("variation_type") ? { variationType: fields.variation_type } : {}),
     ...(image ? { image: await saveUpload(image, "products", "image") } : {}),
     ...(has("variations") ? { variations: fields.variations } : {}),
+    ...(has("price") ? { price: fields.price } : {}),
   });
   return json(serializeProduct(product));
 });

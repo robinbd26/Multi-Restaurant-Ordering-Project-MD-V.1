@@ -1116,6 +1116,8 @@
     "selectBrand": "Select brand",
     "basePrice": "Base Price (৳)",
     "basePriceHint": "Synced with the default variation's price.",
+    "basePriceUsedHint": "This product has no variations, so this price is used directly.",
+    "basePriceLockedHint": "Price is set on each variation below. Remove all variations to use a single price here.",
     "categoryBrand": "Brand Scope",
     "categoryBrandHint": "Only products of the chosen brand list this category. \"Both\" keeps it available to every brand.",
     "variations": "Variations",
