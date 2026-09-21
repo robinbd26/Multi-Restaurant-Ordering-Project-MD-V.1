@@ -322,6 +322,8 @@
     "licenseImage": "লাইসেন্সের ছবি",
     "usernameAutoHint": "আপনার নাম থেকে তৈরি — চাইলে বদলাতে পারেন।",
     "usernameChecking": "ইউজারনেমটি খালি আছে কিনা দেখা হচ্ছে…",
+    "usernameAvailable": "ব্যবহারযোগ্য",
+    "usernameTaken": "এই ইউজারনেমটি ইতিমধ্যে নেওয়া হয়েছে।",
     "usernameSuggestedIs": "প্রস্তাবিত ইউজারনেম: {username}",
     "usernameUseSuggested": "বরং {username} ব্যবহার করুন",
     "suggestPassword": "শক্তিশালী পাসওয়ার্ড তৈরি করে দিন",

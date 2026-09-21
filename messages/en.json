@@ -322,6 +322,8 @@
     "licenseImage": "License Image",
     "usernameAutoHint": "Created from your name — you can change it.",
     "usernameChecking": "Checking availability…",
+    "usernameAvailable": "Available",
+    "usernameTaken": "This username is already taken.",
     "usernameSuggestedIs": "Suggested username: {username}",
     "usernameUseSuggested": "Use {username} instead",
     "suggestPassword": "Suggest a strong password",
