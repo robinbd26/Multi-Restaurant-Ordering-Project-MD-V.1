@@ -19,6 +19,7 @@ import {
   oneOf,
   phone,
   required,
+  selectRequired,
   time,
 } from "@/lib/validation/rules";
 import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-validation";
@@ -32,6 +33,7 @@ const RULES: FieldRules = {
   phone: [required, phone],
   brand_type: [required, oneOf(BRAND_TYPES)],
   business_type: [required, oneOf(BUSINESS_TYPES)],
+  zone_id: [selectRequired], // Zone / Area is mandatory — it seeds the delivery-areas helper
   address: [required],
   email: [emailRule],
   bkash_number: [phone],
@@ -93,9 +95,9 @@ export function BranchForm({
             …). A location tag, not a coverage grant: it seeds the "Suggest
             areas for my branch" helper on the delivery-areas page and nothing
             else. Optional — a branch may have none. */}
-        <Field label={t("branches.zoneField")} name="zone_id" hint={t("branches.zoneFieldHint")}>
-          <Select name="zone_id" defaultValue={branch?.zone_id != null ? String(branch.zone_id) : ""}>
-            <option value="">{t("branches.zoneNone")}</option>
+        <Field label={t("branches.zoneField")} name="zone_id" required hint={t("branches.zoneFieldHint")} error={errors.zone_id}>
+          <Select name="zone_id" defaultValue={branch?.zone_id != null ? String(branch.zone_id) : ""} aria-invalid={!!errors.zone_id}>
+            <option value="">{t("branches.zoneSelect")}</option>
             {zones.map((z) => (
               <option key={z.id} value={z.id}>
                 {z.name}

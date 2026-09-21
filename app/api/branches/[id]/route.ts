@@ -78,7 +78,8 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   // may have none); a real id is validated against the active master list.
   if (has("zone_id")) {
     if (fields.zone_id === "") {
-      data.zone = { disconnect: true };
+      // Zone / Area is required — it can be changed, never cleared.
+      throw validationError({ zone_id: sk("errors.catalog.zoneRequired") });
     } else {
       const zoneId = Number(fields.zone_id);
       if (!Number.isSafeInteger(zoneId) || zoneId <= 0) {

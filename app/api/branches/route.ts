@@ -103,8 +103,11 @@ export const POST = handle(async (req: Request) => {
     data.longitude = new Prisma.Decimal(lng.toFixed(7));
   }
   if (fields.delivery_radius_km) data.deliveryRadiusKm = new Prisma.Decimal(fields.delivery_radius_km);
-  // ITEM 7 — the branch's location tag. "" clears it (a branch may have none).
-  if (fields.zone_id !== undefined && fields.zone_id !== "") {
+  // Zone / Area is REQUIRED: it is what seeds the delivery-areas suggestion helper.
+  if (fields.zone_id === undefined || fields.zone_id === "") {
+    throw validationError({ zone_id: sk("errors.catalog.zoneRequired") });
+  }
+  {
     const zoneId = Number(fields.zone_id);
     if (!Number.isSafeInteger(zoneId) || zoneId <= 0) {
       throw validationError({ zone_id: sk("errors.deliveryZone.notFound") });
