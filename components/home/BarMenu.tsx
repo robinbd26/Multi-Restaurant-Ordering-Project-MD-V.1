@@ -121,8 +121,13 @@ export function RadioRow({
   title,
   subtitle,
   trailing,
+  current,
 }: {
   checked: boolean;
+  /** The row that is ACTIVE on screen right now, even when it was not picked
+      explicitly (e.g. the branch "My nearest branch" resolved to). Draws a
+      highlight and a check so the open menu always shows where you are. */
+  current?: boolean;
   disabled?: boolean;
   onSelect: () => void;
   testId: string;
@@ -135,10 +140,13 @@ export function RadioRow({
       type="button"
       role="menuitemradio"
       aria-checked={checked}
+      aria-current={current ? "true" : undefined}
       disabled={disabled}
       onClick={onSelect}
       data-testid={testId}
-      className={`${menuRowClass} min-h-11 disabled:cursor-not-allowed disabled:opacity-45`}
+      className={`${menuRowClass} min-h-11 disabled:cursor-not-allowed disabled:opacity-45 ${
+        current ? "bg-white/8" : ""
+      }`}
     >
       <span
         aria-hidden
@@ -153,6 +161,11 @@ export function RadioRow({
         ) : null}
       </span>
       {trailing}
+      {current ? (
+        <span aria-hidden data-testid={`${testId}-current`} className="shrink-0 text-[0.9rem] font-bold text-brand-500">
+          ✓
+        </span>
+      ) : null}
     </button>
   );
 }

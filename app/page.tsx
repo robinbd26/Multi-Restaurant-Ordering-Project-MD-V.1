@@ -149,6 +149,7 @@ export default async function HomePage() {
     ? {
         state: branchContext.state,
         branchName: branchContext.branch?.name ?? null,
+        branchId: branchContext.branchId,
         brandType: branchContext.branch?.brandType ?? null,
         distanceKm: branchContext.distanceKm,
         deliveryFee: branchContext.deliveryFee,

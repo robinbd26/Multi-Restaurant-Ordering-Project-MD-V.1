@@ -13,6 +13,8 @@ import { useLocationRequest } from "@/lib/hooks/use-location-request";
 export interface BranchBarContext {
   state: "ok" | "no-location" | "out-of-zone";
   branchName: string | null;
+  /** The branch on screen (explicit or resolved nearest); null outside "ok". */
+  branchId: number | null;
   brandType: string | null;
   distanceKm: number | null;
   deliveryFee: number | null;
@@ -111,6 +113,7 @@ export function BranchBar({
       />
       <BrowsingPicker
         branchId={context.selection.branchId}
+        activeBranchId={context.branchId}
         branches={branches}
         value={browsingValue}
       />

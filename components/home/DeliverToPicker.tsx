@@ -66,7 +66,10 @@ export function DeliverToPicker({
               close();
               // Drop the address FIRST: the hook refreshes on its own once the fix
               // is saved, and a stale address would otherwise keep pricing the page.
-              updateBrowseScope({ deliverTo: { mode: "gps" } });
+              // Choosing where to deliver hands "Browsing" back to the nearest
+              // branch for that point (the long-standing behaviour). The reverse
+              // never holds: "Browsing" leaves this choice alone.
+              updateBrowseScope({ deliverTo: { mode: "gps" }, branchId: null });
               onUseCurrentLocation();
               router.refresh();
             }}
@@ -92,7 +95,7 @@ export function DeliverToPicker({
                 subtitle={a.isSelectable ? a.address : t("nearestHome.noCoordinates")}
                 onSelect={() => {
                   close();
-                  updateBrowseScope({ deliverTo: { mode: "address", addressId: a.id } });
+                  updateBrowseScope({ deliverTo: { mode: "address", addressId: a.id }, branchId: null });
                   router.refresh();
                 }}
               />
