@@ -712,6 +712,11 @@ model Branch {
   // are migrated to "combined" (documented safe default) so nothing is hidden;
   // a combined branch may manage products of either brand.
   brandType         String    @default("combined")
+  // What kind of venue this is: "dine_in" | "cloud_kitchen". DISPLAY ONLY — a
+  // badge shown to customers. It adds no order type and changes no checkout
+  // rule. Existing branches migrate to "dine_in" (the platform already runs
+  // table layouts and reservations per branch); an admin flips the cloud ones.
+  businessType      String    @default("dine_in")
   // B2: branch-level estimated preparation time (minutes). Snapshotted onto an
   // order at confirmation so later changes never affect existing orders.
   prepTimeMinutes   Int       @default(30)

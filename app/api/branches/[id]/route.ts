@@ -8,7 +8,7 @@ import { saveUpload } from "@/lib/http/upload";
 import { revalidateCatalog } from "@/lib/cache/catalog";
 import { prisma } from "@/lib/db";
 import { serializeBranch } from "@/lib/serializers";
-import { isBrandType } from "@/lib/constants/enums";
+import { isBrandType, isBranchBusinessType } from "@/lib/constants/enums";
 import { isValidLatLng } from "@/lib/services/geo";
 import { archiveOrDeleteBranch } from "@/lib/services/branches";
 import { validatePhone } from "@/lib/validation/server";
@@ -44,6 +44,12 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   if (has("brand_type")) {
     if (!isBrandType(fields.brand_type)) throw validationError({ brand_type: sk("errors.catalog.invalidBrandType") });
     data.brandType = fields.brand_type;
+  }
+  if (has("business_type")) {
+    if (!isBranchBusinessType(fields.business_type)) {
+      throw validationError({ business_type: sk("errors.catalog.invalidBusinessType") });
+    }
+    data.businessType = fields.business_type;
   }
   if (has("prep_time_minutes")) {
     const p = Number(fields.prep_time_minutes);

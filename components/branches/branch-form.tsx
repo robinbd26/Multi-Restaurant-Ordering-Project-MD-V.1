@@ -25,11 +25,13 @@ import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-va
 import type { Branch } from "@/types";
 
 const BRAND_TYPES = ["cheez", "madchef", "combined"];
+const BUSINESS_TYPES = ["dine_in", "cloud_kitchen"];
 
 const RULES: FieldRules = {
   name: [required],
   phone: [required, phone],
   brand_type: [required, oneOf(BRAND_TYPES)],
+  business_type: [required, oneOf(BUSINESS_TYPES)],
   address: [required],
   email: [emailRule],
   bkash_number: [phone],
@@ -99,6 +101,23 @@ export function BranchForm({
                 {z.name}
               </option>
             ))}
+          </Select>
+        </Field>
+      </div>
+
+      {/* Display-only badge for customers — not an order type, and separate from
+          the Zone / Area tag above (which seeds the delivery-areas helper). */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label={t("branches.businessType")}
+          name="business_type"
+          required
+          hint={t("branches.businessTypeHint")}
+          error={errors.business_type}
+        >
+          <Select name="business_type" defaultValue={branch?.business_type ?? "dine_in"}>
+            <option value="dine_in">{t("branches.businessTypeDineIn")}</option>
+            <option value="cloud_kitchen">{t("branches.businessTypeCloudKitchen")}</option>
           </Select>
         </Field>
       </div>

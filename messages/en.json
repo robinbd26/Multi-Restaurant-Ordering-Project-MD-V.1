@@ -1055,7 +1055,11 @@
     "archivedBadge": "Archived",
     "zoneField": "Zone / Area",
     "zoneFieldHint": "Which master zone this branch is based in (Gulshan, Banani, …). Seeds the \"Suggest areas\" helper on Delivery Areas.",
-    "zoneNone": "No zone set"
+    "zoneNone": "No zone set",
+    "businessType": "Branch Type",
+    "businessTypeHint": "Shown to customers as a badge. It does not change how orders work.",
+    "businessTypeDineIn": "Dine-in restaurant",
+    "businessTypeCloudKitchen": "Cloud kitchen"
   },
   "catalog": {
     "title": "Products",
@@ -1817,6 +1821,7 @@
       "brandNotAllowedForBranch": "This brand is not allowed for the selected branch.",
       "categoryBrandMismatch": "The selected category belongs to a different brand. Choose a category of the same brand, or one that serves both brands.",
       "invalidBrandType": "Invalid brand type.",
+      "invalidBusinessType": "Invalid branch type.",
       "variationsInvalid": "Variation data is invalid.",
       "variationsRequired": "At least one variation is required.",
       "variationNameRequired": "Each variation needs a name.",

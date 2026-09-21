@@ -82,6 +82,8 @@ export interface Branch {
   zone_name?: string | null;
   delivery_radius_km: string;
   brand_type?: string; // cheez | madchef | combined
+  /** "dine_in" | "cloud_kitchen" — a display badge only, never an order type. */
+  business_type?: string;
   bkash_number?: string;
   // Serialized by `serializeBranch`; drives the "self-pickup available" wording.
   pickup_enabled?: boolean;

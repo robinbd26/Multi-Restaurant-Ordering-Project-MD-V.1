@@ -173,6 +173,14 @@ export const ACTIVITY_DISPLAY: Record<ActivityType, string> = {
 export const BRAND_TYPES = ["cheez", "madchef", "combined"] as const;
 export type BrandType = (typeof BRAND_TYPES)[number];
 
+// Branch venue kind — a customer-facing badge only (never an order type).
+export const BRANCH_BUSINESS_TYPES = ["dine_in", "cloud_kitchen"] as const;
+export type BranchBusinessType = (typeof BRANCH_BUSINESS_TYPES)[number];
+
+export function isBranchBusinessType(v: string): v is BranchBusinessType {
+  return (BRANCH_BUSINESS_TYPES as readonly string[]).includes(v);
+}
+
 export const PRODUCT_BRANDS = ["cheez", "madchef"] as const;
 export type ProductBrand = (typeof PRODUCT_BRANDS)[number];
 

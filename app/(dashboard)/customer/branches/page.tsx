@@ -196,7 +196,15 @@ export default async function CustomerBranchesPage({
                   </BrowseBranchLink>
                   <p className="mt-0.5 line-clamp-1 text-sm text-fg-muted">📍 {branch.address}</p>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-fg-subtle">
-                    <span data-testid="branch-brand">{branch.brand_type}</span>
+                    <span data-testid="branch-brand">
+                      {branch.brand_type}
+                      <span
+                        className="ml-2 rounded-full border border-border-base px-2 py-0.5 text-[10px] font-semibold"
+                        data-testid="branch-business-type"
+                      >
+                        {t(`branches.businessType${branch.business_type === "cloud_kitchen" ? "CloudKitchen" : "DineIn"}`)}
+                      </span>
+                    </span>
                     <span>📞 {branch.phone}</span>
                   </div>
                   <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-fg-subtle">

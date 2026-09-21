@@ -7,7 +7,7 @@ import { created, pageParams, paginated } from "@/lib/http/respond";
 import { saveUpload } from "@/lib/http/upload";
 import { prisma } from "@/lib/db";
 import { serializeBranch } from "@/lib/serializers";
-import { isBrandType } from "@/lib/constants/enums";
+import { isBrandType, isBranchBusinessType } from "@/lib/constants/enums";
 import { isValidLatLng } from "@/lib/services/geo";
 import { validatePhone } from "@/lib/validation/server";
 
@@ -67,12 +67,18 @@ export const POST = handle(async (req: Request) => {
   const brandType = (fields.brand_type ?? "combined").trim();
   if (!isBrandType(brandType)) throw validationError({ brand_type: sk("errors.catalog.invalidBrandType") });
 
+  const businessType = (fields.business_type ?? "dine_in").trim();
+  if (!isBranchBusinessType(businessType)) {
+    throw validationError({ business_type: sk("errors.catalog.invalidBusinessType") });
+  }
+
   const data: Prisma.BranchCreateInput = {
     name,
     address,
     phone,
     email: fields.email ?? "",
     brandType,
+    businessType,
     bkashNumber: fields.bkash_number ?? "",
     openingTime: fields.opening_time || null,
     closingTime: fields.closing_time || null,

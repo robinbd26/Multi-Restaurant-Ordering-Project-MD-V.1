@@ -17,6 +17,8 @@ export interface BranchBarContext {
   /** The branch on screen (explicit or resolved nearest); null outside "ok". */
   branchId: number | null;
   brandType: string | null;
+  /** "dine_in" | "cloud_kitchen" — a display badge only. */
+  businessType: string | null;
   distanceKm: number | null;
   deliveryFee: number | null;
   pickupEnabled: boolean;
@@ -144,6 +146,14 @@ export function BranchBar({
             {context.brandType ? (
               <span className="rounded-full border border-white/10 bg-[#1c1c24] px-2.5 py-0.5 text-[0.72rem] font-semibold text-[#a0a0b0]">
                 {t(`brandType.${context.brandType}`)}
+              </span>
+            ) : null}
+            {context.businessType ? (
+              <span
+                className="rounded-full border border-white/10 bg-[#1c1c24] px-2.5 py-0.5 text-[0.72rem] font-semibold text-[#a0a0b0]"
+                data-testid="home-branch-business-type"
+              >
+                {t(`branches.businessType${context.businessType === "cloud_kitchen" ? "CloudKitchen" : "DineIn"}`)}
               </span>
             ) : null}
             {!context.open && context.opensAt ? (

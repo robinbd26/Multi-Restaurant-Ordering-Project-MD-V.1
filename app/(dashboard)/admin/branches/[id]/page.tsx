@@ -73,6 +73,7 @@ export default async function BranchDetailPage({ params }: { params: Promise<{ i
           />
           <CardContent className="grid gap-x-8 sm:grid-cols-2">
             <InfoRow label={t("branches.brandType")} value={t(`brands.${branch.brand_type ?? "combined"}`)} />
+            <InfoRow label={t("branches.businessType")} value={t(`branches.businessType${branch.business_type === "cloud_kitchen" ? "CloudKitchen" : "DineIn"}`)} />
             <InfoRow label={t("common.phone")} value={branch.phone} />
             <InfoRow label={t("common.email")} value={branch.email} />
             <InfoRow label={t("branches.bkashNumber")} value={branch.bkash_number} />
