@@ -3858,6 +3858,12 @@
     "finding": "Finding restaurants near you…"
   },
   "location": {
+    "consentTitle": "Use your location?",
+    "consentBody": "We use your location to find your nearest branch and check delivery coverage.",
+    "consentAccept": "Accept",
+    "consentReject": "Reject",
+    "consentRejectedNote": "No problem. Pick a saved address under “Deliver to”, or choose a branch under “Browsing”. You can share your location later from “Deliver to”.",
+    "consentBlockedNote": "Location is blocked for this site in your browser, so we cannot ask again. Pick a saved address under “Deliver to” instead, or allow location in your browser’s site settings.",
     "title": "Live location",
     "uses": "Sharing your live location helps us pick your nearest branch and estimate delivery time accurately. It is stored separately from your saved addresses and never replaces your default address.",
     "statusNotSet": "Location not set",

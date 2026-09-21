@@ -6,6 +6,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { LocationPermissionCard, type LocationStatus } from "@/components/customer/location-permission-card";
 import { NearestPickupCallout } from "@/components/maps/nearest-pickup-callout";
 import { useTranslation } from "@/lib/i18n/use-translation";
+import { useLocationConsent } from "@/lib/hooks/use-location-consent";
 import { useLocationRequest } from "@/lib/hooks/use-location-request";
 
 /**
@@ -47,24 +48,28 @@ export function BranchesLocationGate({
   const { t } = useTranslation();
   const { request, phase, busy, saveError } = useLocationRequest();
   const autoFired = useRef(false);
+  const { consent } = useLocationConsent();
 
   // The ONLY case this gate auto-detects: a stored address that puts the customer
   // out of zone (the false-negative §16 is about). The no-point case is owned by
   // the card, which auto-requests itself — so we must not double-fire here — and a
   // GPS-sourced out-of-zone is the truth, not a stale address, so it is left alone.
   const autoDetectAddress = hasPoint && pointSource === "address" && outOfZone;
+  // Only for a visitor who agreed on our location card: the native prompt is
+  // never fired unasked. Without consent the banner's own retry button remains.
+  const mayAutoDetect = autoDetectAddress && consent === "accepted";
   useEffect(() => {
-    if (autoDetectAddress && !autoFired.current) {
+    if (mayAutoDetect && !autoFired.current) {
       autoFired.current = true;
       request();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoDetectAddress]);
+  }, [mayAutoDetect]);
 
   // "Finding…" replaces the premature banner only while that auto-detect (or a
   // manual retry of it) is in flight; a manual retry from an already-truthful
   // banner just shows an inline "locating" on the button.
-  const detecting = busy && autoDetectAddress;
+  const detecting = busy && mayAutoDetect;
 
   // No usable location at all → the permission card (auto-requests on mount). Same
   // testid the page used before, so the existing e2e coverage still finds it.

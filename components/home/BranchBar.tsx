@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 
 import { BrowsingPicker, type BrowseBranchOption } from "@/components/home/BrowsingPicker";
+import { LocationConsentCard } from "@/components/home/LocationConsentCard";
 import { DeliverToPicker, type DeliverToAddress } from "@/components/home/DeliverToPicker";
 import { NearestPickupCallout } from "@/components/maps/nearest-pickup-callout";
 import { updateBrowseScope } from "@/lib/browse-scope/client";
@@ -219,6 +220,12 @@ export function BranchBar({
           </>
         ) : null}
       </div>
+
+      {/* No usable location yet: ask in our own words first. The native browser
+          prompt only fires after "Accept" (a page cannot force it, and a stored
+          denial can never be re-prompted), and a refusal falls back to the saved
+          address / "Deliver to" picker above. */}
+      {context.state === "no-location" ? <LocationConsentCard onAccept={request} busy={busy} /> : null}
 
       {/* The honest second line. A branch the customer chose to look at may not
           be able to deliver to them — that is the point of being allowed to look
