@@ -10,7 +10,7 @@ import { prisma } from "@/lib/db";
 import { serializeBranch } from "@/lib/serializers";
 import { isBrandType, isBranchBusinessType } from "@/lib/constants/enums";
 import { isValidLatLng } from "@/lib/services/geo";
-import { archiveOrDeleteBranch } from "@/lib/services/branches";
+import { archiveOrDeleteBranch, parseBranchDeliveryFee } from "@/lib/services/branches";
 import { validatePhone } from "@/lib/validation/server";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -74,6 +74,11 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
     data.longitude = new Prisma.Decimal(lng.toFixed(7));
   }
   if (fields.delivery_radius_km) data.deliveryRadiusKm = new Prisma.Decimal(fields.delivery_radius_km);
+  // Super-admin override of the branch-level delivery fee (a manager sets it via
+  // their own delivery settings). Future orders only — orders snapshot their fee.
+  if (has("delivery_fee") && fields.delivery_fee !== "") {
+    data.deliveryFee = new Prisma.Decimal(parseBranchDeliveryFee(fields.delivery_fee).toFixed(2));
+  }
   // ITEM 7 — the branch's location tag. Present-but-empty clears it (a branch
   // may have none); a real id is validated against the active master list.
   if (has("zone_id")) {

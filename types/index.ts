@@ -84,6 +84,8 @@ export interface Branch {
   brand_type?: string; // cheez | madchef | combined
   /** "dine_in" | "cloud_kitchen" — a display badge only, never an order type. */
   business_type?: string;
+  /** Branch-level delivery fee (৳, 2dp string). 0 = free. */
+  delivery_fee?: string;
   bkash_number?: string;
   // Serialized by `serializeBranch`; drives the "self-pickup available" wording.
   pickup_enabled?: boolean;

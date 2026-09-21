@@ -34,6 +34,7 @@ const RULES: FieldRules = {
   brand_type: [required, oneOf(BRAND_TYPES)],
   business_type: [required, oneOf(BUSINESS_TYPES)],
   zone_id: [selectRequired], // Zone / Area is mandatory — it seeds the delivery-areas helper
+  delivery_fee: [number, min(0)],
   address: [required],
   email: [emailRule],
   bkash_number: [phone],
@@ -158,6 +159,21 @@ export function BranchForm({
             min="0.5"
             aria-invalid={!!errors.delivery_radius_km}
             defaultValue={branch?.delivery_radius_km ?? "3.0"}
+          />
+        </Field>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {/* Branch-level delivery fee. Free (0) unless priced; a branch manager can
+            set it for their own branch, and the super admin can override it here. */}
+        <Field label={t("branches.deliveryFeeField")} hint={t("branches.deliveryFeeHint")} error={errors.delivery_fee}>
+          <Input
+            name="delivery_fee"
+            type="number"
+            step="0.01"
+            min="0"
+            aria-invalid={!!errors.delivery_fee}
+            defaultValue={branch?.delivery_fee ?? "0"}
           />
         </Field>
       </div>

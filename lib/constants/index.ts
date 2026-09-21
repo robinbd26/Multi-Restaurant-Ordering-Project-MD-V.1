@@ -242,6 +242,7 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
     { href: "/admin/notices", label: "nav.notices", icon: "megaphone" , group: "navGroup.insights" },
     { href: "/admin/complaints", label: "nav.complaints", icon: "inbox" , group: "navGroup.customers" },
     { href: "/admin/notifications", label: "nav.notifications", icon: "bell" , group: "navGroup.system" },
+    { href: "/admin/settings/platform-fee", label: "platformFee.title", icon: "money" , group: "navGroup.system" },
     { href: "/admin/settings", label: "nav.settings", icon: "lock" , group: "navGroup.system" },
   ],
   management: [

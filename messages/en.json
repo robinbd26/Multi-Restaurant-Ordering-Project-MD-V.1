@@ -1059,6 +1059,8 @@
     "zoneFieldHint": "Which master zone this branch is based in (Gulshan, Banani, …). Seeds the \"Suggest areas\" helper on Delivery Areas.",
     "zoneNone": "No zone set",
     "zoneSelect": "Select a zone / area",
+    "deliveryFeeField": "Delivery Fee (৳)",
+    "deliveryFeeHint": "Branch-level delivery fee. 0 = free delivery. A named delivery area's own charge takes priority.",
     "businessType": "Branch Type",
     "businessTypeHint": "Shown to customers as a badge. It does not change how orders work.",
     "businessTypeDineIn": "Dine-in restaurant",

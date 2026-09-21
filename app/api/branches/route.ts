@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { serializeBranch } from "@/lib/serializers";
 import { isBrandType, isBranchBusinessType } from "@/lib/constants/enums";
 import { isValidLatLng } from "@/lib/services/geo";
+import { parseBranchDeliveryFee } from "@/lib/services/branches";
 import { validatePhone } from "@/lib/validation/server";
 
 // GET /api/branches — all branches for staff; active-only for customer/rider.
@@ -103,6 +104,9 @@ export const POST = handle(async (req: Request) => {
     data.longitude = new Prisma.Decimal(lng.toFixed(7));
   }
   if (fields.delivery_radius_km) data.deliveryRadiusKm = new Prisma.Decimal(fields.delivery_radius_km);
+  if (fields.delivery_fee !== undefined && fields.delivery_fee !== "") {
+    data.deliveryFee = new Prisma.Decimal(parseBranchDeliveryFee(fields.delivery_fee).toFixed(2));
+  }
   // Zone / Area is REQUIRED: it is what seeds the delivery-areas suggestion helper.
   if (fields.zone_id === undefined || fields.zone_id === "") {
     throw validationError({ zone_id: sk("errors.catalog.zoneRequired") });
