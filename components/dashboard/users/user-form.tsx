@@ -194,11 +194,13 @@ export function UserForm({ user }: { user?: User }) {
           required={!isEdit}
           aria-invalid={!!errors.password}
           autoComplete="new-password"
-          onChange={!isEdit ? (e: ChangeEvent<HTMLInputElement>) => setPasswordValue(e.target.value) : undefined}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setPasswordValue(e.target.value)}
         />
-        {!isEdit ? <PasswordStrengthMeter value={passwordValue} /> : null}
+        <PasswordStrengthMeter value={passwordValue} />
       </Field>
-      {!isEdit ? <PasswordSuggestion onAccept={acceptPassword} /> : null}
+      {/* Create and edit alike: on edit the box is optional ("leave blank to keep
+          the current password"), and a suggestion simply fills it. */}
+      <PasswordSuggestion onAccept={acceptPassword} />
 
       {role === "rider" && !isEdit ? (
         <fieldset className="space-y-4 rounded-2xl border border-border-base p-4">
