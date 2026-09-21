@@ -80,10 +80,7 @@ export default async function BranchDetailPage({ params }: { params: Promise<{ i
             <InfoRow label={t("branches.deliveryRadius")} value={`${fmt.num(branch.delivery_radius_km)} ${t("branches.km")}`} />
             <InfoRow label={t("branches.openLabel")} value={branch.opening_time ?? "—"} />
             <InfoRow label={t("branches.closeLabel")} value={branch.closing_time ?? "—"} />
-            <InfoRow
-              label={t("branches.location")}
-              value={branch.latitude && branch.longitude ? `${branch.latitude}, ${branch.longitude}` : "—"}
-            />
+            <InfoRow label={t("common.address")} value={branch.address} />
             <InfoRow label={t("branches.zoneField")} value={branch.zone_name ?? t("branches.zoneNone")} />
             <InfoRow label={t("branches.currentManager")} value={branch.manager_name ?? t("common.notAssigned")} />
           </CardContent>
