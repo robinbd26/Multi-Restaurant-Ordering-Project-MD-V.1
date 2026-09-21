@@ -17,6 +17,7 @@ import type { FieldErrors } from "@/lib/validation/contract";
 import { LIMITS } from "@/lib/validation/limits";
 import {
   afterTimeField,
+  differentTimeField,
   max,
   maxLength,
   min,
@@ -35,7 +36,8 @@ const ZONE_RULES: FieldRules = {
 
 const HOURS_RULES: FieldRules = {
   opening_time: [required, time],
-  closing_time: [required, time, afterTimeField("opening_time")],
+  // The branch's own hours may run past midnight, so no ordering is imposed.
+  closing_time: [required, time, differentTimeField("opening_time")],
 };
 
 const SLOT_RULES: FieldRules = {

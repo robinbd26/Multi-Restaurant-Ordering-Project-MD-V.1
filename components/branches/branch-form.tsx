@@ -11,7 +11,7 @@ import { saveBranchAction } from "@/lib/api/actions";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { LIMITS } from "@/lib/validation/limits";
 import {
-  afterTimeField,
+  differentTimeField,
   email as emailRule,
   max,
   min,
@@ -39,8 +39,9 @@ const RULES: FieldRules = {
   bkash_number: [phone],
   delivery_radius_km: [required, number, min(LIMITS.radiusMin), max(LIMITS.radiusMax)],
   opening_time: [time],
-  // Closing must come after opening — the message lands on the closing field.
-  closing_time: [time, afterTimeField("opening_time")],
+  // Overnight shifts are real (10:45 PM → 4:00 AM), so closing may be earlier
+  // than opening; it only may not equal it.
+  closing_time: [time, differentTimeField("opening_time")],
 };
 
 const FILES = { logo: false };

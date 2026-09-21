@@ -1679,6 +1679,7 @@
     "time": "Enter a valid time",
     "dateRange": "End date must be after the start date",
     "timeRange": "End time must be after the start time",
+    "timeSame": "Closing time can't be the same as the opening time",
     "datePast": "This date cannot be in the past",
     "dateFuture": "This date cannot be in the future",
     "duplicate": "This value is already in use",

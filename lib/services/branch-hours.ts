@@ -56,6 +56,22 @@ export function branchOpenStatus(branch: BranchHoursInput, minutesSinceMidnight:
   const late = isLateNight(branch.brandType);
   const open = parseMinutes(branch.openingTime) ?? 660; // 11:00 AM default
   const close = parseMinutes(branch.closingTime) ?? 1380; // 11:00 PM default
+
+  // A branch whose OWN hours reach into the small hours is authoritative about
+  // them. That is either an overnight shift (closes earlier on the clock than it
+  // opens: 10:45 PM → 4:00 AM, so the window is [open, 24:00) ∪ [00:00, close))
+  // or an early-morning window that opens before 04:00 (12:45 AM → 4:00 AM).
+  // The brand-wide late-night rule below assumes a normal daytime shift; applied
+  // here it hard-coded 00:00–04:00 as "closed" for non-Cheez branches, which is
+  // why a branch set to 12:45 AM–4:00 AM showed Closed at 2:40 AM.
+  const overnight = close < open;
+  if (overnight || open < 240) {
+    const inside = overnight ? minutes >= open || minutes < close : minutes >= open && minutes < close;
+    if (!inside) return "closed";
+    const remaining = minutes >= open ? (overnight ? 1440 - minutes + close : close - minutes) : close - minutes;
+    return remaining <= 60 ? "last-orders" : "open";
+  }
+
   const lastEntry = Math.max(open, close - 30);
   const cheezLast = 225; // 3:45 AM
   const cheezWarn = 195; // 3:15 AM
