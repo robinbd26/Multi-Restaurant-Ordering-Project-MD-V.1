@@ -489,6 +489,8 @@ export function CartDrawer({
         pickup_enabled?: boolean;
         pickup_address?: string;
         pickup_phone?: string;
+        address?: string;
+        phone?: string;
       };
       if (!b.pickup_enabled) {
         setPickupBranch(null);
@@ -499,8 +501,11 @@ export function CartDrawer({
         id: b.id,
         name: b.name,
         pickupEnabled: true,
-        pickupAddress: b.pickup_address ?? "",
-        pickupPhone: b.pickup_phone ?? "",
+        // The branch's own saved address / phone. A dedicated pickup point, when
+        // the branch has configured one, still wins (same rule the checkout
+        // coverage answer uses: pickupAddress || address).
+        pickupAddress: b.pickup_address || b.address || "",
+        pickupPhone: b.pickup_phone || b.phone || "",
       });
     } catch {
       setPickupBranch(null);
@@ -870,7 +875,7 @@ export function CartDrawer({
         needsVerification: payment !== "cash",
         addressText:
           fulfillmentType === "pickup"
-            ? `${pickupBranch!.pickupAddress || pickupBranch!.name}${pickupBranch!.pickupPhone ? ` · ${pickupBranch!.pickupPhone}` : ""}`
+            ? [pickupBranch!.name, pickupBranch!.pickupAddress, pickupBranch!.pickupPhone].filter(Boolean).join(" · ")
             : (oneTimeAddress?.address ?? chosenAddress!.address),
         items: count,
         subtotal: quote.subtotal,
@@ -1788,11 +1793,23 @@ export function CartDrawer({
                   <p className="text-[0.68rem] text-[#a0a0b0]">{t("home.order.pickupTimeHint")}</p>
                 </div>
               ) : null}
-              <p className="rounded-lg bg-white/4 px-3 py-2 text-center text-[0.72rem] text-[#a0a0b0]">
-                {fulfillmentType === "pickup"
-                  ? `${t("home.order.pickupLocation")}: ${pickupBranch?.name ?? "—"}`
-                  : `${t("home.order.deliverTo")}: ${effectiveAddressLabel ?? "—"}`}
-              </p>
+              {fulfillmentType === "pickup" ? (
+                // Branch name, its saved address, and its phone as the contact
+                // number — not just a bare area-style name.
+                <div
+                  className="rounded-lg bg-white/4 px-3 py-2 text-center text-[0.72rem] text-[#a0a0b0]"
+                  data-testid="drawer-pickup-location"
+                >
+                  <p>{t("home.order.pickupLocation")}</p>
+                  <p className="mt-0.5 text-[0.8rem] font-bold text-white">{pickupBranch?.name ?? "—"}</p>
+                  {pickupBranch?.pickupAddress ? <p className="mt-0.5 break-words">📍 {pickupBranch.pickupAddress}</p> : null}
+                  {pickupBranch?.pickupPhone ? <p className="mt-0.5">☎ {pickupBranch.pickupPhone}</p> : null}
+                </div>
+              ) : (
+                <p className="rounded-lg bg-white/4 px-3 py-2 text-center text-[0.72rem] text-[#a0a0b0]">
+                  {`${t("home.order.deliverTo")}: ${effectiveAddressLabel ?? "—"}`}
+                </p>
+              )}
             </div>
           ) : view === "overview" ? (
             <div className="space-y-2.5 pb-2" data-testid="drawer-checkout-overview-step">
@@ -1806,6 +1823,9 @@ export function CartDrawer({
                     <p className="mt-0.5 truncate text-[0.82rem] font-bold text-white">📍 {pickupBranch.name}</p>
                     {pickupBranch.pickupAddress ? (
                       <p className="mt-0.5 break-words text-[0.75rem] text-[#a0a0b0]">{pickupBranch.pickupAddress}</p>
+                    ) : null}
+                    {pickupBranch.pickupPhone ? (
+                      <p className="mt-0.5 text-[0.75rem] text-[#a0a0b0]">☎ {pickupBranch.pickupPhone}</p>
                     ) : null}
                     <p className="mt-1.5 text-[0.75rem] text-[#a0a0b0]">
                       {t("home.order.pickupTime")}:{" "}
