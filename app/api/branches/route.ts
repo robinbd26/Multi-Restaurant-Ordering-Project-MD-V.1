@@ -73,6 +73,20 @@ export const POST = handle(async (req: Request) => {
     throw validationError({ business_type: sk("errors.catalog.invalidBusinessType") });
   }
 
+  // Zone / Area is REQUIRED: it is what seeds the delivery-areas suggestion
+  // helper. Resolved up front so it can sit directly in the create literal below
+  // — Branch.zone is now a required relation (schema), so `data` can never be
+  // built without it.
+  if (fields.zone_id === undefined || fields.zone_id === "") {
+    throw validationError({ zone_id: sk("errors.catalog.zoneRequired") });
+  }
+  const zoneId = Number(fields.zone_id);
+  if (!Number.isSafeInteger(zoneId) || zoneId <= 0) {
+    throw validationError({ zone_id: sk("errors.deliveryZone.notFound") });
+  }
+  const zone = await prisma.deliveryZone.findFirst({ where: { id: zoneId, isActive: true } });
+  if (!zone) throw validationError({ zone_id: sk("errors.deliveryZone.notFound") });
+
   const data: Prisma.BranchCreateInput = {
     name,
     address,
@@ -80,6 +94,7 @@ export const POST = handle(async (req: Request) => {
     email: fields.email ?? "",
     brandType,
     businessType,
+    zone: { connect: { id: zoneId } },
     bkashNumber: fields.bkash_number ?? "",
     openingTime: fields.opening_time || null,
     closingTime: fields.closing_time || null,
@@ -107,20 +122,6 @@ export const POST = handle(async (req: Request) => {
   if (fields.delivery_fee !== undefined && fields.delivery_fee !== "") {
     data.deliveryFee = new Prisma.Decimal(parseBranchDeliveryFee(fields.delivery_fee).toFixed(2));
   }
-  // Zone / Area is REQUIRED: it is what seeds the delivery-areas suggestion helper.
-  if (fields.zone_id === undefined || fields.zone_id === "") {
-    throw validationError({ zone_id: sk("errors.catalog.zoneRequired") });
-  }
-  {
-    const zoneId = Number(fields.zone_id);
-    if (!Number.isSafeInteger(zoneId) || zoneId <= 0) {
-      throw validationError({ zone_id: sk("errors.deliveryZone.notFound") });
-    }
-    const zone = await prisma.deliveryZone.findFirst({ where: { id: zoneId, isActive: true } });
-    if (!zone) throw validationError({ zone_id: sk("errors.deliveryZone.notFound") });
-    data.zone = { connect: { id: zoneId } };
-  }
-
   const logo = file("logo");
   if (logo) data.logo = await saveUpload(logo, "branch_logos", "logo");
 
