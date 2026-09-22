@@ -32,7 +32,7 @@ interface SlotT {
 
 /** /branch-manager/delivery-hours — opening/closing + delivery time slots. */
 export default async function DeliveryHoursPage() {
-  const { t } = await getT();
+  const { t, fmt } = await getT();
   await requireRole("branch_manager");
   const [settings, slots] = await Promise.all([
     getJSON<SettingsT>("/branch-manager/delivery-settings/"),
@@ -61,8 +61,8 @@ export default async function DeliveryHoursPage() {
                 {slots.results.map((s) => (
                   <tr key={s.id} className="hover:bg-surface-hover/70">
                     <Td><span className="font-medium text-fg-base">{s.label || "—"}</span></Td>
-                    <Td>{s.start_time}</Td>
-                    <Td>{s.end_time}</Td>
+                    <Td>{fmt.clock(s.start_time)}</Td>
+                    <Td>{fmt.clock(s.end_time)}</Td>
                     <Td className="text-right"><TimeSlotDeleteButton slotId={s.id} /></Td>
                   </tr>
                 ))}

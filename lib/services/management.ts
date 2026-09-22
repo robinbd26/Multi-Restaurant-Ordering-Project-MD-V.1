@@ -280,7 +280,7 @@ export async function listInventory(q: InventoryQuery, skip: number, take: numbe
         updatedAt: true,
         branch: { select: { id: true, name: true } },
         category: { select: { name: true } },
-        variations: { where: { isEnabled: true }, select: { id: true } },
+        variations: { select: { isEnabled: true } },
       },
       orderBy: [{ branch: { name: "asc" } }, { name: "asc" }],
       skip,
@@ -291,10 +291,18 @@ export async function listInventory(q: InventoryQuery, skip: number, take: numbe
       prisma.product.count({ where: { ...scope, heldByAdmin: false, isAvailable: true } }),
       prisma.product.count({ where: { ...scope, heldByAdmin: false, isAvailable: false } }),
       prisma.product.count({ where: { ...scope, heldByAdmin: true } }),
-      // A product with no enabled variation cannot be added to a cart even
-      // though the branch believes it is on the menu — the quietest way for a
-      // branch to be silently out of stock.
-      prisma.product.count({ where: { ...scope, isAvailable: true, heldByAdmin: false, variations: { none: { isEnabled: true } } } }),
+      // A product whose variations are ALL disabled cannot be added to a cart
+      // even though the branch believes it is on the menu — the quietest way for
+      // a branch to be silently out of stock. (No variations at all is fine:
+      // it is sold at its own price.)
+      prisma.product.count({
+        where: {
+          ...scope,
+          isAvailable: true,
+          heldByAdmin: false,
+          variations: { some: {}, none: { isEnabled: true } },
+        },
+      }),
     ]),
     prisma.branch.findMany({
       where: q.branchId ? { id: q.branchId } : {},

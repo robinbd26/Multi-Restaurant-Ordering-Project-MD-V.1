@@ -91,7 +91,9 @@ function rowsFromProduct(product?: Product): VariationRow[] {
       is_default: v.is_default,
     }));
   }
-  return [blankVariation(true)];
+  // Variations are optional: a product without any starts with no rows and is
+  // sold at its own Base Price.
+  return [];
 }
 
 export function ProductForm({
@@ -133,6 +135,11 @@ export function ProductForm({
     fixedBranch?.id ?? product?.branch ?? branches?.[0]?.id ?? null,
   );
   const [rows, setRows] = useState<VariationRow[]>(() => rowsFromProduct(product));
+  // The product's own price. Used directly while there are NO variations; once
+  // any exist, price lives on them and this box is disabled (see Pricing).
+  const [basePrice, setBasePrice] = useState<string>(
+    product && !product.variations.length ? String(product.price ?? "") : "",
+  );
   const [brand, setBrand] = useState<string>(product?.brand ?? "");
   // Controlled category: changing Brand/Branch must be able to CLEAR it (req #3)
   // — an uncontrolled select could never be reset.
@@ -195,11 +202,16 @@ export function ProductForm({
   const setRow = (i: number, patch: Partial<VariationRow>) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
-  const addRow = () => setRows((prev) => [...prev, blankVariation(prev.every((r) => !r.is_default))]);
+  const addRow = () =>
+    setRows((prev) => {
+      const row = blankVariation(prev.every((r) => !r.is_default));
+      // The first variation inherits the price already typed as the base price.
+      if (prev.length === 0) row.price = basePrice;
+      return [...prev, row];
+    });
 
   const removeRow = (i: number) =>
     setRows((prev) => {
-      if (prev.length <= 1) return prev;
       const next = prev.filter((_, idx) => idx !== i);
       if (!next.some((r) => r.is_default && r.is_enabled)) {
         const firstEnabled = next.findIndex((r) => r.is_enabled);
@@ -245,7 +257,10 @@ export function ProductForm({
   const validateVariations = useCallback((): FieldErrors => {
     const found: FieldErrors = {};
     if (rows.length === 0) {
-      found.variations = t("catalog.variationsRequired");
+      // No variations: the base price is what gets sold, so it is required.
+      const baseError = money(basePrice, {});
+      if (basePrice.trim() === "") found.price = t("validation.required");
+      else if (baseError) found.price = t(baseError.key, baseError.vars);
       return found;
     }
     const seen = new Map<string, number>();
@@ -272,7 +287,7 @@ export function ProductForm({
       found.variations = t("catalog.variationOneEnabledRequired");
     }
     return found;
-  }, [rows, t]);
+  }, [rows, basePrice, t]);
 
   const { errors, formProps } = useFormValidation(RULES, {
     files: FILES,
@@ -476,7 +491,6 @@ export function ProductForm({
                     size="sm"
                     variant="ghost"
                     className="ml-auto text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
-                    disabled={rows.length <= 1}
                     onClick={() => removeRow(i)}
                   >
                     {t("common.remove")}
@@ -605,27 +619,40 @@ export function ProductForm({
 
           <FormSection title={t("catalog.sectionPricing")}>
             <div className="grid gap-4 sm:grid-cols-2">
-              {/* req #4 — the primary Price input lives HERE (never in Basic
-                  Information). It is a mirror of the default variation's price:
-                  editing it edits that row, so the submitted variations payload
-                  stays the single source of truth. */}
+              {/* Variations are optional. With NONE, this is the price that is
+                  sold and it is submitted as `price`. With any, price lives on
+                  the variations: this box turns into a read-only display of the
+                  default variation's price and is NOT submitted. */}
               <Field
                 label={t("catalog.basePrice")}
-                hint={t("catalog.basePriceHint")}
+                name="price"
+                required={rows.length === 0}
+                hint={rows.length === 0 ? t("catalog.basePriceUsedHint") : t("catalog.basePriceLockedHint")}
+                error={rows.length === 0 ? errors.price : undefined}
                 className="sm:col-span-2"
               >
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  inputMode="decimal"
-                  value={defaultRow?.price ?? ""}
-                  data-testid="base-price"
-                  aria-invalid={!defaultRow || defaultRow.price.trim() === "" ? true : undefined}
-                  onChange={(e) => {
-                    if (defaultIdx >= 0) setRow(defaultIdx, { price: e.target.value });
-                  }}
-                />
+                {rows.length === 0 ? (
+                  <Input
+                    name="price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    value={basePrice}
+                    data-testid="base-price"
+                    aria-invalid={errors.price ? true : undefined}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                  />
+                ) : (
+                  <Input
+                    type="number"
+                    value={defaultRow?.price ?? ""}
+                    data-testid="base-price"
+                    disabled
+                    readOnly
+                    className="cursor-not-allowed bg-surface-muted/60 text-fg-muted"
+                  />
+                )}
               </Field>
               <Field label={t("catalog.discount")} name="discount" error={errors.discount}>
                 <Input

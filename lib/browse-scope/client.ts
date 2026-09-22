@@ -21,7 +21,11 @@ import {
 
 /** The scope as the browser currently holds it (unvalidated — the server decides). */
 export function readBrowseScope(): BrowseScope {
-  const match = document.cookie.match(new RegExp(`(?:^|;\s*)${BROWSE_SCOPE_COOKIE}=([^;]*)`));
+  // The backslash is doubled for the template literal: a bare `\s` collapses to
+  // a literal "s", the pattern then only matches when this is the FIRST cookie,
+  // and every merge below silently starts from the default scope — which is how
+  // one control used to wipe the other's choice.
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${BROWSE_SCOPE_COOKIE}=([^;]*)`));
   return parseBrowseScope(match ? decodeURIComponent(match[1]) : null);
 }
 

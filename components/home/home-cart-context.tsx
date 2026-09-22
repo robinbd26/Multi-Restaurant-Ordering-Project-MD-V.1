@@ -82,7 +82,10 @@ interface HomeCartValue {
   isOpen: boolean;
   lastAdded: LastAdded | null;
   brand: Brand;
+  /** Activates a menu tab. A brand the browsed branch does not serve is ignored. */
   setBrand: (brand: Brand) => void;
+  /** The menu tabs the browsed branch serves; both for guests / all-branches. */
+  servedBrands: Brand[];
   add: (input: CartAddInput) => void;
   /** The branch this cart is locked to, or null when the cart is empty. */
   cartBranchId: number | null;
@@ -114,6 +117,7 @@ function lineKey(input: CartAddInput): string {
 export function HomeCartProvider({
   children,
   initialBrand = "cheez",
+  servedBrands: servedBrandsProp = ["cheez", "madchef"],
   activeBranchId = null,
   activeBranchName = null,
 }: {
@@ -127,6 +131,12 @@ export function HomeCartProvider({
    */
   initialBrand?: Brand;
   /**
+   * The brands the browsed branch serves (see lib/home/brands). One entry means
+   * that brand's tab is the only one; several mean the first is the default and
+   * the customer may switch. Defaults to both for guests and all-branches views.
+   */
+  servedBrands?: Brand[];
+  /**
    * The branch this render is actually scoped to — the SAME id the product
    * grid and header are drawn from (resolveHomeBranch's result), not merely
    * requested. null for a guest/super-admin all-branches view, where there is
@@ -138,7 +148,30 @@ export function HomeCartProvider({
 }) {
   const [lines, setLines] = useState<HomeCartLine[]>([]);
   const [isOpen, setOpen] = useState(false);
-  const [brand, setBrand] = useState<Brand>(initialBrand);
+  const [rawBrand, setRawBrand] = useState<Brand>(initialBrand);
+  // Keyed by content, not identity: the server hands a fresh array every render.
+  const servedKey = servedBrandsProp.join(",");
+  const servedBrands = useMemo<Brand[]>(
+    () => (servedKey ? (servedKey.split(",") as Brand[]) : ["cheez", "madchef"]),
+    [servedKey],
+  );
+  // Switching the browsed branch re-seeds the tab from the server's choice (the
+  // first served brand that has products). "Adjust state when a prop changes",
+  // done during render on this component's own state rather than in an effect.
+  const scopeKey = `${activeBranchId ?? "all"}|${servedKey}`;
+  const [prevScopeKey, setPrevScopeKey] = useState(scopeKey);
+  if (prevScopeKey !== scopeKey) {
+    setPrevScopeKey(scopeKey);
+    setRawBrand(servedBrands.includes(initialBrand) ? initialBrand : servedBrands[0]);
+  }
+  // Never show a tab the branch does not serve, whatever state got us here.
+  const brand: Brand = servedBrands.includes(rawBrand) ? rawBrand : servedBrands[0];
+  const setBrand = useCallback(
+    (next: Brand) => {
+      if (servedBrands.includes(next)) setRawBrand(next);
+    },
+    [servedBrands],
+  );
   const [lastAdded, setLastAdded] = useState<LastAdded | null>(null);
   const [pendingBranchSwitch, setPendingBranchSwitch] = useState<BranchSwitchRequest | null>(null);
 
@@ -308,6 +341,7 @@ export function HomeCartProvider({
       lastAdded,
       brand,
       setBrand,
+      servedBrands,
       add,
       remove,
       setQty,
@@ -317,7 +351,7 @@ export function HomeCartProvider({
       dismissToast,
     };
   }, [
-    lines, isOpen, lastAdded, brand, add, remove, setQty, clear, dismissToast,
+    lines, isOpen, lastAdded, brand, setBrand, servedBrands, add, remove, setQty, clear, dismissToast,
     cartBranchId, cartBranchName, pendingBranchSwitch, confirmBranchSwitch, cancelBranchSwitch,
   ]);
 

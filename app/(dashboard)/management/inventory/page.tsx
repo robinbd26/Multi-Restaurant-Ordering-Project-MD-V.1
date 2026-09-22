@@ -88,8 +88,9 @@ export default async function ManagementInventoryPage({
   const availabilityBadge = (p: (typeof products)[number]) => {
     if (p.heldByAdmin) return <Badge tone="amber">{t("adminExtras.heldBadge")}</Badge>;
     if (!p.isAvailable) return <Badge tone="red">{t("pages.unavailable")}</Badge>;
-    // On the menu, not held — but with no enabled size it cannot be ordered.
-    if (p.variations.length === 0) return <Badge tone="amber">{t("mgmtInventory.noVariations")}</Badge>;
+    // On the menu, not held — but with every size disabled it cannot be ordered.
+    // (A product with no variations at all is sold at its own price.)
+    if (p.variations.length > 0 && !p.variations.some((v) => v.isEnabled)) return <Badge tone="amber">{t("mgmtInventory.noVariations")}</Badge>;
     return <Badge tone="green">{t("pages.available")}</Badge>;
   };
 

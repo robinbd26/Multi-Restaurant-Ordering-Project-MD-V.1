@@ -170,6 +170,20 @@ export const afterTimeField =
     return v > other ? null : { key: "validation.timeRange" };
   };
 
+/**
+ * Branch OPENING vs CLOSING time. A branch open past midnight legitimately
+ * closes at a clock time earlier than it opens (10:45 PM → 4:00 AM), so unlike
+ * `afterTimeField` the order is NOT checked — only that the two are not the
+ * same instant, which would be either "never open" or "always open".
+ */
+export const differentTimeField =
+  (otherField: string): Rule =>
+  (v, all) => {
+    const other = (all[otherField] ?? "").trim();
+    if (!v.trim() || !other) return null;
+    return v.trim() === other ? { key: "validation.timeSame" } : null;
+  };
+
 /** Today's date as YYYY-MM-DD in the browser's local calendar. */
 function todayISO(): string {
   const now = new Date();

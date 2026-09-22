@@ -38,6 +38,8 @@ export interface CustomerBranchContext {
     id: number;
     name: string;
     brandType: string;
+    /** "dine_in" | "cloud_kitchen" — a display badge only. */
+    businessType: string;
     address: string;
     pickupEnabled: boolean;
     prepTimeMinutes: number;
@@ -143,6 +145,7 @@ export async function resolveCustomerBranch(
       id: branch.id,
       name: branch.name,
       brandType: branch.brandType,
+      businessType: branch.businessType,
       address: branch.address,
       pickupEnabled: branch.pickupEnabled,
       prepTimeMinutes: branch.prepTimeMinutes,
@@ -354,6 +357,7 @@ export async function resolveHomeBranch(
           id: branch.id,
           name: branch.name,
           brandType: branch.brandType,
+      businessType: branch.businessType,
           address: branch.address,
           pickupEnabled: branch.pickupEnabled,
           prepTimeMinutes: branch.prepTimeMinutes,

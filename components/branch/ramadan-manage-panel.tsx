@@ -276,7 +276,7 @@ export function RamadanManagePanel() {
         <ul className="mb-3 divide-y divide-border-base text-sm">
           {slots.length === 0 ? <li className="py-2 text-fg-muted">{t("ramadan.noSlots")}</li> : slots.map((s) => (
             <li key={s.id} className="flex items-center gap-3 py-2" data-testid="ramadan-slot">
-              <span className="font-medium">{s.label}</span><span className="text-fg-muted">{s.start_time}–{s.end_time}</span>
+              <span className="font-medium">{s.label}</span><span className="text-fg-muted">{fmt.clock(s.start_time)}–{fmt.clock(s.end_time)}</span>
               {s.is_active ? <Badge tone="green">{t("common.active")}</Badge> : <Badge tone="slate">{t("common.inactive")}</Badge>}
               <button type="button" className="ml-auto text-red-600 hover:underline" onClick={() => delSlot(s.id)}>{t("common.delete")}</button>
             </li>

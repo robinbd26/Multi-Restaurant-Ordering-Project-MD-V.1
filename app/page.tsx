@@ -16,6 +16,7 @@ import { MenuSection } from "@/components/home/MenuSection";
 import { OperatingHours } from "@/components/home/OperatingHours";
 import { getOptionalUser } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
+import { ALL_BRANDS, brandsServedBy } from "@/lib/home/brands";
 import type { Brand } from "@/lib/home/types";
 import { getCompanyLogoUrl } from "@/lib/services/settings";
 import { BranchBar, type BranchBarContext } from "@/components/home/BranchBar";
@@ -127,11 +128,16 @@ export default async function HomePage() {
   // the products were loaded and eligible all along — the exact defect this
   // round fixes. Prefer the first brand that actually has products.
   const brandsWithItems = new Set(menu.items.map((item) => item.brand));
-  const initialBrand: Brand = brandsWithItems.has("cheez")
-    ? "cheez"
-    : brandsWithItems.has("madchef")
-      ? "madchef"
-      : "cheez";
+  //
+  // A browsed branch only shows the tab(s) it serves: one brand → that tab
+  // alone; both → the first one opens and the customer can switch. Guests and
+  // the all-branches view keep both.
+  const servedBrands: Brand[] =
+    branchContext?.state === "ok" && branchContext.branch
+      ? brandsServedBy(branchContext.branch.brandType)
+      : [...ALL_BRANDS];
+  const initialBrand: Brand =
+    servedBrands.find((b) => brandsWithItems.has(b)) ?? servedBrands[0];
 
   // Why the grid is empty, in the customer's terms — never a hint that another
   // branch's products exist somewhere. The no-location customer now sees the
@@ -149,7 +155,9 @@ export default async function HomePage() {
     ? {
         state: branchContext.state,
         branchName: branchContext.branch?.name ?? null,
+        branchId: branchContext.branchId,
         brandType: branchContext.branch?.brandType ?? null,
+        businessType: branchContext.branch?.businessType ?? null,
         distanceKm: branchContext.distanceKm,
         deliveryFee: branchContext.deliveryFee,
         pickupEnabled: branchContext.branch?.pickupEnabled ?? false,
@@ -217,6 +225,7 @@ export default async function HomePage() {
       />
       <HomeCartProvider
         initialBrand={initialBrand}
+        servedBrands={servedBrands}
         activeBranchId={branchContext?.branchId ?? null}
         activeBranchName={branchContext?.branch?.name ?? null}
       >

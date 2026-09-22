@@ -73,16 +73,14 @@ export default async function BranchDetailPage({ params }: { params: Promise<{ i
           />
           <CardContent className="grid gap-x-8 sm:grid-cols-2">
             <InfoRow label={t("branches.brandType")} value={t(`brands.${branch.brand_type ?? "combined"}`)} />
+            <InfoRow label={t("branches.businessType")} value={t(`branches.businessType${branch.business_type === "cloud_kitchen" ? "CloudKitchen" : "DineIn"}`)} />
             <InfoRow label={t("common.phone")} value={branch.phone} />
             <InfoRow label={t("common.email")} value={branch.email} />
             <InfoRow label={t("branches.bkashNumber")} value={branch.bkash_number} />
             <InfoRow label={t("branches.deliveryRadius")} value={`${fmt.num(branch.delivery_radius_km)} ${t("branches.km")}`} />
-            <InfoRow label={t("branches.openLabel")} value={branch.opening_time ?? "—"} />
-            <InfoRow label={t("branches.closeLabel")} value={branch.closing_time ?? "—"} />
-            <InfoRow
-              label={t("branches.location")}
-              value={branch.latitude && branch.longitude ? `${branch.latitude}, ${branch.longitude}` : "—"}
-            />
+            <InfoRow label={t("branches.openLabel")} value={fmt.clock(branch.opening_time)} />
+            <InfoRow label={t("branches.closeLabel")} value={fmt.clock(branch.closing_time)} />
+            <InfoRow label={t("common.address")} value={branch.address} />
             <InfoRow label={t("branches.zoneField")} value={branch.zone_name ?? t("branches.zoneNone")} />
             <InfoRow label={t("branches.currentManager")} value={branch.manager_name ?? t("common.notAssigned")} />
           </CardContent>

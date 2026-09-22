@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useTranslation } from "@/lib/i18n/use-translation";
+import { useLocationConsent } from "@/lib/hooks/use-location-consent";
 import { LOW_ACCURACY_M, useLocationRequest } from "@/lib/hooks/use-location-request";
 
 export interface LocationStatus {
@@ -49,6 +50,7 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
     lng: initial.lng != null ? coord(initial.lng) : "",
   });
   const autoRequested = useRef(false);
+  const { consent, accept } = useLocationConsent();
   const { request, savePin, phase, busy, saveError } = useLocationRequest({
     // The address card prefers an accurate fix: when the device's first reading
     // is coarse (an ordinary indoor result), the hook silently re-reads once and
@@ -93,14 +95,23 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
   // must not tell the customer to drag a pin that is not on their screen.
   const hasMap = mapsApiKey().length > 0;
 
-  // Automatically request location when customer lands if not yet set
+  // Re-request on landing ONLY for a visitor who already said yes to our own
+  // consent card. Firing the native prompt unasked was the inconsistent part:
+  // browsers ignore or block a prompt with no user gesture, and never re-show a
+  // denied one. Everyone else gets the explicit button below.
   useEffect(() => {
-    if (!autoRequested.current && (!initial.lat || !initial.lng)) {
+    if (consent === "accepted" && !autoRequested.current && (!initial.lat || !initial.lng)) {
       autoRequested.current = true;
       request();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initial.lat, initial.lng]);
+  }, [consent, initial.lat, initial.lng]);
+
+  // Pressing the button IS consenting to the browser prompt it opens.
+  const enable = () => {
+    accept();
+    request();
+  };
 
   // Map the terminal error phases to a translated message + tone. "lowaccuracy"
   // is deliberately NOT here: the fix WAS saved, so it gets the success alert
@@ -182,7 +193,7 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
         ) : null}
 
         <div className="flex items-center gap-3">
-          <Button onClick={request} disabled={busy} data-testid="location-enable">
+          <Button onClick={enable} disabled={busy} data-testid="location-enable">
             <Icon name="pin" className="size-4" />
             {busy
               ? phase === "saving"

@@ -70,6 +70,8 @@ export const POST = handle(async (req: Request) => {
     variationType: fields.variation_type, // req #4 — crust policy ("" = not applicable)
     image: image ? await saveUpload(image, "products", "image") : null,
     variations: fields.variations ?? "[]",
+    // Required by the service when there are no variations; ignored otherwise.
+    price: fields.price,
   });
   return created(serializeProduct(product));
 });

@@ -6,6 +6,7 @@ import { useHomeCart } from "@/components/home/home-cart-context";
 import { MapPicker, type PickedPoint } from "@/components/maps/map-picker";
 import { placeOrderAction } from "@/lib/api/actions";
 import { CUSTOMER_PAYMENT_METHODS, paymentMethodDef } from "@/lib/constants";
+import { PICKUP_MIN_LEAD_MINUTES } from "@/lib/constants/orders";
 import {
   CUSTOM_VALUE,
   MAIN_AREA_NAMES,
@@ -18,6 +19,7 @@ import {
   type NicknameKind,
 } from "@/lib/addresses/nickname";
 import { useTranslation } from "@/lib/i18n/use-translation";
+import { parseFieldErrors } from "@/lib/validation/contract";
 import { LIMITS } from "@/lib/validation/limits";
 import { cn } from "@/lib/utils";
 import type { PaymentMethod } from "@/types";
@@ -488,6 +490,8 @@ export function CartDrawer({
         pickup_enabled?: boolean;
         pickup_address?: string;
         pickup_phone?: string;
+        address?: string;
+        phone?: string;
       };
       if (!b.pickup_enabled) {
         setPickupBranch(null);
@@ -498,8 +502,11 @@ export function CartDrawer({
         id: b.id,
         name: b.name,
         pickupEnabled: true,
-        pickupAddress: b.pickup_address ?? "",
-        pickupPhone: b.pickup_phone ?? "",
+        // The branch's own saved address / phone. A dedicated pickup point, when
+        // the branch has configured one, still wins (same rule the checkout
+        // coverage answer uses: pickupAddress || address).
+        pickupAddress: b.pickup_address || b.address || "",
+        pickupPhone: b.pickup_phone || b.phone || "",
       });
     } catch {
       setPickupBranch(null);
@@ -663,7 +670,10 @@ export function CartDrawer({
       const data: unknown = await res.json().catch(() => ({}));
       if (!res.ok) {
         setQuote(null);
-        setQuoteError(t("home.order.quoteError"));
+        // The server says WHY (e.g. "This branch is currently closed. It opens
+        // at 10:45 PM.") — only fall back to the generic line when it does not.
+        const { fieldErrors, formError } = parseFieldErrors(data);
+        setQuoteError(formError ?? Object.values(fieldErrors)[0] ?? t("home.order.quoteError"));
         return;
       }
       setQuote(data as DrawerQuote);
@@ -790,12 +800,26 @@ export function CartDrawer({
    * coordinates and coord_source="saved_address" (WS-4.2; the server re-derives
    * the truth). On success the cart empties and the receipt panel takes over.
    */
+  /**
+   * The pickup time actually submitted. The preset (e.g. "+30 min") is anchored
+   * to when Self Pickup started, so by the time the customer taps Confirm it has
+   * aged below the server's "at least N minutes from now" rule — the default
+   * option was rejected every time. Clamp to the server's minimum lead (plus a
+   * small buffer for the request's own latency) at the moment of submit.
+   */
+  function resolvePickupAt(): Date {
+    const preset = pickupTimeBase + pickupTimeMinutes * 60000;
+    const earliest = Date.now() + PICKUP_MIN_LEAD_MINUTES * 60000 + 60000;
+    return new Date(Math.max(preset, earliest));
+  }
+
   async function confirmOrder() {
     if (!quote || placing) return;
     if (fulfillmentType === "pickup" ? !pickupBranch : !chosenAddress && !oneTimeAddress) return;
     if (!attemptKeyRef.current) rotateAttemptKey();
     setPlacing(true);
     setPlaceError(null);
+    const pickupAt = fulfillmentType === "pickup" ? resolvePickupAt() : null;
     try {
       const payload =
         fulfillmentType === "pickup"
@@ -806,7 +830,7 @@ export function CartDrawer({
               delivery_address: pickupBranch!.pickupAddress || pickupBranch!.name,
               food_notes: "",
               fulfillment_type: "pickup" as const,
-              pickup_time: new Date(pickupTimeBase + pickupTimeMinutes * 60000).toISOString(),
+              pickup_time: pickupAt!.toISOString(),
               items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
             }
           : oneTimeAddress
@@ -855,7 +879,7 @@ export function CartDrawer({
         needsVerification: payment !== "cash",
         addressText:
           fulfillmentType === "pickup"
-            ? `${pickupBranch!.pickupAddress || pickupBranch!.name}${pickupBranch!.pickupPhone ? ` · ${pickupBranch!.pickupPhone}` : ""}`
+            ? [pickupBranch!.name, pickupBranch!.pickupAddress, pickupBranch!.pickupPhone].filter(Boolean).join(" · ")
             : (oneTimeAddress?.address ?? chosenAddress!.address),
         items: count,
         subtotal: quote.subtotal,
@@ -865,7 +889,8 @@ export function CartDrawer({
         fulfillmentType,
         pickupTimeLabel:
           fulfillmentType === "pickup"
-            ? new Date(pickupTimeBase + pickupTimeMinutes * 60000).toLocaleTimeString([], {
+            ? pickupAt!.toLocaleTimeString("en-US", {
+                hour12: true,
                 hour: "numeric",
                 minute: "2-digit",
               })
@@ -1761,7 +1786,7 @@ export function CartDrawer({
                   >
                     {PICKUP_TIME_OFFSETS.map((minutes) => {
                       const at = new Date(pickupTimeBase + minutes * 60000);
-                      const clock = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+                      const clock = at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
                       return (
                         <option key={minutes} value={minutes}>
                           {t("home.order.pickupTimeOptionLabel", { time: clock, minutes })}
@@ -1772,11 +1797,23 @@ export function CartDrawer({
                   <p className="text-[0.68rem] text-[#a0a0b0]">{t("home.order.pickupTimeHint")}</p>
                 </div>
               ) : null}
-              <p className="rounded-lg bg-white/4 px-3 py-2 text-center text-[0.72rem] text-[#a0a0b0]">
-                {fulfillmentType === "pickup"
-                  ? `${t("home.order.pickupLocation")}: ${pickupBranch?.name ?? "—"}`
-                  : `${t("home.order.deliverTo")}: ${effectiveAddressLabel ?? "—"}`}
-              </p>
+              {fulfillmentType === "pickup" ? (
+                // Branch name, its saved address, and its phone as the contact
+                // number — not just a bare area-style name.
+                <div
+                  className="rounded-lg bg-white/4 px-3 py-2 text-center text-[0.72rem] text-[#a0a0b0]"
+                  data-testid="drawer-pickup-location"
+                >
+                  <p>{t("home.order.pickupLocation")}</p>
+                  <p className="mt-0.5 text-[0.8rem] font-bold text-white">{pickupBranch?.name ?? "—"}</p>
+                  {pickupBranch?.pickupAddress ? <p className="mt-0.5 break-words">📍 {pickupBranch.pickupAddress}</p> : null}
+                  {pickupBranch?.pickupPhone ? <p className="mt-0.5">☎ {pickupBranch.pickupPhone}</p> : null}
+                </div>
+              ) : (
+                <p className="rounded-lg bg-white/4 px-3 py-2 text-center text-[0.72rem] text-[#a0a0b0]">
+                  {`${t("home.order.deliverTo")}: ${effectiveAddressLabel ?? "—"}`}
+                </p>
+              )}
             </div>
           ) : view === "overview" ? (
             <div className="space-y-2.5 pb-2" data-testid="drawer-checkout-overview-step">
@@ -1791,9 +1828,13 @@ export function CartDrawer({
                     {pickupBranch.pickupAddress ? (
                       <p className="mt-0.5 break-words text-[0.75rem] text-[#a0a0b0]">{pickupBranch.pickupAddress}</p>
                     ) : null}
+                    {pickupBranch.pickupPhone ? (
+                      <p className="mt-0.5 text-[0.75rem] text-[#a0a0b0]">☎ {pickupBranch.pickupPhone}</p>
+                    ) : null}
                     <p className="mt-1.5 text-[0.75rem] text-[#a0a0b0]">
                       {t("home.order.pickupTime")}:{" "}
-                      {new Date(pickupTimeBase + pickupTimeMinutes * 60000).toLocaleTimeString([], {
+                      {new Date(pickupTimeBase + pickupTimeMinutes * 60000).toLocaleTimeString("en-US", {
+                        hour12: true,
                         hour: "numeric",
                         minute: "2-digit",
                       })}

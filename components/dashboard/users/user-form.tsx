@@ -1,7 +1,9 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useCallback, useMemo, useRef, useState, type ChangeEvent } from "react";
 
+import { PasswordStrengthMeter, PasswordSuggestion } from "@/components/auth/password-suggestion";
+import { UsernameField } from "@/components/auth/username-field";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/forms/password-input";
@@ -40,6 +42,23 @@ export function UserForm({ user }: { user?: User }) {
   const action = saveUserAction.bind(null, user?.id ?? null);
   const [state, formAction, pending] = useActionState(action, initial);
   const [role, setRole] = useState<Role>(user?.role ?? "customer");
+  const formRef = useRef<HTMLFormElement>(null);
+  // Mirrors of the name boxes (create only) — the username suggestion derives
+  // from them. The inputs stay uncontrolled; onChange only reads them out.
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  // Mirror of the password box for the strength meter only.
+  const [passwordValue, setPasswordValue] = useState("");
+
+  /** Same native-setter + input-event write the customer signup form uses, so
+      the uncontrolled box and useFormValidation both see the suggested value. */
+  const acceptPassword = useCallback((password: string) => {
+    const el = formRef.current?.elements.namedItem("password");
+    if (!(el instanceof HTMLInputElement)) return;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(el, password);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    setPasswordValue(password);
+  }, []);
 
   const RULES: FieldRules = useMemo(
     () => ({
@@ -67,7 +86,7 @@ export function UserForm({ user }: { user?: User }) {
   });
 
   return (
-    <form action={formAction} {...formProps} className="space-y-5">
+    <form ref={formRef} action={formAction} {...formProps} className="space-y-5">
       <Alert tone="error" message={state.error} />
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -95,25 +114,44 @@ export function UserForm({ user }: { user?: User }) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t("users.firstName")} required error={errors.first_name}>
-          <Input name="first_name" required aria-invalid={!!errors.first_name} defaultValue={user?.first_name} placeholder={t("users.firstName")} />
+          <Input
+            name="first_name"
+            required
+            aria-invalid={!!errors.first_name}
+            defaultValue={user?.first_name}
+            placeholder={t("users.firstName")}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setFirstName(e.target.value)}
+          />
         </Field>
         <Field label={t("users.lastName")} required error={errors.last_name}>
-          <Input name="last_name" required aria-invalid={!!errors.last_name} defaultValue={user?.last_name} placeholder={t("users.lastName")} />
+          <Input
+            name="last_name"
+            required
+            aria-invalid={!!errors.last_name}
+            defaultValue={user?.last_name}
+            placeholder={t("users.lastName")}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setLastName(e.target.value)}
+          />
         </Field>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t("users.username")} required hint={isEdit ? t("users.usernameHint") : undefined} error={errors.username}>
-          <Input
-            name="username"
-            required={!isEdit}
-            aria-invalid={!!errors.username}
-            defaultValue={user?.username}
-            disabled={isEdit}
-            autoComplete="off"
-            placeholder="username"
-          />
-        </Field>
+        {isEdit ? (
+          <Field label={t("users.username")} required hint={t("users.usernameHint")} error={errors.username}>
+            <Input
+              name="username"
+              aria-invalid={!!errors.username}
+              defaultValue={user?.username}
+              disabled
+              autoComplete="off"
+              placeholder="username"
+            />
+          </Field>
+        ) : (
+          // Suggested from the names above, still editable, and checked live
+          // against existing usernames (super-admin-only endpoint).
+          <UsernameField firstName={firstName} lastName={lastName} error={errors.username} checkAvailability />
+        )}
         <Field label={t("common.phone")} name="phone" hint={t("users.phoneHint")} error={errors.phone}>
           <Input name="phone" defaultValue={user?.phone} placeholder="01XXXXXXXXX" />
         </Field>
@@ -151,8 +189,18 @@ export function UserForm({ user }: { user?: User }) {
         hint={isEdit ? t("users.passwordEditHint") : t("users.passwordHint")}
         error={errors.password}
       >
-        <PasswordInput name="password" required={!isEdit} aria-invalid={!!errors.password} autoComplete="new-password" />
+        <PasswordInput
+          name="password"
+          required={!isEdit}
+          aria-invalid={!!errors.password}
+          autoComplete="new-password"
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setPasswordValue(e.target.value)}
+        />
+        <PasswordStrengthMeter value={passwordValue} />
       </Field>
+      {/* Create and edit alike: on edit the box is optional ("leave blank to keep
+          the current password"), and a suggestion simply fills it. */}
+      <PasswordSuggestion onAccept={acceptPassword} />
 
       {role === "rider" && !isEdit ? (
         <fieldset className="space-y-4 rounded-2xl border border-border-base p-4">

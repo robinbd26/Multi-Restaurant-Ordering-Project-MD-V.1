@@ -474,7 +474,10 @@ export async function placeOrderAction(
     revalidatePath("/customer/orders");
     return { error: null, orderId: order.id };
   } catch (err) {
-    return await errorState(err);
+    // The drawer has no per-field inputs, so a field-keyed rejection (pickup
+    // time too soon, branch closed, …) must reach it as the form-level message
+    // — otherwise every such failure collapsed into a generic "could not place".
+    return promoteFieldError(await errorState(err));
   }
 }
 

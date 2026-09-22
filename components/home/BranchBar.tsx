@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 
 import { BrowsingPicker, type BrowseBranchOption } from "@/components/home/BrowsingPicker";
+import { LocationConsentCard } from "@/components/home/LocationConsentCard";
 import { DeliverToPicker, type DeliverToAddress } from "@/components/home/DeliverToPicker";
 import { NearestPickupCallout } from "@/components/maps/nearest-pickup-callout";
 import { updateBrowseScope } from "@/lib/browse-scope/client";
@@ -13,7 +14,11 @@ import { useLocationRequest } from "@/lib/hooks/use-location-request";
 export interface BranchBarContext {
   state: "ok" | "no-location" | "out-of-zone";
   branchName: string | null;
+  /** The branch on screen (explicit or resolved nearest); null outside "ok". */
+  branchId: number | null;
   brandType: string | null;
+  /** "dine_in" | "cloud_kitchen" — a display badge only. */
+  businessType: string | null;
   distanceKm: number | null;
   deliveryFee: number | null;
   pickupEnabled: boolean;
@@ -111,6 +116,7 @@ export function BranchBar({
       />
       <BrowsingPicker
         branchId={context.selection.branchId}
+        activeBranchId={context.branchId}
         branches={branches}
         value={browsingValue}
       />
@@ -142,12 +148,20 @@ export function BranchBar({
                 {t(`brandType.${context.brandType}`)}
               </span>
             ) : null}
+            {context.businessType ? (
+              <span
+                className="rounded-full border border-white/10 bg-[#1c1c24] px-2.5 py-0.5 text-[0.72rem] font-semibold text-[#a0a0b0]"
+                data-testid="home-branch-business-type"
+              >
+                {t(`branches.businessType${context.businessType === "cloud_kitchen" ? "CloudKitchen" : "DineIn"}`)}
+              </span>
+            ) : null}
             {!context.open && context.opensAt ? (
               <span
                 className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[0.72rem] font-semibold text-amber-300"
                 data-testid="home-branch-closed"
               >
-                🕒 {t("nearestBranch.opensAt", { time: context.opensAt })}
+                🕒 {t("nearestBranch.opensAt", { time: fmt.clock(context.opensAt) })}
               </span>
             ) : null}
             {context.distanceKm != null ? (
@@ -216,6 +230,12 @@ export function BranchBar({
           </>
         ) : null}
       </div>
+
+      {/* No usable location yet: ask in our own words first. The native browser
+          prompt only fires after "Accept" (a page cannot force it, and a stored
+          denial can never be re-prompted), and a refusal falls back to the saved
+          address / "Deliver to" picker above. */}
+      {context.state === "no-location" ? <LocationConsentCard onAccept={request} busy={busy} /> : null}
 
       {/* The honest second line. A branch the customer chose to look at may not
           be able to deliver to them — that is the point of being allowed to look

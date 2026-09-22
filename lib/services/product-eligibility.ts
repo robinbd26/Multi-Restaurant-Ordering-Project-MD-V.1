@@ -32,11 +32,12 @@ const LIVE_BRANCH = {
 } satisfies Prisma.ProductWhereInput;
 
 /**
- * At least one ENABLED variation, so there is genuinely something to buy. A
- * product whose every size is disabled is priced but unpurchasable.
+ * Something must be genuinely buyable. Variations are OPTIONAL: a product with
+ * none is sold at its own base price. A product that HAS variations needs at
+ * least one enabled — if every size is disabled it is priced but unpurchasable.
  */
 const HAS_ENABLED_VARIATION = {
-  variations: { some: { isEnabled: true } },
+  OR: [{ variations: { none: {} } }, { variations: { some: { isEnabled: true } } }],
 } satisfies Prisma.ProductWhereInput;
 
 /**
@@ -178,7 +179,8 @@ export function isProductOrderable(product: CustomerProduct): boolean {
   if (product.deletedAt !== null) return false;
   if (!product.isAvailable || product.heldByAdmin) return false;
   if (!product.branch.isActive || product.branch.isArchived) return false;
-  if (!product.variations.some((v) => v.isEnabled)) return false;
+  // Optional variations: none at all is fine (base price); all-disabled is not.
+  if (product.variations.length > 0 && !product.variations.some((v) => v.isEnabled)) return false;
   if (!(PRODUCT_VARIATION_TYPES as readonly string[]).includes(product.variationType)) return false;
   if (product.category && !product.category.isActive) return false;
   if (!productCategoryScopeOk(product)) return false;

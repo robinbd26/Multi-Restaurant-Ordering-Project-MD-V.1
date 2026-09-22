@@ -11,7 +11,7 @@ import { saveBranchAction } from "@/lib/api/actions";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { LIMITS } from "@/lib/validation/limits";
 import {
-  afterTimeField,
+  differentTimeField,
   email as emailRule,
   max,
   min,
@@ -19,24 +19,30 @@ import {
   oneOf,
   phone,
   required,
+  selectRequired,
   time,
 } from "@/lib/validation/rules";
 import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-validation";
 import type { Branch } from "@/types";
 
 const BRAND_TYPES = ["cheez", "madchef", "combined"];
+const BUSINESS_TYPES = ["dine_in", "cloud_kitchen"];
 
 const RULES: FieldRules = {
   name: [required],
   phone: [required, phone],
   brand_type: [required, oneOf(BRAND_TYPES)],
+  business_type: [required, oneOf(BUSINESS_TYPES)],
+  zone_id: [selectRequired], // Zone / Area is mandatory — it seeds the delivery-areas helper
+  delivery_fee: [number, min(0)],
   address: [required],
   email: [emailRule],
   bkash_number: [phone],
   delivery_radius_km: [required, number, min(LIMITS.radiusMin), max(LIMITS.radiusMax)],
   opening_time: [time],
-  // Closing must come after opening — the message lands on the closing field.
-  closing_time: [time, afterTimeField("opening_time")],
+  // Overnight shifts are real (10:45 PM → 4:00 AM), so closing may be earlier
+  // than opening; it only may not equal it.
+  closing_time: [time, differentTimeField("opening_time")],
 };
 
 const FILES = { logo: false };
@@ -91,14 +97,31 @@ export function BranchForm({
             …). A location tag, not a coverage grant: it seeds the "Suggest
             areas for my branch" helper on the delivery-areas page and nothing
             else. Optional — a branch may have none. */}
-        <Field label={t("branches.zoneField")} name="zone_id" hint={t("branches.zoneFieldHint")}>
-          <Select name="zone_id" defaultValue={branch?.zone_id != null ? String(branch.zone_id) : ""}>
-            <option value="">{t("branches.zoneNone")}</option>
+        <Field label={t("branches.zoneField")} name="zone_id" required hint={t("branches.zoneFieldHint")} error={errors.zone_id}>
+          <Select name="zone_id" defaultValue={branch?.zone_id != null ? String(branch.zone_id) : ""} aria-invalid={!!errors.zone_id}>
+            <option value="">{t("branches.zoneSelect")}</option>
             {zones.map((z) => (
               <option key={z.id} value={z.id}>
                 {z.name}
               </option>
             ))}
+          </Select>
+        </Field>
+      </div>
+
+      {/* Display-only badge for customers — not an order type, and separate from
+          the Zone / Area tag above (which seeds the delivery-areas helper). */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label={t("branches.businessType")}
+          name="business_type"
+          required
+          hint={t("branches.businessTypeHint")}
+          error={errors.business_type}
+        >
+          <Select name="business_type" defaultValue={branch?.business_type ?? "dine_in"}>
+            <option value="dine_in">{t("branches.businessTypeDineIn")}</option>
+            <option value="cloud_kitchen">{t("branches.businessTypeCloudKitchen")}</option>
           </Select>
         </Field>
       </div>
@@ -136,6 +159,21 @@ export function BranchForm({
             min="0.5"
             aria-invalid={!!errors.delivery_radius_km}
             defaultValue={branch?.delivery_radius_km ?? "3.0"}
+          />
+        </Field>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {/* Branch-level delivery fee. Free (0) unless priced; a branch manager can
+            set it for their own branch, and the super admin can override it here. */}
+        <Field label={t("branches.deliveryFeeField")} hint={t("branches.deliveryFeeHint")} error={errors.delivery_fee}>
+          <Input
+            name="delivery_fee"
+            type="number"
+            step="0.01"
+            min="0"
+            aria-invalid={!!errors.delivery_fee}
+            defaultValue={branch?.delivery_fee ?? "0"}
           />
         </Field>
       </div>

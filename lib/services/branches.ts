@@ -153,6 +153,11 @@ function parseMoneyLike(raw: unknown, field: string, max: number, allowZero = tr
   return value;
 }
 
+/** A branch-level delivery fee from a form field: 0 – MAX_DELIVERY_FEE, at most 2dp. */
+export function parseBranchDeliveryFee(raw: unknown): number {
+  return parseMoneyLike(raw, "delivery_fee", MAX_DELIVERY_FEE, true);
+}
+
 /** Resolve which branch this actor may configure (IDOR-safe). */
 export async function resolveConfigurableBranch(user: User, submittedBranchId?: number) {
   if (user.role === "branch_manager") {

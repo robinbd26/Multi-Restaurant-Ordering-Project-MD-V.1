@@ -201,11 +201,24 @@ async function main() {
   }
   console.log(`✔ Upload fixtures: ${UPLOAD_FIXTURES.map((f) => f.username).join(", ")}`);
 
+  // Phase 2 — the MASTER zone / locality list, shared by every branch. Moved
+  // ahead of branch creation: Branch.zoneId is now a required relation, so a
+  // branch cannot be created before at least one zone exists. Additive and
+  // idempotent — see syncAreaMaster's own doc comment.
+  const master = await syncAreaMaster(prisma);
+  console.log("✔ Area master: " + master.zones + " zones, " + master.localities + " localities (" + master.created + " new)");
+  async function zoneIdByName(name: string): Promise<number> {
+    const zone = await prisma.deliveryZone.findFirst({ where: { name } });
+    if (!zone) throw new Error(`Seed zone "${name}" missing after syncAreaMaster — check AREA_MASTER.`);
+    return zone.id;
+  }
+  const gulshanZoneId = await zoneIdByName("Gulshan");
+
   // ── Branch ──────────────────────────────────────────────────────────
   let branch = await prisma.branch.findFirst({ where: { name: BRANCH_NAME } });
   branch = branch
-    ? await prisma.branch.update({ where: { id: branch.id }, data: { address: "Dhaka, Bangladesh", phone: "01000000000", email: "branch@example.com", isActive: true, brandType: "combined" } })
-    : await prisma.branch.create({ data: { name: BRANCH_NAME, address: "Dhaka, Bangladesh", phone: "01000000000", email: "branch@example.com", isActive: true, brandType: "combined" } });
+    ? await prisma.branch.update({ where: { id: branch.id }, data: { address: "Dhaka, Bangladesh", phone: "01000000000", email: "branch@example.com", isActive: true, brandType: "combined", zoneId: gulshanZoneId } })
+    : await prisma.branch.create({ data: { name: BRANCH_NAME, address: "Dhaka, Bangladesh", phone: "01000000000", email: "branch@example.com", isActive: true, brandType: "combined", zoneId: gulshanZoneId } });
   console.log(`✔ Branch: ${branch.name} (${branch.brandType})`);
 
   // ── Assign branch manager (history-preserving, idempotent) ─────────
@@ -269,11 +282,11 @@ async function main() {
   // ── Brand-scoped demo branches (single-brand: CHEEZ-only, MADCHEF-only) ──
   const brandBranches = [
     {
-      name: "Cheez Gulshan", brand: "cheez", category: "Signature Pizzas",
+      name: "Cheez Gulshan", brand: "cheez", zoneName: "Gulshan", category: "Signature Pizzas",
       product: { name: "Pepperoni Pizza", description: "Loaded pepperoni.", variations: [{ name: "Medium", price: "650.00", isDefault: true }, { name: "Large", price: "850.00" }] },
     },
     {
-      name: "Madchef Dhanmondi", brand: "madchef", category: "Rice Bowls",
+      name: "Madchef Dhanmondi", brand: "madchef", zoneName: "Dhanmondi", category: "Rice Bowls",
       product: { name: "Beef Khichuri", description: "Comfort beef khichuri.", variations: [{ name: "Regular", price: "320.00", isDefault: true }, { name: "Family", price: "780.00" }] },
     },
   ];
@@ -282,9 +295,10 @@ async function main() {
     // Give brand branches coordinates + a wide radius so delivery is orderable
     // (delivery now mandates valid coords + server coverage).
     const geo = { latitude: new Prisma.Decimal("23.7800000"), longitude: new Prisma.Decimal("90.4050000"), deliveryRadiusKm: new Prisma.Decimal("8.0"), pickupEnabled: true };
+    const zoneId = await zoneIdByName(b.zoneName);
     const br = existingB
-      ? await prisma.branch.update({ where: { id: existingB.id }, data: { brandType: b.brand, isActive: true, ...geo } })
-      : await prisma.branch.create({ data: { name: b.name, address: "Dhaka, Bangladesh", phone: "01000000000", email: "branch@example.com", isActive: true, brandType: b.brand, ...geo } });
+      ? await prisma.branch.update({ where: { id: existingB.id }, data: { brandType: b.brand, isActive: true, zoneId, ...geo } })
+      : await prisma.branch.create({ data: { name: b.name, address: "Dhaka, Bangladesh", phone: "01000000000", email: "branch@example.com", isActive: true, brandType: b.brand, zoneId, ...geo } });
     const existingCat = await prisma.category.findFirst({ where: { branchId: br.id, name: b.category } });
     const cat = existingCat ?? (await prisma.category.create({ data: { branchId: br.id, name: b.category, normalizedName: b.category.trim().toLowerCase(), description: b.category } }));
     const defPrice = b.product.variations.find((v) => v.isDefault)?.price ?? b.product.variations[0].price;
@@ -317,12 +331,6 @@ async function main() {
       data: { branchId: branch.id, name: zoneName, centerLat: new Prisma.Decimal("23.7925000"), centerLng: new Prisma.Decimal("90.4078000"), radiusKm: new Prisma.Decimal("2.5"), deliveryFee: new Prisma.Decimal("40.00") },
     });
   }
-  // Phase 2 — the MASTER zone / locality list, shared by every branch. Additive
-  // and idempotent: it creates what is missing and never renames or deletes, so a
-  // super admin edit always outlives a later seed run.
-  const master = await syncAreaMaster(prisma);
-  console.log("✔ Area master: " + master.zones + " zones, " + master.localities + " localities (" + master.created + " new)");
-
   // Named delivery areas for the Main Branch (req #1/#6): one normal, one with a
   // higher charge/estimate, and one HELD (blocks new delivery orders) so the
   // checkout area selector + held-area block can be exercised end-to-end.

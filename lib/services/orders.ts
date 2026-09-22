@@ -26,6 +26,7 @@ import { coverageForAddress, type AddressCoverage } from "@/lib/services/address
 import { platformFeeFor } from "@/lib/services/settings";
 import { haversineKm } from "@/lib/services/geo";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
+import { formatClock } from "@/lib/i18n/format";
 import { isFullClosureWindow, isPastNightLastOrder } from "@/lib/services/coverage-window";
 import { isReceiveConfirmed } from "@/lib/services/rider-duty";
 import { nextOrderNumber } from "@/lib/services/order-number";
@@ -259,6 +260,13 @@ function deliveryChargeFor(
  * here, so a held branch is refused ONCE, server-side, for all of them — the
  * dashboard control is a convenience, never the enforcement.
  */
+/** "Closed, opens at 10:45 PM" when the branch has an opening time to name. */
+function branchClosedMessage(opensAt: string | null): string {
+  return opensAt
+    ? sk("errors.orders.branchClosedOpensAt", { time: formatClock(opensAt) })
+    : sk("errors.orders.branchClosed");
+}
+
 async function resolveBranchForCart(input: {
   branchId: number;
   productIds: number[];
@@ -297,7 +305,8 @@ async function resolveBranchForCart(input: {
     // rather than only on the delivery path.
     if (picked.isOnHold) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
     // A branch outside its opening hours cannot take a pickup order either (§17).
-    if (!isBranchOpenNow(picked).orderable) throw validationError({ branch_id: sk("errors.orders.branchClosed") });
+    const pickedHours = isBranchOpenNow(picked);
+    if (!pickedHours.orderable) throw validationError({ branch_id: branchClosedMessage(pickedHours.opensAt) });
     if (!picked.pickupEnabled) throw validationError({ fulfillment_type: sk("errors.orders.pickupUnavailable") });
     return { branch: picked, lat: null, lng: null, coverage: null };
   }
@@ -326,8 +335,9 @@ async function resolveBranchForCart(input: {
   // A manager's hold is a deliberate, current decision, so it is reported ahead
   // of the hours gate — the same order the previous resolver used.
   if (branch.isOnHold) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
-  if (!isBranchOpenNow(branch).orderable) {
-    throw validationError({ branch_id: sk("errors.orders.branchClosed") });
+  const branchHours = isBranchOpenNow(branch);
+  if (!branchHours.orderable) {
+    throw validationError({ branch_id: branchClosedMessage(branchHours.opensAt) });
   }
   // PHASE 3 — the night shift accepts its last delivery order at 03:45, so the
   // ride can finish by 04:00. Pickup has no ride and is governed by hours alone.

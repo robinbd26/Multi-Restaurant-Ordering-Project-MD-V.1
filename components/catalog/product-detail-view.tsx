@@ -145,6 +145,7 @@ export async function ProductDetailView({
         </Card>
       </div>
 
+      {product.variations.length > 0 ? (
       <Card>
         <CardContent>
           <h2 className="mb-3 text-sm font-semibold text-fg-base">{t("catalog.variations")}</h2>
@@ -178,6 +179,7 @@ export async function ProductDetailView({
           </Table>
         </CardContent>
       </Card>
+      ) : null}
     </DashboardPage>
   );
 }

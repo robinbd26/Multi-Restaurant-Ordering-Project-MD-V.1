@@ -242,6 +242,7 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
     { href: "/admin/notices", label: "nav.notices", icon: "megaphone" , group: "navGroup.insights" },
     { href: "/admin/complaints", label: "nav.complaints", icon: "inbox" , group: "navGroup.customers" },
     { href: "/admin/notifications", label: "nav.notifications", icon: "bell" , group: "navGroup.system" },
+    { href: "/admin/settings/platform-fee", label: "platformFee.title", icon: "money" , group: "navGroup.system" },
     { href: "/admin/settings", label: "nav.settings", icon: "lock" , group: "navGroup.system" },
   ],
   management: [
@@ -303,6 +304,8 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
     { href: "/branch-manager/coupons", label: "nav.coupons", icon: "money" , group: "navGroup.orders" },
     { href: "/branch-manager/riders", label: "nav.riders", icon: "bike" , group: "navGroup.delivery" },
     { href: "/branch-manager/delivery-zone", label: "nav.deliveryZone", icon: "pin" , group: "navGroup.delivery" },
+    { href: "/branch-manager/delivery-areas", label: "nav.deliveryAreas", icon: "bike" , group: "navGroup.delivery" },
+    { href: "/branch-manager/delivery-hours", label: "nav.deliveryHours", icon: "clock" , group: "navGroup.delivery" },
     { href: "/branch-manager/tables", label: "nav.tables", icon: "grid" , group: "navGroup.delivery" },
     { href: "/branch-manager/table-reservations", label: "nav.reservations", icon: "grid" , group: "navGroup.delivery" },
     { href: "/branch-manager/ramadan-bookings", label: "nav.ramadan", icon: "store" , group: "navGroup.delivery" },

@@ -450,12 +450,16 @@ function money(value: unknown, field: string): Prisma.Decimal {
 
 /**
  * Parse a variations payload (JSON string or array) into a validated,
- * normalized list. Enforces: ≥1 variation, ≥1 enabled, unique names, valid
- * prices, exactly one default (auto-selected among enabled when unset).
+ * normalized list. Variations are OPTIONAL: an absent/empty payload yields an
+ * empty list, meaning the product is sold at its own base price. When any are
+ * supplied it enforces: ≥1 enabled, unique names, valid prices, exactly one
+ * default (auto-selected among enabled when unset).
  */
 export function normalizeVariations(raw: unknown): NormalizedVariation[] {
   let list: VariationInput[];
-  if (typeof raw === "string") {
+  if (raw === undefined || raw === null || (typeof raw === "string" && raw.trim() === "")) {
+    return [];
+  } else if (typeof raw === "string") {
     try {
       list = JSON.parse(raw) as VariationInput[];
     } catch {
@@ -464,12 +468,11 @@ export function normalizeVariations(raw: unknown): NormalizedVariation[] {
   } else if (Array.isArray(raw)) {
     list = raw as VariationInput[];
   } else {
-    throw validationError({ variations: sk("errors.catalog.variationsRequired") });
+    throw validationError({ variations: sk("errors.catalog.variationsInvalid") });
   }
 
-  if (!Array.isArray(list) || list.length === 0) {
-    throw validationError({ variations: sk("errors.catalog.variationsRequired") });
-  }
+  if (!Array.isArray(list)) throw validationError({ variations: sk("errors.catalog.variationsInvalid") });
+  if (list.length === 0) return [];
 
   const seen = new Set<string>();
   // Row-level problems are keyed by their STRUCTURED PATH (`variations.0.price`)
@@ -532,7 +535,13 @@ export interface ProductWriteInput {
   isRecommended?: boolean;
   /** req #4 — crust policy: "THICK" | "THIN" | "BOTH" (stable internal values). */
   variationType?: string;
-  variations: VariationInput[] | string;
+  /** Optional. Empty/absent = the product is sold at `price` directly. */
+  variations?: VariationInput[] | string;
+  /**
+   * The product's own price. REQUIRED when there are no variations; ignored when
+   * there are (the default variation's price is then the base price).
+   */
+  price?: number | string | null;
 }
 
 
@@ -560,6 +569,14 @@ function resolveVariationType(value: unknown, fallback = PRODUCT_VARIATION_TYPE_
   return raw;
 }
 
+/** The base price of a product that has no variations — required, non-negative. */
+function ownPrice(value: unknown): Prisma.Decimal {
+  if (value === undefined || value === null || (typeof value === "string" && value.trim() === "")) {
+    throw validationError({ price: sk("errors.catalog.validPriceRequired") });
+  }
+  return money(value, "price");
+}
+
 export async function createProduct(user: User, input: ProductWriteInput): Promise<Product> {
   const branch = await resolveCatalogBranch(user, input.branchId);
   const name = input.name.trim();
@@ -571,7 +588,11 @@ export async function createProduct(user: User, input: ProductWriteInput): Promi
   // serve every brand).
   if (input.categoryId != null) await assertCategoryUsableInBranch(input.categoryId, branch.id, brand);
 
-  const basePrice = variations.find((v) => v.isDefault)?.price ?? variations[0].price;
+  // No variations → the product's own price is used directly; with variations,
+  // price lives on them and Product.price mirrors the default one.
+  const basePrice = variations.length
+    ? (variations.find((v) => v.isDefault)?.price ?? variations[0].price)
+    : ownPrice(input.price);
 
   return prisma.$transaction(async (tx) => {
     const product = await tx.product.create({
@@ -580,7 +601,7 @@ export async function createProduct(user: User, input: ProductWriteInput): Promi
         name,
         description: input.description ?? "",
         brand,
-        price: basePrice, // legacy/base mirror of the default variation
+        price: basePrice, // the product's own price, or the default variation's mirror
         discount: new Prisma.Decimal((input.discount ?? 0).toFixed(2)),
         isAvailable: input.isAvailable ?? true,
         preparationTime: input.preparationTime ?? 20,
@@ -618,12 +639,13 @@ export async function createProduct(user: User, input: ProductWriteInput): Promi
  * Update a product's scalar fields and (optionally) replace its variation set.
  * When `variations` is provided, existing variations are reconciled: rows with
  * a matching id are updated, unknown ids are created, and omitted ids are
- * deleted — all inside one transaction so the ≥1-enabled invariant holds.
+ * deleted — all inside one transaction so the ≥1-enabled invariant holds. An
+ * EMPTY set removes them all and the product reverts to its own `price`.
  */
 export async function updateProduct(
   user: User,
   productId: number,
-  input: Partial<ProductWriteInput> & { variations?: VariationInput[] | string },
+  input: Partial<ProductWriteInput>,
 ): Promise<Product> {
   const existing = await productForManage(user, productId);
   const branch = await prisma.branch.findUniqueOrThrow({ where: { id: existing.branchId } });
@@ -662,7 +684,13 @@ export async function updateProduct(
   const variations = input.variations !== undefined ? normalizeVariations(input.variations) : null;
 
   return prisma.$transaction(async (tx) => {
-    if (variations) {
+    if (variations && variations.length === 0) {
+      // Variations switched off: the product is now sold at its own price.
+      await tx.productVariation.deleteMany({ where: { productId } });
+      if (input.price !== undefined && input.price !== null && String(input.price).trim() !== "") {
+        data.price = ownPrice(input.price);
+      }
+    } else if (variations) {
       const current = await tx.productVariation.findMany({ where: { productId } });
       const keepIds = new Set(variations.filter((v) => v.id).map((v) => v.id!));
       const toDelete = current.filter((c) => !keepIds.has(c.id)).map((c) => c.id);
@@ -689,6 +717,11 @@ export async function updateProduct(
       }
       const base = variations.find((v) => v.isDefault)?.price ?? variations[0].price;
       data.price = base;
+    } else if (input.price !== undefined && input.price !== null && String(input.price).trim() !== "") {
+      // No variation payload: honour a price edit only while the product has no
+      // variations of its own — otherwise the default variation owns the price.
+      const count = await tx.productVariation.count({ where: { productId } });
+      if (count === 0) data.price = ownPrice(input.price);
     }
     return tx.product.update({
       where: { id: productId },
@@ -734,8 +767,8 @@ export async function setVariationEnabled(user: User, variationId: number, enabl
 export async function deleteVariation(user: User, variationId: number) {
   const variation = await variationForManage(user, variationId);
   return prisma.$transaction(async (tx) => {
-    const total = await tx.productVariation.count({ where: { productId: variation.productId } });
-    if (total <= 1) throw validationError({ variations: sk("errors.catalog.variationLastCannotDelete") });
+    // Variations are optional: deleting the last one leaves a product sold at
+    // its own price (Product.price already mirrors the default variation).
     await tx.productVariation.delete({ where: { id: variationId } });
     await ensureDefault(tx, variation.productId);
   }).then(() => {

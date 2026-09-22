@@ -25,10 +25,14 @@ export interface BrowseBranchOption {
  */
 export function BrowsingPicker({
   branchId,
+  activeBranchId = null,
   branches,
   value,
 }: {
+  /** The branch the customer explicitly chose; null = "my nearest". */
   branchId: number | null;
+  /** The branch whose menu is on screen now (explicit or resolved nearest). */
+  activeBranchId?: number | null;
   branches: BrowseBranchOption[];
   value: string;
 }) {
@@ -63,6 +67,7 @@ export function BrowsingPicker({
             <RadioRow
               key={b.id}
               checked={branchId === b.id}
+              current={(activeBranchId ?? branchId) === b.id}
               testId={`browse-branch-${b.id}`}
               title={b.name}
               subtitle={t(`brandType.${b.brandType}`)}
