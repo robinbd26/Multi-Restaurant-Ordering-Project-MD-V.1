@@ -152,35 +152,38 @@ model CustomerAddress {
   label        String // Home | Office | Second Home | Others
   customLabel  String   @default("") // free-text label when label == "Others" (req #17)
   address      String
-  area         String   @default("") // delivery area / locality (req #17)
-  // Exact map location + structured reverse-geocode parts (location v3).
-  // The coordinates are the AUTHORITATIVE delivery point; the text fields are
-  // the best human-readable address the server could resolve for it.
-  latitude     Decimal?
-  longitude    Decimal?
+  area         String   @default("") // area / neighbourhood text (display only)
+  // THE delivery point. REQUIRED: coverage is decided from this pin and nothing
+  // else, so an address without one cannot be delivered to and must never be
+  // saved. Every text field on this row — including `area` and the structured
+  // parts below — is for humans to read and for the rider to find the door; none
+  // of them is ever matched against anything to decide coverage.
+  latitude     Decimal
+  longitude    Decimal
   city         String   @default("") // locality / city from reverse geocoding
   postalCode   String   @default("") // postal code when the provider supplies one
   country      String   @default("") // country name ("Bangladesh", "বাংলাদেশ")
   instructions String   @default("") // optional delivery instructions
-  // Structured address fields (location v4 — compact area/road/flat picker).
-  // These build the `address` text automatically; they are also stored
-  // individually so an address can be re-edited with its original parts.
-  mainArea     String   @default("") // Banani | Gulshan | Dhanmondi | ...
-  subArea      String   @default("") // selected sub-area (e.g. "All Over Banani")
-  customArea   String   @default("") // manually entered area when "__custom__" chosen
-  roadLane     String   @default("") // Road 1 .. Road 100
-  customRoad   String   @default("") // manually entered road/lane
+  // The parts the customer types so the rider can find the door. Free text now:
+  // mainArea/subArea used to be dropdowns fed by the master locality list, and
+  // the pair was matched against branch coverage rows. The list is gone and the
+  // pin decides coverage, so these are prefilled from reverse geocoding and
+  // freely editable — a customer whose block nobody has ever catalogued can
+  // simply write it.
+  mainArea     String   @default("") // area / neighbourhood ("Banani")
+  subArea      String   @default("") // finer area text, when the customer gives one
+  customArea   String   @default("") // legacy: manually entered area (kept for old rows)
+  roadLane     String   @default("") // road / lane
+  customRoad   String   @default("") // legacy: manually entered road (kept for old rows)
   housePlot    String   @default("") // house / plot number
-  flatNumber   String   @default("") // flat / apartment
+  flatNumber   String   @default("") // floor / flat
   landmark     String   @default("") // specific landmark
-  // Google Maps / reverse-geocoded address text for the SELECTED PIN. Kept
-  // separate from `address` (the manual/structured full address) so a map
-  // pick is never lost when the customer also fills Area/Road/House etc.
+  // Reverse-geocoded address text for the SELECTED PIN. Kept separate from
+  // `address` (the manual/structured full address) so a map pick is never lost
+  // when the customer also fills Road/House etc.
   mapAddress   String   @default("") // e.g. "House 25, Road 11, Banani, Dhaka"
-  // Google's stable identifier for that place ("" when unavailable). Captured
-  // at pick time and carried through the save flow so the exact location can
-  // be re-opened on Google Maps without re-geocoding.
-  placeId      String   @default("") // e.g. "ChIJ0V1o4VWFTjERU93xZ8vCTBE"
+  // The geocoding provider's place code for that pin ("" when unavailable).
+  placeId      String   @default("")
   isDefault    Boolean  @default(false)
   isActive     Boolean  @default(true) // req #17 — soft-deactivate instead of losing history
   createdAt    DateTime @default(now())
@@ -707,6 +710,11 @@ model Branch {
   // a branch can no longer be deleted out from under it.
   zoneId            Int
   zone              DeliveryZone @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  // The MAXIMUM distance this branch may ever cover, set by the super admin. It
+  // is a ceiling, not coverage: no delivery area's shape may extend past this
+  // circle around the branch pin, and it is the radius the drawing editor starts
+  // a new area's circle from. Being inside it grants nothing on its own — only a
+  // drawn area covers.
   deliveryRadiusKm  Decimal   @default(3.0)
   // PHASE 11 — branch-level delivery fee applied when the order is inside the
   // branch radius and no named delivery area supplies its own charge. Decimal
@@ -760,6 +768,27 @@ model Branch {
   // All columns are additive + defaulted, so existing rows migrate untouched
   // (an existing branch is simply not on a manager hold).
   isOnHold          Boolean   @default(false)
+  // ── BRANCH-MANAGER DELIVERY PAUSE ─────────────────────────────────────
+  // A THIRD, narrower state, deliberately separate from both holds above:
+  //   isActive       — super admin's operational hold (whole branch)
+  //   isOnHold       — branch manager stops ALL new orders (delivery AND pickup)
+  //   deliveryPause* — branch manager stops DELIVERY ONLY; PICKUP STAYS OPEN,
+  //                    because "our riders are swamped" is not "we are closed".
+  //
+  // It EXPIRES BY ITSELF rather than needing a scheduled job: a pause carries the
+  // instant it runs out, and every read compares that to now (see
+  // lib/services/branch-pause.ts). A row therefore cannot get stuck paused
+  // because a worker died — the worst case is a pause that ends on time with
+  // nobody having touched the database.
+  //
+  // mode: "" = not paused | "30m" | "1h" | "shift" | "until_resumed".
+  // deliveryPausedUntil is NULL only for "until_resumed" (no end until a human
+  // ends it). All columns are additive + defaulted, so existing rows migrate
+  // untouched as "not paused".
+  deliveryPauseMode    String    @default("")
+  deliveryPausedUntil  DateTime?
+  deliveryPausedAt     DateTime?
+  deliveryPausedById   Int?
   holdStartedAt     DateTime?
   // Raw actor ids (no relation), matching archivedById above.
   holdStartedById   Int?
@@ -793,7 +822,6 @@ model Branch {
   tableReservations    TableReservation[]
   ramadanTables        RamadanTable[]
   ramadanBookings      RamadanBooking[]
-  deliveryZones        BranchDeliveryZone[]
   deliveryAreas        BranchDeliveryArea[]
   rewardRules          RewardEarningRule[]        @relation("BranchRewardRules")
   employeeTeams        EmployeeTeam[]             @relation("BranchEmployeeTeams")
@@ -809,104 +837,80 @@ model Branch {
   coupons              Coupon[]                   @relation("BranchCoupons")
 }
 
-// ── B1: Delivery zones (circular coverage areas) ────────────────────────
-// Each zone is a named circle (center + radius). An address is "covered" when
-// it falls inside the branch's primary radius OR any active zone. Distances are
-// computed server-side with the Haversine formula — never trusted from clients.
-model BranchDeliveryZone {
-  id          Int      @id @default(autoincrement())
-  branchId    Int
-  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  name        String
-  centerLat   Decimal
-  centerLng   Decimal
-  radiusKm    Decimal
-  deliveryFee Decimal  @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([branchId])
-}
-
-// ── req #1: Named delivery areas (Dhanmondi, Mirpur, …) ──────────────────
-// The AUTHORITATIVE delivery-area model: a named administrative area a branch
-// delivers to, carrying its own hold state, estimated delivery time, and
-// delivery charge. Complements BranchDeliveryZone (coordinate coverage circles
-// used for radius checks) rather than duplicating it — an area optionally
-// carries a centroid (centerLat/Lng) for distance, but a name-only area is
-// valid. New delivery orders snapshot the selected area's name/charge/time onto
-// the order so later edits never change existing orders. Held areas block only
-// NEW delivery orders. Duplicate normalized names per branch are prevented by
-// the unique index.
+// ── Delivery areas: a SHAPE a branch delivers inside ─────────────────────
+// THE coverage model. A delivery area is a shape the branch manager drew on a
+// map, plus the terms of delivering inside it (charge, ETA, shift, hold state).
+//
+// COVERAGE IS GEOMETRY, AND ONLY GEOMETRY. A customer's pin is deliverable by
+// this branch when it falls inside this shape, the row is active, and the row
+// applies to the shift running now. Nothing matches on names any more: the
+// previous system compared a customer's typed area name against a seeded master
+// list, which can never be complete for Dhaka (a customer standing outside the
+// Banani branch was told "not deliverable" because their block was not on the
+// list). `name` is now just a label an operator reads ("Core", "Eskaton side").
+//
+// `shape` is JSON, in one of two forms (see lib/coverage/shape.ts):
+//   {"type":"Polygon","coordinates":[[[lng,lat],…]]}  — GeoJSON, one closed ring
+//   {"type":"Circle","coordinates":[lng,lat],"radiusKm":2.5}  — an extension;
+//     GeoJSON has no circle, and a circle the operator drew as a circle must
+//     stay an exact circle rather than degrade into an n-gon.
+// Coordinate order is [lng, lat] in BOTH, as GeoJSON requires.
+//
+// NULL shape = not drawn yet: the row covers NOTHING and the UI asks for a
+// shape. Every row that existed before this column was added is in that state,
+// because the old rows carried only a name (and at most a centroid, never a
+// boundary) — there was no honest way to invent a shape for them.
+//
+// New delivery orders snapshot the chosen area's name/charge/time onto the
+// order, so an area can be edited or deleted outright without ever rewriting
+// an existing order. Held areas block only NEW delivery orders (pickup stays).
 model BranchDeliveryArea {
-  id                       Int               @id @default(autoincrement())
+  id                       Int      @id @default(autoincrement())
   branchId                 Int
-  branch                   Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branch                   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  // A label for operators, NOT a matching key. Duplicates are allowed on
+  // purpose: two shapes may legitimately both be called "Core" (day and night,
+  // or two disjoint pockets), and uniqueness only ever served name matching.
   name                     String
-  normalizedName           String            @default("")
-  isActive                 Boolean           @default(true)
-  isHeld                   Boolean           @default(false) // hold blocks NEW delivery orders only
-  holdReason               String            @default("")
-  estimatedDeliveryMinutes Int               @default(45)
-  deliveryCharge           Decimal           @default(0)
-  centerLat                Decimal? // optional centroid for distance/coverage
-  centerLng                Decimal?
-  // Phase 2 — the master locality this coverage row stands for. Null on legacy
-  // free-text rows a branch manager typed before the master list existed.
-  localityId               Int?
-  locality                 DeliveryLocality? @relation(fields: [localityId], references: [id], onDelete: SetNull)
+  // The drawn boundary. Null = nothing drawn yet → covers nothing.
+  shape                    String?
+  isActive                 Boolean  @default(true)
+  isHeld                   Boolean  @default(false) // hold → pickup only for this area
+  holdReason               String   @default("")
+  estimatedDeliveryMinutes Int      @default(45)
+  deliveryCharge           Decimal  @default(0)
   // Which shift this row applies to: "day" | "night" | "both" (COVERAGE_WINDOWS).
   // "both" is the safe default, so every row that existed before this field keeps
   // covering around the clock exactly as it did.
-  coverageWindow           String            @default("both")
+  coverageWindow           String   @default("both")
   updatedById              Int? // audit: who last changed it (app-level SetNull)
-  createdAt                DateTime          @default(now())
-  updatedAt                DateTime          @updatedAt
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
   orders Order[] @relation("OrderDeliveryArea")
 
-  // A branch may cover the same locality in BOTH windows with different charges,
-  // so the window is part of the key — otherwise the night list could never
-  // repeat a day locality.
-  @@unique([branchId, normalizedName, coverageWindow])
   @@index([branchId])
-  @@index([localityId])
 }
 
-// ── Phase 2 · MASTER zone / locality list (super admin owned) ─────────────
-// The places that exist, named once for the whole platform. Coverage is NOT
-// decided here: a branch ticks the localities it delivers to (BranchDeliveryArea),
-// per time window. Customer addresses point at a locality by name, which is what
-// lets coverage be answered without a map pin on every address.
+// ── MASTER zone list (super admin owned) ─────────────────────────────────
+// Zones (Gulshan, Banani, Dhanmondi …) are a REQUIRED GROUPING TAG on a branch,
+// used for filtering and reports. They are NOT coverage: a zone never decides
+// whether an address can be delivered to — only a branch's drawn shapes do.
+//
+// The finer DeliveryLocality list that used to hang off each zone (Sector-5,
+// Nikonjo-1 …) is gone. It existed only to match customer-typed area names
+// against branch coverage rows, which is the system the map shapes replace.
 model DeliveryZone {
-  id             Int                @id @default(autoincrement())
+  id             Int      @id @default(autoincrement())
   name           String
-  normalizedName String             @unique
-  isActive       Boolean            @default(true)
-  // Display order in the address form; ties break by name.
-  sortOrder      Int                @default(0)
-  localities     DeliveryLocality[]
-  // ITEM 7 — branches whose location TAG points at this zone.
+  normalizedName String   @unique
+  isActive       Boolean  @default(true)
+  // Display order in pickers; ties break by name.
+  sortOrder      Int      @default(0)
+  // Branches whose location TAG points at this zone.
   branches       Branch[]
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-}
-
-model DeliveryLocality {
-  id             Int                  @id @default(autoincrement())
-  zoneId         Int
-  zone           DeliveryZone         @relation(fields: [zoneId], references: [id], onDelete: Cascade)
-  name           String
-  normalizedName String
-  isActive       Boolean              @default(true)
-  sortOrder      Int                  @default(0)
-  coverage       BranchDeliveryArea[]
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-
-  @@unique([zoneId, normalizedName])
-  @@index([zoneId])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 // ── req #6/#13: Rider order-assignment offer + response ──────────────────
