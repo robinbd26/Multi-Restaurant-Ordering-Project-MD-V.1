@@ -277,12 +277,6 @@ async function resolveBranchForCart(input: {
   customerId?: number;
   /** A saved address of theirs; its own coordinates and locality win. */
   customerAddressId?: number | null;
-  /**
-   * ITEM 8 — a ONE-TIME address for this order only, never saved to the
-   * address book. Read ONLY when customerAddressId is absent.
-   */
-  oneTimeMainArea?: string | null;
-  oneTimeSubArea?: string | null;
 }): Promise<{
   branch: Awaited<ReturnType<typeof servingBranchForCart>>;
   lat: number | null;
@@ -310,23 +304,25 @@ async function resolveBranchForCart(input: {
     if (!picked.pickupEnabled) throw validationError({ fulfillment_type: sk("errors.orders.pickupUnavailable") });
     return { branch: picked, lat: null, lng: null, coverage: null };
   }
-  // PHASE 3 — decided against the cart's own branch through the SAME coverage
-  // function the checkout screen shows live, so the screen and the server can
-  // never disagree. Coverage is geometry OR the branch's locality list for the
-  // shift running now; an address with no map pin can therefore still be
-  // delivered to, by name. The client's branch_id is never trusted for this.
+  // Decided against the cart's own branch through the SAME coverage function
+  // the checkout screen shows live, so the screen and the server can never
+  // disagree. Coverage is the customer's PIN inside one of this branch's drawn
+  // areas, on the shift running now. The client's branch_id is never trusted.
   const branch = await servingBranchForCart(input.productIds);
   const coverage = await coverageForAddress(branch, {
     customerId: input.customerId ?? 0,
     customerAddressId: input.customerAddressId ?? null,
     lat: input.lat ?? null,
     lng: input.lng ?? null,
-    mainArea: input.oneTimeMainArea ?? null,
-    subArea: input.oneTimeSubArea ?? null,
   });
   if (!coverage.covered) {
     if (coverage.reason === "no_location") {
       throw validationError({ delivery_address: sk("errors.orders.locationRequired") });
+    }
+    // Inside a held area, or this branch paused delivery: pickup is still on
+    // offer, so it gets its own message rather than a flat "out of area".
+    if (coverage.pickupOnly) {
+      throw validationError({ delivery_address: sk("errors.orders.areaOnHoldPickupOnly") });
     }
     // Measured, and outside. Delivery is simply not offered from this branch —
     // no other branch is substituted, because the cart belongs to this one.
@@ -353,22 +349,6 @@ async function resolveBranchForCart(input: {
 }
 
 /**
- * Which delivery area prices this order. An explicitly chosen area wins (it is
- * validated against the branch and the point by resolveOrderDeliveryArea);
- * otherwise, when coverage was granted BY NAME, the branch's own row for that
- * locality supplies the charge and the estimate — that row is the branch's
- * declared price for delivering there on this shift.
- */
-function deliveryAreaIdFor(
-  requested: number | null | undefined,
-  coverage: AddressCoverage | null,
-): number | null {
-  if (requested != null) return requested;
-  if (coverage?.via === "locality" && coverage.localityRow) return coverage.localityRow.areaId;
-  return null;
-}
-
-/**
  * req #6 — a server-derived quote for the checkout summary. Uses the SAME branch,
  * area, product-availability and pricing rules as createOrder, but persists
  * nothing. Everything shown to the customer (subtotal, delivery charge, prep time,
@@ -385,12 +365,8 @@ export async function quoteOrder(input: {
   deliveryAreaId?: number | null;
   /** Pins a delivery quote to the customer's own resolved branch. */
   customerId?: number;
-  /** The saved address being checked out to, so a pinless address can quote. */
+  /** The saved address being checked out to; its own pin wins over lat/lng. */
   customerAddressId?: number | null;
-  /** ITEM 8 — a one-time address for this order only; read only when
-   *  customerAddressId is absent. */
-  oneTimeMainArea?: string | null;
-  oneTimeSubArea?: string | null;
 }) {
   const fulfillmentType = input.fulfillmentType === "pickup" ? "pickup" : "delivery";
   const productIds = input.items.map((i) => i.product_id);
@@ -402,12 +378,14 @@ export async function quoteOrder(input: {
     lng: input.lng,
     customerId: input.customerId,
     customerAddressId: input.customerAddressId ?? null,
-    oneTimeMainArea: input.oneTimeMainArea ?? null,
-    oneTimeSubArea: input.oneTimeSubArea ?? null,
   });
-  const area = fulfillmentType === "delivery"
-    ? await resolveOrderDeliveryArea(branch.id, deliveryAreaIdFor(input.deliveryAreaId, coverage))
-    : null;
+  // The area is whatever the branch's shapes resolve the delivery POINT to —
+  // never what the client asked for. A stale id from a map the manager has since
+  // re-drawn is refused rather than silently billed.
+  const area =
+    fulfillmentType === "delivery"
+      ? await resolveOrderDeliveryArea(branch.id, coverage?.point ?? null, input.deliveryAreaId)
+      : null;
 
   const products = await prisma.product.findMany({
     where: orderableProductWhere(branch.id, productIds),
@@ -510,13 +488,6 @@ export async function createOrder(input: {
   deliveryAreaId?: number | null; // #1/#13 — selected named delivery area
   /** WS-4.2 — a saved address the customer picked; its stored coordinates win. */
   customerAddressId?: number | null;
-  /**
-   * ITEM 8 — a ONE-TIME address for this order only, never saved to the
-   * address book. Read ONLY when customerAddressId is absent; coverage
-   * matches it by name exactly like a pinless saved address.
-   */
-  oneTimeMainArea?: string | null;
-  oneTimeSubArea?: string | null;
   /** WS-4.2 — the picker's claim about the coordinate. A hint, never trusted. */
   coordSourceHint?: string | null;
   /** PHASE R — one key per checkout attempt; a retry with the same key
@@ -584,8 +555,6 @@ export async function createOrder(input: {
     fulfillmentType,
     customerId: input.customerId,
     customerAddressId: input.customerAddressId ?? null,
-    oneTimeMainArea: input.oneTimeMainArea ?? null,
-    oneTimeSubArea: input.oneTimeSubArea ?? null,
   });
   const branch = resolved.branch;
   const deliveryLat = resolved.lat != null ? new Prisma.Decimal(resolved.lat.toFixed(7)) : null;
@@ -612,9 +581,10 @@ export async function createOrder(input: {
   // #1/#13 — resolve the selected delivery area (delivery only). A held/inactive
   // area or one from another branch is rejected here; its name/charge/estimate
   // are snapshotted IMMUTABLY onto the order so later area edits never change it.
-  const area = fulfillmentType === "delivery"
-    ? await resolveOrderDeliveryArea(branch.id, deliveryAreaIdFor(input.deliveryAreaId, resolved.coverage))
-    : null;
+  const area =
+    fulfillmentType === "delivery"
+      ? await resolveOrderDeliveryArea(branch.id, resolved.coverage?.point ?? null, input.deliveryAreaId)
+      : null;
   // PHASE 11 — the delivery charge is SERVER-derived: a named area supplies its
   // own charge; otherwise the branch-level delivery fee applies. Pickup is free.
   // WS-1.5 — same exact-Decimal helper the quote uses; never a float fee.
@@ -669,10 +639,7 @@ export async function createOrder(input: {
         // WS-4.2 — how much the server can vouch for that coordinate, and the
         // saved address it came from when there was one. Written once, with the
         // order, so a later fee dispute can be traced back to its provenance.
-        // A pinless address covered BY NAME has no coordinate to vouch for, but
-        // the destination is still a verified row the customer owns.
-        deliveryCoordSource:
-          coordinate?.source ?? (resolved.coverage?.via === "locality" ? "saved_address" : ""),
+        deliveryCoordSource: coordinate?.source ?? "",
         customerAddressId: coordinate?.customerAddressId ?? resolved.coverage?.customerAddressId ?? null,
         prepTimeSnapshot,
         deliveryAreaId: area?.id ?? null,
