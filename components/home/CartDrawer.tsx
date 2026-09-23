@@ -8,12 +8,6 @@ import { placeOrderAction } from "@/lib/api/actions";
 import { CUSTOMER_PAYMENT_METHODS, paymentMethodDef } from "@/lib/constants";
 import { PICKUP_MIN_LEAD_MINUTES } from "@/lib/constants/orders";
 import {
-  CUSTOM_VALUE,
-  MAIN_AREA_NAMES,
-  subAreasFor,
-} from "@/lib/constants/area-data";
-import type { AddressZoneOption } from "@/components/customer/address-manager";
-import {
   labelForNickname,
   nicknameDisplay,
   type NicknameKind,
@@ -126,14 +120,11 @@ export function CartDrawer({
   signedIn = false,
   customerName = null,
   customerPhone = null,
-  zones = [],
   platformClosed = false,
 }: {
   signedIn?: boolean;
   customerName?: string | null;
   customerPhone?: string | null;
-  /** The master zone list; the add-address form offers these names only. */
-  zones?: AddressZoneOption[];
   /**
    * ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery and
    * pickup alike, at every branch. Computed server-side (app/page.tsx) once
@@ -173,10 +164,9 @@ export function CartDrawer({
   const [locationName, setLocationName] = useState("");
   // Live coverage per saved address, keyed by address id (see AddressCoverageState).
   const [coverage, setCoverage] = useState<Record<number, AddressCoverageState>>({});
+  // Free text, prefilled from the pin's reverse geocode. It is what the rider
+  // reads; coverage is decided by the pin alone.
   const [mainArea, setMainArea] = useState("");
-  const [customMain, setCustomMain] = useState("");
-  const [subArea, setSubArea] = useState("");
-  const [customSubArea, setCustomSubArea] = useState("");
   const [road, setRoad] = useState("");
   const [house, setHouse] = useState("");
   const [flat, setFlat] = useState("");
@@ -187,17 +177,17 @@ export function CartDrawer({
   const [mapPoint, setMapPoint] = useState<PickedPoint | null>(null);
   // ITEM 8 — a one-time address for THIS order only: coverage-checked exactly
   // like a saved address, but never sent to /api/customer/addresses, so it
-  // never touches the 5-address cap and leaves no row behind. mainArea/subArea
-  // are matched against the master list the same way a pinless saved address
-  // is (lib/services/address-coverage.ts); `address` is the composed display
-  // text sent as the order's own delivery_address.
+  // never touches the 5-address cap and leaves no row behind.
+  //
+  // It carries a PIN, because that is what coverage is decided from. The area
+  // and road text below it is what the rider reads, and is sent as the order's
+  // own delivery_address — it decides nothing.
   const [showOneTimeForm, setShowOneTimeForm] = useState(false);
-  const [oneTimeAddress, setOneTimeAddress] = useState<{ mainArea: string; subArea: string; address: string } | null>(
+  const [oneTimeAddress, setOneTimeAddress] = useState<{ lat: string; lng: string; address: string } | null>(
     null,
   );
-  const [oneTimeMainAreaInput, setOneTimeMainAreaInput] = useState("");
-  const [oneTimeSubAreaInput, setOneTimeSubAreaInput] = useState("");
-  const [oneTimeCustomSubInput, setOneTimeCustomSubInput] = useState("");
+  const [oneTimePoint, setOneTimePoint] = useState<PickedPoint | null>(null);
+  const [oneTimeAreaInput, setOneTimeAreaInput] = useState("");
   const [oneTimeRoad, setOneTimeRoad] = useState("");
   const [oneTimeHouse, setOneTimeHouse] = useState("");
   const [oneTimeFlat, setOneTimeFlat] = useState("");
@@ -251,13 +241,6 @@ export function CartDrawer({
     [addresses, addressId],
   );
 
-  // The master list from the database; the bundled constant only as a fallback.
-  const mainAreaOptions = zones.length > 0 ? zones.map((z) => z.name) : MAIN_AREA_NAMES;
-  const subAreaOptions = (main: string): string[] =>
-    zones.length > 0
-      ? (zones.find((z) => z.name === main)?.localities.map((l) => l.name) ?? [])
-      : subAreasFor(main);
-
   // PHASE 3 — check every saved address against the cart's branch whenever the
   // address step is showing. Re-run on each visit and whenever the list or the
   // branch changes, so a stale answer from another shift is never shown.
@@ -289,19 +272,19 @@ export function CartDrawer({
     };
   }, [view, cartBranchId, addresses]);
 
-  // ITEM 8 — the SAME live check, for the one-time address: matched by name
-  // against the master list exactly like a pinless saved address, never by id.
+  // ITEM 8 — the SAME live check, for the one-time address: by PIN, exactly
+  // like a saved address, never by name.
   useEffect(() => {
     if (view !== "address" || cartBranchId == null || !oneTimeAddress) return;
     let alive = true;
-    const key = `${oneTimeAddress.mainArea}|${oneTimeAddress.subArea}`;
+    const key = `${oneTimeAddress.lat}|${oneTimeAddress.lng}`;
     fetch("/api/delivery/address-coverage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         branch_id: cartBranchId,
-        main_area: oneTimeAddress.mainArea,
-        sub_area: oneTimeAddress.subArea,
+        lat: Number(oneTimeAddress.lat),
+        lng: Number(oneTimeAddress.lng),
       }),
     })
       .then(async (res) => {
@@ -325,7 +308,7 @@ export function CartDrawer({
   // No answer yet for THIS address (or a stale answer for a previous one) reads
   // as "checking" — mirrors `addressCoverage()`'s default just below.
   const oneTimeCoverage: AddressCoverageState | null = oneTimeAddress
-    ? oneTimeAddress.mainArea + "|" + oneTimeAddress.subArea === oneTimeCoverageAnswer?.key
+    ? oneTimeAddress.lat + "|" + oneTimeAddress.lng === oneTimeCoverageAnswer?.key
       ? oneTimeCoverageAnswer.state
       : { status: "checking", pickupEnabled: false }
     : null;
@@ -538,24 +521,18 @@ export function CartDrawer({
   }
 
   /**
-   * Compact add-address form → POST /api/customer/addresses. Same Area →
-   * sub-area model as the address book: a custom main area ("+ Add your Own")
-   * disables the sub-area select and stores custom_area instead; a custom
-   * SUB-area ("+ Add your Own" within a real main area) stores its own text
-   * the same way.
+   * Compact add-address form → POST /api/customer/addresses.
+   *
+   * THE PIN IS REQUIRED. Coverage is decided from it and from nothing else, so
+   * an address saved without one could never be delivered to — the server
+   * refuses it too. The area/road text is what the rider reads.
    */
   async function submitNewAddress() {
-    const isCustomMain = mainArea === CUSTOM_VALUE;
-    const isCustomSub = !isCustomMain && subArea === CUSTOM_VALUE;
-    const areaName = isCustomMain ? customMain.trim() : mainArea.trim();
-    if (!areaName) {
-      setAddressError(isCustomMain ? t("home.order.errCustomAreaRequired") : t("home.order.errAreaRequired"));
+    if (!mapPoint || !mapPoint.lat || !mapPoint.lng) {
+      setAddressError(t("addresses.pinRequired"));
       return;
     }
-    if (isCustomSub && !customSubArea.trim()) {
-      setAddressError(t("home.order.errCustomAreaRequired"));
-      return;
-    }
+    const areaName = mainArea.trim() || mapPoint.area || "";
     if (nickname === "custom" && !locationName.trim()) {
       setAddressError(t("home.order.errCustomLabelRequired"));
       return;
@@ -572,9 +549,10 @@ export function CartDrawer({
       if (house.trim()) parts.push(`House/Plot ${house.trim()}`);
       if (flat.trim()) parts.push(`Flat ${flat.trim()}`);
       if (road.trim()) parts.push(road.trim());
-      if (isCustomSub && customSubArea.trim()) parts.push(customSubArea.trim());
-      else if (!isCustomMain && subArea.trim()) parts.push(subArea.trim());
-      parts.push(areaName, "Dhaka");
+      if (areaName) parts.push(areaName);
+      // Never save a blank address line: fall back to whatever the pin resolved.
+      if (parts.length === 0 && mapPoint.address) parts.push(mapPoint.address);
+      parts.push("Dhaka");
       const res = await fetch("/api/customer/addresses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -583,11 +561,12 @@ export function CartDrawer({
           custom_label: nickname === "custom" ? locationName.trim() : "",
           address: parts.join(", "),
           main_area: areaName,
-          ...(isCustomMain
-            ? { custom_area: areaName }
-            : isCustomSub
-              ? { sub_area: "", custom_area: customSubArea.trim() }
-              : { sub_area: subArea.trim() }),
+          sub_area: "",
+          // The pin the customer placed — the one field checkout will price from.
+          latitude: Number(mapPoint.lat),
+          longitude: Number(mapPoint.lng),
+          map_address: mapPoint.address,
+          place_id: mapPoint.placeId,
           road_lane: road.trim(),
           house_plot: house.trim(),
           flat_number: flat.trim(),
@@ -640,14 +619,14 @@ export function CartDrawer({
               items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty })),
             }
           : oneTimeAddress
-            ? // ITEM 8 — a one-time address for this order: matched by name, the
-              // same way a pinless saved address is; nothing to save, nothing to
-              // send an id for.
+            ? // ITEM 8 — a one-time address for this order: judged from its
+              // pin, the same way a saved address is; nothing to save, nothing
+              // to send an id for.
               {
                 branch_id: cartBranchId,
                 fulfillment_type: "delivery",
-                main_area: oneTimeAddress.mainArea,
-                sub_area: oneTimeAddress.subArea,
+                lat: Number(oneTimeAddress.lat),
+                lng: Number(oneTimeAddress.lng),
                 items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty })),
               }
             : (() => {
@@ -843,8 +822,8 @@ export function CartDrawer({
                 delivery_address: oneTimeAddress.address,
                 food_notes: "",
                 fulfillment_type: "delivery" as const,
-                main_area: oneTimeAddress.mainArea,
-                sub_area: oneTimeAddress.subArea,
+                lat: Number(oneTimeAddress.lat),
+                lng: Number(oneTimeAddress.lng),
                 coord_source: "one_time_address",
                 items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
               }
@@ -1335,64 +1314,30 @@ export function CartDrawer({
                       aria-label={t("addresses.nicknameCustomField")}
                     />
                   ) : null}
-                  <select
-                    value={mainArea}
-                    onChange={(e) => {
-                      setMainArea(e.target.value);
-                      setSubArea("");
-                      setCustomMain("");
-                      setCustomSubArea("");
+                  {/* THE PIN — what coverage is decided from. The area text
+                      below is prefilled from it and is the rider's, not a gate. */}
+                  <MapPicker
+                    label={t("mapPicker.addressTitle")}
+                    hint={t("mapPicker.addressHint")}
+                    lat={mapPoint?.lat ?? ""}
+                    lng={mapPoint?.lng ?? ""}
+                    onChange={(point) => {
+                      setMapPoint(point);
+                      if (point.area && !mainArea) setMainArea(point.area);
                     }}
-                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
-                    aria-label={t("addresses.selectYourArea")}
-                  >
-                    <option value="">{t("addresses.selectYourArea")}</option>
-                    {mainAreaOptions.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                  {mainArea === CUSTOM_VALUE ? (
-                    <input
-                      value={customMain}
-                      onChange={(e) => setCustomMain(e.target.value)}
-                      placeholder={t("addresses.enterYourAreaNamePlaceholder")}
-                      maxLength={80}
-                      className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
-                      aria-label={t("addresses.enterYourAreaName")}
-                    />
-                  ) : mainArea ? (
-                    <>
-                      <select
-                        value={subArea}
-                        onChange={(e) => {
-                          setSubArea(e.target.value);
-                          setCustomSubArea("");
-                        }}
-                        className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
-                        aria-label={t("addresses.selectYourAreaName")}
-                      >
-                        <option value="">{t("addresses.selectYourAreaName")}</option>
-                        {subAreaOptions(mainArea).map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                        <option value={CUSTOM_VALUE}>{t("addresses.addYourOwn")}</option>
-                      </select>
-                      {subArea === CUSTOM_VALUE ? (
-                        <input
-                          value={customSubArea}
-                          onChange={(e) => setCustomSubArea(e.target.value)}
-                          placeholder={t("addresses.enterAreaName")}
-                          maxLength={80}
-                          className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
-                          aria-label={t("addresses.enterAreaName")}
-                        />
-                      ) : null}
-                    </>
-                  ) : null}
+                    persistGps
+                    defaultOpen
+                    testId="drawer-add-address-map"
+                  />
+                  <input
+                    value={mainArea}
+                    onChange={(e) => setMainArea(e.target.value)}
+                    placeholder={t("addresses.areaPlaceholder")}
+                    maxLength={80}
+                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                    aria-label={t("addresses.areaField")}
+                    data-testid="drawer-add-area"
+                  />
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       value={road}
@@ -1461,68 +1406,40 @@ export function CartDrawer({
                   </div>
                 </div>
               ) : showOneTimeForm ? (
-                /* ITEM 8 — the one-time address form: the SAME master-list
-                    area/sub-area model as the saved-address form (no custom
-                    main area — that is what coverage matches on), minus the
-                    nickname field, since nothing here is ever saved. Confirm
-                    sets local state only; no fetch, no address-book row, no
-                    5-address cap. */
+                /* ITEM 8 — the one-time address form. A PIN plus the text the
+                    rider needs; nothing here is ever saved, so there is no
+                    nickname field and no 5-address cap. Confirm sets local
+                    state only — no fetch, no address-book row. */
                 <div
                   className="space-y-2 rounded-[10px] border border-white/10 bg-surface-dark p-3"
                   data-testid="drawer-one-time-address-form"
                 >
                   <p className="text-[0.8rem] font-bold text-white">{t("home.order.useOneTimeAddress")}</p>
                   <p className="text-[0.7rem] text-[#a0a0b0]">{t("home.order.oneTimeAddressNotice")}</p>
-                  <select
-                    value={oneTimeMainAreaInput}
-                    onChange={(e) => {
-                      setOneTimeMainAreaInput(e.target.value);
-                      setOneTimeSubAreaInput("");
-                      setOneTimeCustomSubInput("");
+                  <MapPicker
+                    label={t("mapPicker.deliveryTitle")}
+                    hint={t("mapPicker.deliveryHint")}
+                    lat={oneTimePoint?.lat ?? ""}
+                    lng={oneTimePoint?.lng ?? ""}
+                    onChange={(point) => {
+                      setOneTimePoint(point);
+                      // The reverse-geocoded area is a starting point the
+                      // customer can correct; it is display text either way.
+                      if (point.area && !oneTimeAreaInput) setOneTimeAreaInput(point.area);
                     }}
-                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
-                    aria-label={t("addresses.selectYourArea")}
-                    data-testid="drawer-one-time-main-area"
-                  >
-                    <option value="">{t("addresses.selectYourArea")}</option>
-                    {mainAreaOptions.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                  {oneTimeMainAreaInput ? (
-                    <>
-                      <select
-                        value={oneTimeSubAreaInput}
-                        onChange={(e) => {
-                          setOneTimeSubAreaInput(e.target.value);
-                          setOneTimeCustomSubInput("");
-                        }}
-                        className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white"
-                        aria-label={t("addresses.selectYourAreaName")}
-                        data-testid="drawer-one-time-sub-area"
-                      >
-                        <option value="">{t("addresses.selectYourAreaName")}</option>
-                        {subAreaOptions(oneTimeMainAreaInput).map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                        <option value={CUSTOM_VALUE}>{t("addresses.addYourOwn")}</option>
-                      </select>
-                      {oneTimeSubAreaInput === CUSTOM_VALUE ? (
-                        <input
-                          value={oneTimeCustomSubInput}
-                          onChange={(e) => setOneTimeCustomSubInput(e.target.value)}
-                          placeholder={t("addresses.enterAreaName")}
-                          maxLength={80}
-                          className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
-                          aria-label={t("addresses.enterAreaName")}
-                        />
-                      ) : null}
-                    </>
-                  ) : null}
+                    persistGps
+                    defaultOpen
+                    testId="drawer-one-time-map"
+                  />
+                  <input
+                    value={oneTimeAreaInput}
+                    onChange={(e) => setOneTimeAreaInput(e.target.value)}
+                    placeholder={t("addresses.areaPlaceholder")}
+                    maxLength={80}
+                    className="h-9 w-full rounded-lg border border-white/10 bg-[#23232e] px-2 text-[0.78rem] text-white placeholder:text-white/30"
+                    aria-label={t("addresses.areaField")}
+                    data-testid="drawer-one-time-area"
+                  />
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       value={oneTimeRoad}
@@ -1574,25 +1491,23 @@ export function CartDrawer({
                       type="button"
                       data-testid="drawer-confirm-one-time-address"
                       onClick={() => {
-                        const isCustomSub = oneTimeSubAreaInput === CUSTOM_VALUE;
-                        if (!oneTimeMainAreaInput) {
-                          setAddressError(t("home.order.errAreaRequired"));
+                        // THE PIN is the requirement: it is what coverage reads.
+                        if (!oneTimePoint || !oneTimePoint.lat || !oneTimePoint.lng) {
+                          setAddressError(t("addresses.pinRequired"));
                           return;
                         }
-                        if (isCustomSub && !oneTimeCustomSubInput.trim()) {
-                          setAddressError(t("home.order.errCustomAreaRequired"));
-                          return;
-                        }
-                        const subAreaText = isCustomSub ? oneTimeCustomSubInput.trim() : oneTimeSubAreaInput.trim();
                         const parts: string[] = [];
                         if (oneTimeHouse.trim()) parts.push(`House/Plot ${oneTimeHouse.trim()}`);
                         if (oneTimeFlat.trim()) parts.push(`Flat ${oneTimeFlat.trim()}`);
                         if (oneTimeRoad.trim()) parts.push(oneTimeRoad.trim());
-                        if (subAreaText) parts.push(subAreaText);
-                        parts.push(oneTimeMainAreaInput, "Dhaka");
+                        if (oneTimeAreaInput.trim()) parts.push(oneTimeAreaInput.trim());
+                        // Fall back to whatever the pin reverse-geocoded to, so
+                        // the rider always has something to read.
+                        if (parts.length === 0 && oneTimePoint.address) parts.push(oneTimePoint.address);
+                        parts.push("Dhaka");
                         setOneTimeAddress({
-                          mainArea: oneTimeMainAreaInput,
-                          subArea: subAreaText,
+                          lat: oneTimePoint.lat,
+                          lng: oneTimePoint.lng,
                           address: parts.join(", "),
                         });
                         // ITEM 8 — the one-time address IS the selection now;

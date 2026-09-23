@@ -1799,7 +1799,8 @@
       "branchOnHold": "This branch has paused taking new orders. Please try again shortly.",
       "outsideDeliveryArea": "This branch does not deliver to that address. Self-pickup is still available.",
       "nightLastOrderPassed": "Night delivery takes its last order at 3:45 AM. Self-pickup is still available while the branch is open.",
-      "platformClosed": "We are closed right now. Delivery and self-pickup both reopen at 11:00 AM — you can still browse and build your cart."
+      "platformClosed": "We are closed right now. Delivery and self-pickup both reopen at 11:00 AM — you can still browse and build your cart.",
+      "areaOnHoldPickupOnly": "Delivery to this location is paused right now. You can still place a self-pickup order."
     },
     "catalog": {
       "onlyAssignedManagerCanModifyCatalog": "Only the assigned branch manager can modify the catalog.",
@@ -1956,7 +1957,8 @@
       "segmentNotFound": "Segment not found.",
       "maxAddressesReached": "You can save a maximum of 5 delivery addresses.",
       "couponWrongBranch": "This coupon is not valid at this branch.",
-      "couponScopeForbidden": "You can only manage coupons for your own branch."
+      "couponScopeForbidden": "You can only manage coupons for your own branch.",
+      "mapPinRequired": "Pick the delivery location on the map before saving this address."
     },
     "rider": {
       "selectBranch": "Select a branch to go on duty.",
@@ -2024,7 +2026,10 @@
       "pointNotCovered": "This location is outside every delivery area for this branch.",
       "notForPoint": "The selected area does not cover this location. Choose the area your address falls in.",
       "invalidWindow": "Choose a valid delivery shift.",
-      "localityNotFound": "That area is not on the master list."
+      "localityNotFound": "That area is not on the master list.",
+      "invalidShape": "Draw a valid delivery area on the map.",
+      "branchHasNoLocation": "Set the branch location on the map first — a delivery area is measured from it.",
+      "outsideBranchRadius": "This area reaches {reach} km from the branch, past its {max} km limit. Draw it smaller, or ask a super admin to raise the branch's delivery radius."
     },
     "branchSettings": {
       "invalidNumber": "Enter a valid number.",
@@ -2109,6 +2114,9 @@
       "duplicate": "That name is already on the list.",
       "notFound": "That zone or area no longer exists.",
       "invalidActive": "Choose a valid status."
+    },
+    "branchPause": {
+      "invalidMode": "Choose how long to pause delivery ({modes})."
     }
   },
   "states": {
@@ -2634,7 +2642,7 @@
     "errLabel": "Enter a label",
     "errAddress": "Enter the address",
     "customLabelPlaceholder": "Custom label (e.g. Grandma’s house)",
-    "areaField": "Delivery area",
+    "areaField": "Area",
     "instructionsField": "Delivery instructions",
     "latField": "Latitude (optional)",
     "lngField": "Longitude (optional)",
@@ -2708,7 +2716,15 @@
     "nicknameCustom": "Custom",
     "nicknameCustomField": "Custom name",
     "nicknameCustomPlaceholder": "e.g. Mom's House",
-    "selectMasterArea": "Pick your area from the list"
+    "selectMasterArea": "Pick your area from the list",
+    "areaPlaceholder": "e.g. Banani",
+    "subAreaField": "Block / sub-area (optional)",
+    "subAreaPlaceholder": "e.g. Block C",
+    "pinRequired": "Set the delivery location on the map first.",
+    "coverageChecking": "Checking whether we deliver here…",
+    "coverageCovered": "{branch} delivers here.",
+    "coveragePickupOnly": "Delivery here is paused right now. Self-pickup from {branch} is still available.",
+    "coverageNotCovered": "No branch delivers to this spot yet. You can still save it and order self-pickup."
   },
   "rewards": {
     "title": "Reward Coins",
@@ -3457,7 +3473,15 @@
     "enableAlert": "Enable sound alert",
     "alertOn": "Alert on",
     "alertMuted": "Alert muted",
-    "errPartyOverCapacity": "This table seats at most {n} guests"
+    "errPartyOverCapacity": "This table seats at most {n} guests",
+    "coverageFactsTitle": "Coverage basics",
+    "coverageFactsHint": "The branch pin and the maximum radius are set by the super admin. Where you deliver inside that limit is up to you — draw it on the Delivery Areas page.",
+    "branchPin": "Branch location",
+    "branchPinMissing": "Not set — ask a super admin",
+    "maxRadius": "Maximum coverage",
+    "drawnAreas": "Areas drawn",
+    "noDrawnAreas": "None — you deliver nowhere yet",
+    "manageAreas": "Manage delivery areas"
   },
   "riderLoc": {
     "nowOnline": "You are now online",
@@ -3848,7 +3872,35 @@
     "suggestAllCovered": "Every area in your zone is already covered.",
     "suggestSave": "Save selected areas",
     "suggestSaved": "{count} area(s) saved.",
-    "suggestNoneSelected": "Select at least one area to save."
+    "suggestNoneSelected": "Select at least one area to save.",
+    "shapeLabel": "Delivery area on the map",
+    "shapeHint": "This shape is what decides delivery: a customer whose pin falls inside it can order from this branch.",
+    "startFromCircle": "Start from a circle",
+    "reshape": "Reshape by points",
+    "drawFromScratch": "Draw from scratch",
+    "radiusLabel": "Radius",
+    "circleHint": "Drag the slider to size the circle. Tap “Reshape by points” to bend it around a road or a river.",
+    "polygonHint": "Tap the map to add points. Drag a point to move it; double-tap a point to remove it.",
+    "nothingDrawn": "Nothing drawn yet — this area covers nobody until you draw it.",
+    "withinLimit": "Reaches {reach} km from the branch (limit {max} km).",
+    "overLimit": "Reaches {reach} km — past the branch limit of {max} km. Make it smaller to save.",
+    "branchPinMissing": "This branch has no map location yet. A super admin must set the branch pin before areas can be drawn around it.",
+    "notDrawn": "No shape drawn",
+    "drawn": "Drawn on the map",
+    "coverageMapTitle": "Coverage map",
+    "overviewMapTitle": "All branches and their coverage",
+    "showCoverageMap": "Show map",
+    "undrawnWarning": "{count} area(s) have no shape drawn, so they cover nobody. Open each one and draw it on the map.",
+    "pinlessBranches": "No map location set for: {names}. These branches cannot deliver anywhere until a super admin sets their pin.",
+    "noAreasYet": "No delivery areas yet. Add one and draw it on the map.",
+    "legendActive": "Delivering",
+    "legendHeld": "On hold (pickup only)",
+    "legendInactive": "Inactive",
+    "pickBranchFirst": "Pick the branch this area belongs to — the shape is drawn around its pin.",
+    "noBranchPin": "No map pin",
+    "confirmDeleteTitle": "Delete “{name}”?",
+    "confirmDeleteDescription": "The shape is removed and this branch stops delivering there. Orders already placed keep their own saved address, charge and delivery time, so nothing in your order history changes.",
+    "deleted": "Delivery area “{name}” deleted."
   },
   "assignment": {
     "newOrderTitle": "New order assigned",
@@ -4305,7 +4357,12 @@
     "reactivate": "Reactivate",
     "deactivateTitle": "Deactivate {name}?",
     "deactivateBody": "Customers stop seeing it when saving an address, and branches stop covering it. Existing addresses and orders keep their saved text.",
-    "masterHint": "Editing here is the authority: a later reseed never renames or removes what you change."
+    "masterHint": "Editing here is the authority: a later reseed never renames or removes what you change.",
+    "notCoverageHint": "Zones group branches for filters and reports. They do not decide delivery — that is each branch's drawn delivery areas.",
+    "branchesUsing": "Branches",
+    "confirmDeactivateZone": "Deactivate “{name}”?",
+    "deactivateZoneDescription": "It stops being offered when creating or editing a branch. Nothing about delivery changes.",
+    "deactivateZoneInUse": "{count} branch(es) are tagged with this zone. They keep their tag; the zone just stops being offered for new branches."
   },
   "platformFee": {
     "title": "Platform Fee",
@@ -4325,5 +4382,22 @@
   },
   "orderMap": {
     "openInGoogleMaps": "Open in Google Maps"
+  },
+  "branchPause": {
+    "title": "Pause delivery",
+    "subtitle": "Stop new delivery orders for a while. Self-pickup stays open.",
+    "hint": "Use this when riders are backed up. Pick how long — it turns itself back on.",
+    "running": "Delivering",
+    "paused": "Delivery paused",
+    "pausedUntil": "Delivery resumes automatically at {time}.",
+    "pausedIndefinitely": "Delivery stays paused until you resume it.",
+    "pickupStillOpen": "Customers can still place self-pickup orders.",
+    "resumeNow": "Resume delivery now",
+    "mode": {
+      "30m": "30 minutes",
+      "1h": "1 hour",
+      "shift": "Rest of this shift",
+      "until_resumed": "Until I resume"
+    }
   }
 }

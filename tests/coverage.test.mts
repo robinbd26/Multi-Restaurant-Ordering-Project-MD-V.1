@@ -10,13 +10,13 @@ import {
   shapeReachKm,
   shapeWithinRadius,
   type CoverageShape,
-} from "../lib/coverage/shape.ts";
+} from "@/lib/coverage/shape";
 import {
   coverageForBranch,
   rankBranchesForPoint,
   type CoverageAreaInput,
-} from "../lib/coverage/resolve.ts";
-import { isDeliveryPaused, pauseEndsAt } from "../lib/coverage/pause.ts";
+} from "@/lib/coverage/resolve";
+import { isDeliveryPaused, pauseEndsAt } from "@/lib/coverage/pause";
 
 /**
  * Focused tests for the rule that decides whether a customer can be delivered
@@ -37,7 +37,9 @@ const DHANMONDI = { lat: 23.7461, lng: 90.376 };
 const UTTARA = { lat: 23.8759, lng: 90.3795 };
 
 /** An area row with sensible defaults, so each test states only what it means. */
-function area(over: Partial<CoverageAreaInput> & { id: number; shape: CoverageShape | null }): CoverageAreaInput {
+function area(
+  over: Omit<Partial<CoverageAreaInput>, "shape"> & { id: number; shape: CoverageShape | null },
+): CoverageAreaInput {
   return {
     isActive: true,
     isHeld: false,

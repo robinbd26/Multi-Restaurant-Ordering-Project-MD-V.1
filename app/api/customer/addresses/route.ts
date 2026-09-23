@@ -69,15 +69,18 @@ export const POST = handle(async (req: Request) => {
   if (body.landmark) validateRequired(body.landmark, "landmark", { max: 200 });
   if (body.map_address) validateRequired(body.map_address, "map_address", { max: LIMITS.longTextMax });
   if (body.place_id) validateRequired(body.place_id, "place_id", { max: 255 });
-  let latitude: Prisma.Decimal | null = null;
-  let longitude: Prisma.Decimal | null = null;
-  if (body.latitude != null && body.longitude != null) {
-    if (!isValidLatLng(body.latitude, body.longitude)) {
-      throw validationError({ latitude: sk("errors.orders.invalidCoordinates") });
-    }
-    latitude = new Prisma.Decimal(Number(body.latitude).toFixed(7));
-    longitude = new Prisma.Decimal(Number(body.longitude).toFixed(7));
+  // THE PIN IS MANDATORY. Coverage is decided from these coordinates and from
+  // nothing else, so an address saved without them could never be delivered to —
+  // which is precisely the trap the old name-matching flow let customers fall
+  // into. The form always sends a pin; this is the server-side guarantee.
+  if (body.latitude == null || body.longitude == null) {
+    throw validationError({ latitude: sk("errors.ops.mapPinRequired") });
   }
+  if (!isValidLatLng(body.latitude, body.longitude)) {
+    throw validationError({ latitude: sk("errors.orders.invalidCoordinates") });
+  }
+  const latitude = new Prisma.Decimal(Number(body.latitude).toFixed(7));
+  const longitude = new Prisma.Decimal(Number(body.longitude).toFixed(7));
 
   const activeCount = await prisma.customerAddress.count({ where: { userId: me.id, isActive: true } });
   // Task 3 — hard cap: a customer account saves at most LIMITS.maxSavedAddresses
