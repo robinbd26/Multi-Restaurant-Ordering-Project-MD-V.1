@@ -100,7 +100,7 @@ echo   You can sign in with the username, the email, or a phone number.
 echo.
 echo   OPTIONAL - the app runs fully without these, each one degrades
 echo   gracefully. Add them to .env.local only when you want them live:
-echo     NEXT_PUBLIC_GOOGLE_MAPS_API_KEY   real maps instead of the picker fallback
+echo     BARIKOI_API_KEY                   address search + pin lookup (maps work without it)
 echo     BKASH_APP_KEY / SECRET / ...      live bKash instead of record-and-verify
 echo     VAPID_PUBLIC_KEY / PRIVATE_KEY    phone push instead of in-app only
 echo     SMS_PROVIDER / SMS_API_KEY        real OTP SMS instead of dev codes

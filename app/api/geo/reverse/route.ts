@@ -3,7 +3,8 @@ import { rateLimit } from "@/lib/auth/rate-limit";
 import { ApiError, handle, sk, validationError } from "@/lib/http/errors";
 import { json } from "@/lib/http/respond";
 import { getLocale } from "@/lib/i18n/server";
-import { coordinateOrNaN, geocodingAvailable, isValidLatLng, reverseGeocode } from "@/lib/services/geo";
+import { coordinateOrNaN, isValidLatLng } from "@/lib/services/geo";
+import { geocodingAvailable, reverseGeocode } from "@/lib/services/geocoding";
 
 // POST /api/geo/reverse  { lat, lng } — WS-4.1 dropped pin → readable address.
 //
@@ -24,5 +25,5 @@ export const POST = handle(async (req: Request) => {
 
   const locale = await getLocale();
   const place = await reverseGeocode({ lat, lng }, { locale });
-  return json({ result: place, demo: !geocodingAvailable() });
+  return json({ result: place, available: geocodingAvailable() });
 });
