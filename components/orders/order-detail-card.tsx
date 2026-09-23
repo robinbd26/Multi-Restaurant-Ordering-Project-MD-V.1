@@ -1,5 +1,6 @@
 import Image from "next/image";
 
+import { OrderLocationMap } from "@/components/maps/order-location-map";
 import { OrderStatusBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { getT } from "@/lib/i18n/server";
@@ -184,6 +185,16 @@ export async function OrderDetailCard({ order, children }: { order: Order; child
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{t("common.address")}</p>
               <p className="mt-1 text-fg-base">{order.delivery_address}</p>
+              {/* Where it is actually going. The typed address can be vague;
+                  the pin is what the order was priced and admitted from, and
+                  the link hands it straight to a navigation app. Renders
+                  nothing for pickup orders and for rows saved before pins. */}
+              <OrderLocationMap
+                className="mt-2"
+                lat={order.delivery_lat}
+                lng={order.delivery_lng}
+                testId="order-delivery-map"
+              />
             </div>
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{t("orders.payment")}</p>
