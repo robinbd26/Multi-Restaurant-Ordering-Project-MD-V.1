@@ -15,6 +15,7 @@
     "db:reset": "prisma migrate reset",
     "db:test:deploy": "node scripts/ensure-test-db.mjs && node scripts/with-test-db.mjs npx prisma migrate deploy",
     "seed:test": "node scripts/with-test-db.mjs --seed npm run seed",
+    "test:unit": "node --import tsx --test tests/*.test.mts",
     "test:e2e:prepare": "npm run db:test:deploy && npm run seed:test",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
