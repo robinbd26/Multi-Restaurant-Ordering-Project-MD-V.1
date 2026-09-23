@@ -2,6 +2,14 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import type { BranchDeliveryArea, User } from "@prisma/client";
 
+import {
+  MAX_CIRCLE_RADIUS_KM,
+  parseShape,
+  serializeShape,
+  shapeReachKm,
+  shapeWithinRadius,
+  type CoverageShape,
+} from "@/lib/coverage/shape";
 import { prisma } from "@/lib/db";
 import { COVERAGE_WINDOW_DEFAULT, isCoverageWindow } from "@/lib/constants/enums";
 import type {
@@ -9,34 +17,35 @@ import type {
   DeliveryAreaListResult,
   DeliveryAreaRow,
 } from "@/lib/delivery-areas/query";
-import { forbidden, notFound, sk, validationError } from "@/lib/http/errors";
+import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { branchForManager } from "@/lib/selectors";
-import { resolveEffectiveDelivery } from "@/lib/services/delivery";
+import { branchPoint, coverageForPoint } from "@/lib/services/coverage";
 import { isValidLatLng, type LatLng } from "@/lib/services/geo";
-import {
-  LIMITS,
-  decimalPlaces,
-  isFiniteNumber,
-} from "@/lib/validation/limits";
+import { LIMITS, decimalPlaces, isFiniteNumber } from "@/lib/validation/limits";
 
-/** Case/space-insensitive normalized form for scoped duplicate detection (#1). */
-export function normalizeAreaName(name: string): string {
-  return name.trim().toLowerCase();
-}
+/**
+ * Delivery areas: the shapes a branch delivers inside.
+ *
+ * An area carries the TERMS (name, shift, ETA, charge, hold state, active) and
+ * a SHAPE. The shape is the only thing that decides coverage; everything else
+ * decides what it costs and when.
+ *
+ * WHO MAY EDIT: a branch manager owns their own branch's areas, a super admin
+ * owns every branch's. A submitted branch id from a manager is ignored rather
+ * than trusted, so a manager can never reach another branch's coverage (IDOR).
+ *
+ * EVERY WRITE IS AUDITED. Create, edit, hold, resume and delete each append a
+ * ManagerActivityLog row naming who did it and what changed, because coverage
+ * decides who gets served and who does not.
+ */
 
 type SerializableArea = BranchDeliveryArea & {
-  branch?: {
-    name: string;
-    address?: string;
-    brandType?: string;
-  } | null;
-  locality?: { name: string; zone: { name: string } } | null;
+  branch?: { name: string; address?: string; brandType?: string } | null;
 };
 
 /** Everything serializeArea needs, in one place so no read forgets the names. */
 export const AREA_INCLUDE = {
   branch: { select: { name: true, address: true, brandType: true } },
-  locality: { select: { name: true, zone: { select: { name: true } } } },
 } as const;
 
 export function serializeArea(a: SerializableArea): DeliveryAreaRow {
@@ -51,13 +60,14 @@ export function serializeArea(a: SerializableArea): DeliveryAreaRow {
     is_held: a.isHeld,
     hold_reason: a.holdReason,
     estimated_delivery_minutes: a.estimatedDeliveryMinutes,
-    delivery_charge: (a.deliveryCharge instanceof Prisma.Decimal ? a.deliveryCharge : new Prisma.Decimal(a.deliveryCharge)).toFixed(2),
-    center_lat: a.centerLat != null ? Number(a.centerLat) : null,
-    center_lng: a.centerLng != null ? Number(a.centerLng) : null,
+    delivery_charge: (
+      a.deliveryCharge instanceof Prisma.Decimal ? a.deliveryCharge : new Prisma.Decimal(a.deliveryCharge)
+    ).toFixed(2),
+    // The drawn boundary, verbatim, for the map editor. Null = nothing drawn
+    // yet, which the list renders as "draw this area" and coverage treats as
+    // covering nobody.
+    shape: a.shape,
     coverage_window: a.coverageWindow,
-    locality_id: a.localityId,
-    locality_name: a.locality?.name ?? null,
-    zone_name: a.locality?.zone?.name ?? null,
     created_at: a.createdAt.toISOString(),
     updated_at: a.updatedAt.toISOString(),
   };
@@ -104,14 +114,24 @@ export async function areaForManage(user: User, areaId: number) {
   throw forbidden(sk("errors.deliveryArea.forbidden"));
 }
 
+// ── audit ─────────────────────────────────────────────────────────────────
+
+/**
+ * Record a coverage change against the branch. Coverage decides who can be
+ * served, so every change is attributable — the Activity Logs screen reads
+ * these rows.
+ */
+async function logAreaChange(user: User, branchId: number, description: string) {
+  await prisma.managerActivityLog.create({
+    data: { managerId: user.id, branchId, activityType: "action", description },
+  });
+}
+
+// ── validation ────────────────────────────────────────────────────────────
+
 function parseMinutes(v: unknown): number {
   const n = Number(v);
-  if (
-    !isFiniteNumber(v) ||
-    !Number.isInteger(n) ||
-    n < LIMITS.minutesMin ||
-    n > LIMITS.minutesMax
-  ) {
+  if (!isFiniteNumber(v) || !Number.isInteger(n) || n < LIMITS.minutesMin || n > LIMITS.minutesMax) {
     throw validationError({ estimated_delivery_minutes: sk("errors.deliveryArea.invalidMinutes") });
   }
   return Math.round(n);
@@ -132,35 +152,12 @@ function parseCharge(v: unknown): Prisma.Decimal {
   return new Prisma.Decimal(n.toFixed(2));
 }
 
-function parseCoords(lat: unknown, lng: unknown): { lat: Prisma.Decimal; lng: Prisma.Decimal } | null {
-  if (lat === undefined || lat === null || lat === "" || lng === undefined || lng === null || lng === "") return null;
-  if (!isValidLatLng(Number(lat), Number(lng))) {
-    throw validationError({ center_lat: sk("errors.orders.invalidCoordinates") });
-  }
-  return { lat: new Prisma.Decimal(Number(lat).toFixed(7)), lng: new Prisma.Decimal(Number(lng).toFixed(7)) };
-}
-
-export interface AreaInput {
-  branchId?: number;
-  name: string;
-  estimatedDeliveryMinutes?: unknown;
-  deliveryCharge?: unknown;
-  centerLat?: unknown;
-  centerLng?: unknown;
-  isActive?: unknown;
-  coverageWindow?: unknown;
-  localityId?: unknown;
-}
-
 function validatedName(value: unknown): string {
   const name = String(value ?? "").trim();
   if (!name) throw validationError({ name: sk("errors.deliveryArea.nameRequired") });
   if (name.length < LIMITS.nameMin || name.length > LIMITS.nameMax) {
     throw validationError({
-      name: sk("errors.deliveryArea.invalidNameLength", {
-        min: LIMITS.nameMin,
-        max: LIMITS.nameMax,
-      }),
+      name: sk("errors.deliveryArea.invalidNameLength", { min: LIMITS.nameMin, max: LIMITS.nameMax }),
     });
   }
   return name;
@@ -176,33 +173,55 @@ function parseWindow(value: unknown): string {
   return raw;
 }
 
-/**
- * The master locality this coverage row stands for.
- *
- * Optional on purpose: a branch manager may still type a free-text area, and by
- * policy nothing covers that until it is added to the master list. A supplied id
- * must name a live locality in a live zone.
- */
-async function parseLocality(value: unknown): Promise<number | null> {
-  if (value === undefined || value === null || value === "") return null;
-  const id = Number(value);
-  if (!Number.isSafeInteger(id) || id <= 0) {
-    throw validationError({ locality_id: sk("errors.deliveryArea.localityNotFound") });
-  }
-  const locality = await prisma.deliveryLocality.findFirst({
-    where: { id, isActive: true, zone: { isActive: true } },
-    select: { id: true },
-  });
-  if (!locality) {
-    throw validationError({ locality_id: sk("errors.deliveryArea.localityNotFound") });
-  }
-  return locality.id;
-}
-
 function parseActive(value: unknown): boolean {
   if (value === true || value === "true") return true;
   if (value === false || value === "false") return false;
   throw validationError({ is_active: sk("errors.deliveryArea.invalidActive") });
+}
+
+/**
+ * The drawn boundary, validated against the branch it belongs to.
+ *
+ * TWO rules, both enforced HERE rather than only in the editor:
+ *   1. it must be a shape we can actually test a point against;
+ *   2. it must fit inside the branch's maximum-coverage circle — the super
+ *      admin's radius is a ceiling a manager cannot draw past.
+ *
+ * A branch with no map pin has no circle to measure against, so it cannot have
+ * areas at all: that is reported as "set the branch location first" rather than
+ * silently accepting a shape nothing bounds.
+ */
+function parseShapeInput(
+  value: unknown,
+  branch: { id: number; latitude: unknown; longitude: unknown; deliveryRadiusKm: unknown; name: string },
+): CoverageShape | null {
+  if (value === undefined || value === null || value === "") return null;
+  const shape = parseShape(value);
+  if (!shape) throw validationError({ shape: sk("errors.deliveryArea.invalidShape") });
+
+  const center = branchPoint(branch as { latitude: Prisma.Decimal | null; longitude: Prisma.Decimal | null });
+  if (!center) throw validationError({ shape: sk("errors.deliveryArea.branchHasNoLocation") });
+
+  const maxRadiusKm = Math.min(Number(branch.deliveryRadiusKm), MAX_CIRCLE_RADIUS_KM);
+  if (!shapeWithinRadius(shape, center, maxRadiusKm)) {
+    throw validationError({
+      shape: sk("errors.deliveryArea.outsideBranchRadius", {
+        max: maxRadiusKm.toFixed(2),
+        reach: shapeReachKm(shape, center).toFixed(2),
+      }),
+    });
+  }
+  return shape;
+}
+
+export interface AreaInput {
+  branchId?: number;
+  name: string;
+  estimatedDeliveryMinutes?: unknown;
+  deliveryCharge?: unknown;
+  shape?: unknown;
+  isActive?: unknown;
+  coverageWindow?: unknown;
 }
 
 export async function createArea(user: User, input: AreaInput) {
@@ -211,99 +230,116 @@ export async function createArea(user: User, input: AreaInput) {
     throw validationError({ branch_id: sk("errors.deliveryArea.branchUnavailable") });
   }
   const name = validatedName(input.name);
-  const normalizedName = normalizeAreaName(name);
   const coverageWindow = parseWindow(input.coverageWindow);
-  const localityId = await parseLocality(input.localityId);
-  // The same locality on the day AND night list is legitimate — the charges
-  // differ per shift — so only a same-name row in the SAME window is a clash.
-  const clash = await prisma.branchDeliveryArea.findFirst({
-    where: { branchId: branch.id, normalizedName, coverageWindow },
-  });
-  if (clash) throw validationError({ name: sk("errors.deliveryArea.duplicate") });
-  const coords = parseCoords(input.centerLat, input.centerLng);
-  return prisma.branchDeliveryArea.create({
+  const shape = parseShapeInput(input.shape, branch);
+
+  const area = await prisma.branchDeliveryArea.create({
     data: {
       branchId: branch.id,
       name,
-      normalizedName,
-      estimatedDeliveryMinutes: input.estimatedDeliveryMinutes === undefined ? 45 : parseMinutes(input.estimatedDeliveryMinutes),
-      deliveryCharge: input.deliveryCharge === undefined ? new Prisma.Decimal(0) : parseCharge(input.deliveryCharge),
+      shape: shape ? serializeShape(shape) : null,
+      estimatedDeliveryMinutes:
+        input.estimatedDeliveryMinutes === undefined ? 45 : parseMinutes(input.estimatedDeliveryMinutes),
+      deliveryCharge:
+        input.deliveryCharge === undefined ? new Prisma.Decimal(0) : parseCharge(input.deliveryCharge),
       isActive: input.isActive === undefined ? true : parseActive(input.isActive),
-      centerLat: coords?.lat ?? null,
-      centerLng: coords?.lng ?? null,
       coverageWindow,
-      localityId,
       updatedById: user.id,
     },
     include: AREA_INCLUDE,
   });
+  await logAreaChange(
+    user,
+    branch.id,
+    `Created delivery area "${area.name}" (${coverageWindow}${shape ? "" : ", no shape drawn yet"})`,
+  );
+  return area;
 }
 
 export async function updateArea(user: User, areaId: number, input: Partial<AreaInput>) {
   const area = await areaForManage(user, areaId);
+  const branch = await prisma.branch.findUniqueOrThrow({ where: { id: area.branchId } });
   const data: Prisma.BranchDeliveryAreaUpdateInput = { updatedById: user.id };
-  const nextWindow =
-    input.coverageWindow !== undefined ? parseWindow(input.coverageWindow) : area.coverageWindow;
-  if (input.coverageWindow !== undefined) data.coverageWindow = nextWindow;
-  if (input.localityId !== undefined) {
-    const localityId = await parseLocality(input.localityId);
-    data.locality = localityId ? { connect: { id: localityId } } : { disconnect: true };
+  const changes: string[] = [];
+
+  if (input.coverageWindow !== undefined) {
+    const nextWindow = parseWindow(input.coverageWindow);
+    if (nextWindow !== area.coverageWindow) changes.push(`shift ${area.coverageWindow} → ${nextWindow}`);
+    data.coverageWindow = nextWindow;
   }
-  // Renaming OR moving to another shift can collide with an existing row, so
-  // both re-check against the window the row will actually end up in.
-  if (input.name !== undefined || input.coverageWindow !== undefined) {
-    const name = input.name !== undefined ? validatedName(input.name) : area.name;
-    const normalizedName = normalizeAreaName(name);
-    const clash = await prisma.branchDeliveryArea.findFirst({
-      where: {
-        branchId: area.branchId,
-        normalizedName,
-        coverageWindow: nextWindow,
-        id: { not: areaId },
-      },
-    });
-    if (clash) throw validationError({ name: sk("errors.deliveryArea.duplicate") });
+  if (input.name !== undefined) {
+    const name = validatedName(input.name);
+    if (name !== area.name) changes.push(`renamed "${area.name}" → "${name}"`);
     data.name = name;
-    data.normalizedName = normalizedName;
   }
-  if (input.estimatedDeliveryMinutes !== undefined) data.estimatedDeliveryMinutes = parseMinutes(input.estimatedDeliveryMinutes);
-  if (input.deliveryCharge !== undefined) data.deliveryCharge = parseCharge(input.deliveryCharge);
-  if (input.isActive !== undefined) data.isActive = parseActive(input.isActive);
-  if (input.centerLat !== undefined || input.centerLng !== undefined) {
-    const coords = parseCoords(input.centerLat, input.centerLng);
-    data.centerLat = coords?.lat ?? null;
-    data.centerLng = coords?.lng ?? null;
+  if (input.estimatedDeliveryMinutes !== undefined) {
+    const minutes = parseMinutes(input.estimatedDeliveryMinutes);
+    if (minutes !== area.estimatedDeliveryMinutes) {
+      changes.push(`time ${area.estimatedDeliveryMinutes} → ${minutes} min`);
+    }
+    data.estimatedDeliveryMinutes = minutes;
   }
-  return prisma.branchDeliveryArea.update({
+  if (input.deliveryCharge !== undefined) {
+    const charge = parseCharge(input.deliveryCharge);
+    if (!charge.equals(area.deliveryCharge)) {
+      changes.push(`charge ${area.deliveryCharge.toFixed(2)} → ${charge.toFixed(2)}`);
+    }
+    data.deliveryCharge = charge;
+  }
+  if (input.isActive !== undefined) {
+    const isActive = parseActive(input.isActive);
+    if (isActive !== area.isActive) changes.push(isActive ? "activated" : "deactivated");
+    data.isActive = isActive;
+  }
+  if (input.shape !== undefined) {
+    const shape = parseShapeInput(input.shape, branch);
+    data.shape = shape ? serializeShape(shape) : null;
+    changes.push(shape ? "shape redrawn" : "shape cleared");
+  }
+
+  const updated = await prisma.branchDeliveryArea.update({
     where: { id: areaId },
     data,
     include: AREA_INCLUDE,
   });
+  if (changes.length > 0) {
+    await logAreaChange(user, area.branchId, `Updated delivery area "${updated.name}": ${changes.join(", ")}`);
+  }
+  return updated;
 }
 
-/** Hold (block new delivery orders) or resume an area. Existing orders untouched. */
+/** Hold (pickup only for this area) or resume it. Existing orders untouched. */
 export async function setAreaHold(user: User, areaId: number, held: boolean, reason = "") {
-  await areaForManage(user, areaId);
-  return prisma.branchDeliveryArea.update({
+  const area = await areaForManage(user, areaId);
+  const updated = await prisma.branchDeliveryArea.update({
     where: { id: areaId },
     data: { isHeld: held, holdReason: held ? String(reason ?? "") : "", updatedById: user.id },
     include: AREA_INCLUDE,
   });
+  await logAreaChange(
+    user,
+    area.branchId,
+    held
+      ? `Held delivery area "${updated.name}"${reason ? ` — reason: ${String(reason)}` : ""}`
+      : `Resumed delivery area "${updated.name}"`,
+  );
+  return updated;
 }
 
 /**
- * ITEM 7 — the master localities this branch already has an active coverage
- * row for (held or not — a held row still means the branch already configured
- * that locality, so it must not be suggested again). Used only to filter what
- * the "Suggest areas for my branch" helper offers; it never reads inactive
- * rows, so a re-suggested locality after a deactivation is expected.
+ * DELETE an area outright.
+ *
+ * Safe because an order never reads its area back: `Order` snapshots the name,
+ * the charge and the estimate at checkout, and `deliveryAreaId` is a SetNull
+ * link kept only as provenance. Deleting therefore removes a shape from the map
+ * without touching a single invoice. The row is loaded first so the audit entry
+ * can name what was removed.
  */
-export async function coveredLocalityIdsForBranch(branchId: number): Promise<Set<number>> {
-  const rows = await prisma.branchDeliveryArea.findMany({
-    where: { branchId, isActive: true, localityId: { not: null } },
-    select: { localityId: true },
-  });
-  return new Set(rows.map((r) => r.localityId).filter((id): id is number => id != null));
+export async function deleteArea(user: User, areaId: number) {
+  const area = await areaForManage(user, areaId);
+  await prisma.branchDeliveryArea.delete({ where: { id: areaId } });
+  await logAreaChange(user, area.branchId, `Deleted delivery area "${area.name}"`);
+  return area;
 }
 
 /** List areas visible to the user, optional branch + status filter. */
@@ -361,14 +397,11 @@ export async function deliveryAreaListForUser(
   user: User,
   query: DeliveryAreaListQuery,
 ): Promise<DeliveryAreaListResult> {
-  const managerBranch =
-    user.role === "branch_manager" ? await branchForManager(user.id) : null;
+  const managerBranch = user.role === "branch_manager" ? await branchForManager(user.id) : null;
   const scopeWhere = listScopeWhere(user, managerBranch?.id ?? null);
   const filters: Prisma.BranchDeliveryAreaWhereInput[] = [scopeWhere];
 
-  if (user.role === "super_admin" && query.branchId) {
-    filters.push({ branchId: query.branchId });
-  }
+  if (user.role === "super_admin" && query.branchId) filters.push({ branchId: query.branchId });
   if (query.activeStatus) filters.push({ isActive: query.activeStatus === "active" });
   if (query.deliveryState) filters.push({ isHeld: query.deliveryState === "held" });
   if (query.coverageWindow) filters.push({ coverageWindow: query.coverageWindow });
@@ -387,7 +420,7 @@ export async function deliveryAreaListForUser(
   const totalPages = Math.max(1, Math.ceil(count / query.pageSize));
   const page = Math.min(query.page, totalPages);
 
-  const [rows, total, active, held, inactive, covered] = await Promise.all([
+  const [rows, total, active, held, inactive, covered, undrawn] = await Promise.all([
     prisma.branchDeliveryArea.findMany({
       where,
       include: AREA_INCLUDE,
@@ -400,6 +433,8 @@ export async function deliveryAreaListForUser(
     prisma.branchDeliveryArea.count({ where: { AND: [scopeWhere, { isHeld: true }] } }),
     prisma.branchDeliveryArea.count({ where: { AND: [scopeWhere, { isActive: false }] } }),
     prisma.branchDeliveryArea.groupBy({ by: ["branchId"], where: scopeWhere }),
+    // Rows carried over from name matching, which cover nobody until drawn.
+    prisma.branchDeliveryArea.count({ where: { AND: [scopeWhere, { shape: null }] } }),
   ]);
 
   return {
@@ -407,52 +442,41 @@ export async function deliveryAreaListForUser(
     page,
     pageSize: query.pageSize,
     results: rows.map(serializeArea),
-    summary: {
-      total,
-      active,
-      held,
-      inactive,
-      branches: covered.length,
-    },
+    summary: { total, active, held, inactive, branches: covered.length, undrawn },
   };
 }
 
 /**
- * Resolve + validate a delivery area for a NEW order on a branch (#1/#13/#22):
- * area must belong to the branch, be active, and NOT be held (held → 400).
- * Returns the snapshot fields to persist immutably on the order.
+ * Resolve + validate the delivery area for a NEW order on a branch.
  *
- * WS-4.5 — when the delivery `point` is supplied, the chosen area is ALSO
- * cross-checked against the unified coverage+pricing resolver: the point must be
- * inside the branch's coverage geometry, and the area the customer picked must
- * be the area that geometry actually resolves to. Without this a customer could
- * be admitted by one zone and billed from whichever named area happened to be
- * cheapest, which is the exact mismatch this pass closes. The parameter is
- * optional so the existing call sites keep their behaviour until the order
- * write path passes the resolved coordinate through.
+ * The area is not taken from the client: it is whatever the branch's own shapes
+ * resolve the delivery POINT to (cheapest, then fastest — lib/coverage). A
+ * client-supplied id is only accepted when it matches that answer, so a
+ * customer cannot be admitted by one area and billed from a cheaper one.
+ *
+ * Returns the row whose name, charge and estimate get snapshotted onto the
+ * order, so later edits — or deleting the area outright — never change it.
  */
 export async function resolveOrderDeliveryArea(
   branchId: number,
-  areaId: number | null | undefined,
-  point?: LatLng | null,
+  point: LatLng | null | undefined,
+  requestedAreaId?: number | null,
 ) {
-  if (areaId == null) return null;
-  const area = await prisma.branchDeliveryArea.findUnique({ where: { id: areaId } });
-  if (!area || area.branchId !== branchId) {
-    throw validationError({ delivery_area_id: sk("errors.deliveryArea.notForBranch") });
+  if (!point || !isValidLatLng(point.lat, point.lng)) return null;
+  const coverage = await (async () => {
+    const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+    return branch ? coverageForPoint(branch, point) : null;
+  })();
+  if (!coverage) return null;
+
+  if (coverage.pickupOnly) throw validationError({ delivery_area_id: sk("errors.deliveryArea.held") });
+  if (!coverage.covered || !coverage.area) {
+    throw validationError({ delivery_area_id: sk("errors.deliveryArea.pointNotCovered") });
   }
-  if (!area.isActive) throw validationError({ delivery_area_id: sk("errors.deliveryArea.inactive") });
-  if (area.isHeld) throw validationError({ delivery_area_id: sk("errors.deliveryArea.held") });
-  if (point && isValidLatLng(point.lat, point.lng)) {
-    const effective = await resolveEffectiveDelivery(branchId, point);
-    if (!effective?.covered) {
-      throw validationError({ delivery_area_id: sk("errors.deliveryArea.pointNotCovered") });
-    }
-    // A name-only area (no centre) cannot be resolved from a coordinate, so it
-    // is accepted as an explicit choice — the charge still comes from its row.
-    if (effective.area && effective.area.id !== area.id) {
-      throw validationError({ delivery_area_id: sk("errors.deliveryArea.notForPoint") });
-    }
+  // A stale id from a screen the manager has since re-drawn must not silently
+  // bill the customer from the wrong area.
+  if (requestedAreaId != null && requestedAreaId !== coverage.area.id) {
+    throw conflict(sk("errors.deliveryArea.notForPoint"));
   }
-  return area;
+  return prisma.branchDeliveryArea.findUnique({ where: { id: coverage.area.id } });
 }

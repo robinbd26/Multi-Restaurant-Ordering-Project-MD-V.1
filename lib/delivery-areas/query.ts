@@ -35,14 +35,10 @@ export interface DeliveryAreaRow {
   hold_reason: string;
   estimated_delivery_minutes: number;
   delivery_charge: string;
-  center_lat: number | null;
-  center_lng: number | null;
+  /** The drawn boundary as stored JSON; null = nothing drawn yet (covers nobody). */
+  shape: string | null;
   /** "day" | "night" | "both" — which shift this coverage row applies to. */
   coverage_window: string;
-  /** The master locality this row stands for; null on legacy free-text rows. */
-  locality_id: number | null;
-  locality_name: string | null;
-  zone_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -53,6 +49,8 @@ export interface DeliveryAreaSummary {
   held: number;
   inactive: number;
   branches: number;
+  /** Rows with no shape drawn yet — they cover nobody until one is. */
+  undrawn: number;
 }
 
 export interface DeliveryAreaListResult {

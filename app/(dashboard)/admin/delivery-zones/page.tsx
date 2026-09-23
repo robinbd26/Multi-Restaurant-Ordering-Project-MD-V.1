@@ -17,10 +17,10 @@ export async function generateMetadata(): Promise<Metadata> {
  * /admin/delivery-zones — the MASTER list of zones and the localities inside
  * them, owned by the super admin.
  *
- * Distinct from /admin/delivery-areas, which is per-branch COVERAGE: this page
- * says which places exist and what they are called, and that page says which
- * branch delivers to them, on which shift, for what charge. Keeping the naming in
- * one place is what lets a saved address be matched to coverage without a map pin.
+ * A zone is a GROUPING TAG on a branch, used for filtering and reports. It is
+ * NOT coverage: /admin/delivery-areas is where a branch's actual delivery
+ * SHAPES are drawn, and a customer is deliverable when their pin falls inside
+ * one of those. Nothing on this page can change where the platform delivers.
  */
 export default async function AdminDeliveryZonesPage() {
   const { t, fmt } = await getT();
@@ -28,8 +28,7 @@ export default async function AdminDeliveryZonesPage() {
   const zones = await zonesForAdmin();
 
   const activeZones = zones.filter((zone) => zone.isActive).length;
-  const localities = zones.flatMap((zone) => zone.localities);
-  const activeLocalities = localities.filter((locality) => locality.isActive).length;
+  const taggedBranches = zones.reduce((n, zone) => n + zone.branchCount, 0);
 
   return (
     <>
@@ -48,14 +47,14 @@ export default async function AdminDeliveryZonesPage() {
           accent="success"
         />
         <SummaryCard
-          title={t("deliveryZone.localitiesCount")}
-          value={fmt.num(localities.length)}
+          title={t("deliveryZone.branchesUsing")}
+          value={fmt.num(taggedBranches)}
           icon={<Icon name="list" />}
           accent="info"
         />
         <SummaryCard
           title={t("deliveryZone.inactiveLabel")}
-          value={fmt.num(localities.length - activeLocalities)}
+          value={fmt.num(zones.length - activeZones)}
           icon={<Icon name="x" />}
           accent="neutral"
         />
