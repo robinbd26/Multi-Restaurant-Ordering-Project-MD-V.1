@@ -7,6 +7,7 @@ import { Icon } from "@/components/layout/icons";
 import { RiderOrderPanel } from "@/components/rider/rider-order-panel";
 import { OrderStepTracker } from "@/components/rider/order-step-tracker";
 import { RoutePanel } from "@/components/rider/route-panel";
+import { OrderLocationMap } from "@/components/maps/order-location-map";
 import { PageHeader } from "@/components/layout/page-header";
 import { OrderStatusActions } from "@/components/orders/order-status-actions";
 import { OrderStatusBadge } from "@/components/ui/badge";
@@ -145,6 +146,16 @@ export default async function RiderOrderDetailPage({ params }: { params: Promise
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{t("common.address")}</p>
                 <p className="mt-1 text-fg-base">{order.delivery_address}</p>
+                {/* The pin the order was admitted from, so the rider can see
+                    the doorway before committing to a route. The Navigate
+                    button below hands the same coordinate to a maps app. */}
+                <OrderLocationMap
+                  className="mt-2"
+                  lat={order.delivery_lat}
+                  lng={order.delivery_lng}
+                  showLink={false}
+                  testId="rider-delivery-map"
+                />
               </div>
               <a
                 href={mapsHref}

@@ -120,7 +120,7 @@ export default async function CustomerOrderDetailPage({
         <Card className="mt-6">
           <CardHeader title={t("riderLoc.trackRider")} subtitle={order.rider_name ?? ""} />
           <CardContent>
-            <LiveMap riderId={order.rider} mapsKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null} />
+            <LiveMap riderId={order.rider} />
           </CardContent>
         </Card>
       ) : null}

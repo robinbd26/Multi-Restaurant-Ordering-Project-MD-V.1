@@ -1,7 +1,9 @@
 "use client";
 
-import { memo } from "react";
+import { useEffect, useRef } from "react";
+import type { Marker } from "leaflet";
 
+import { pinIcon, useLeafletMap } from "@/components/maps/leaflet-core";
 import { useLiveData } from "@/lib/hooks/use-live-data";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { haversineKm } from "@/lib/services/geo";
@@ -16,34 +18,45 @@ interface Loc {
 
 const REFRESH_MS = 20_000;
 
-// WS-4.6 — changing the Embed iframe `src` reloads the WHOLE map (tiles and
-// all) on the customer's mobile data. Ignore sub-30 m coordinate changes: GPS
-// jitter sits below this, and a 30 m pin move is invisible at zoom 15 anyway.
+// GPS jitter sits below this and a 30 m pin move is invisible at zoom 15, so
+// smaller changes do not move the marker (or re-centre the map under a customer
+// who is panning it).
 const MATERIAL_MOVE_KM = 0.03;
 
-/**
- * The embedded map, memoised so the iframe `src` only changes — and the map
- * only reloads — when the rider has materially moved. Re-renders with a
- * jittering coordinate are swallowed by the comparator.
- */
-const MapFrame = memo(
-  function MapFrame({ lat, lng, mapsKey }: { lat: number; lng: number; mapsKey: string }) {
-    const src = `https://www.google.com/maps/embed/v1/place?key=${mapsKey}&q=${lat},${lng}&zoom=15`;
-    return (
-      <div className="overflow-hidden rounded-xl">
-        <iframe title="rider-map" src={src} className="aspect-video w-full border-0" loading="lazy" />
-      </div>
-    );
-  },
-  (prev, next) =>
-    prev.mapsKey === next.mapsKey &&
-    haversineKm({ lat: prev.lat, lng: prev.lng }, { lat: next.lat, lng: next.lng }) < MATERIAL_MOVE_KM,
-);
+/** The Leaflet map. Mounted only once there is a coordinate to show. */
+function RiderMap({ lat, lng }: { lat: number; lng: number }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const { handle } = useLeafletMap(containerRef, { center: { lat, lng }, zoom: 15 });
+  const markerRef = useRef<Marker | null>(null);
+  const shownRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (!handle) return;
+    const { L, map } = handle;
+    const shown = shownRef.current;
+    if (!markerRef.current) {
+      markerRef.current = L.marker([lat, lng], { icon: pinIcon(L, "rider"), interactive: false }).addTo(map);
+      shownRef.current = { lat, lng };
+    } else if (!shown || haversineKm(shown, { lat, lng }) >= MATERIAL_MOVE_KM) {
+      markerRef.current.setLatLng([lat, lng]);
+      map.panTo([lat, lng]);
+      shownRef.current = { lat, lng };
+    }
+  }, [handle, lat, lng]);
+
+  useEffect(() => {
+    return () => {
+      markerRef.current = null;
+      shownRef.current = null;
+    };
+  }, [handle]);
+
+  return <div ref={containerRef} className="aspect-video w-full overflow-hidden rounded-xl border border-border-base" data-testid="rider-live-map" />;
+}
 
 /**
- * Live rider-location panel. Renders an embedded Google Map only when
- * NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is set; otherwise shows a polished placeholder
- * with the raw coordinates + last-seen time.
+ * Live rider-location panel: a Leaflet map with the rider's pin, or a plain
+ * placeholder with the raw coordinates + last-seen time when the rider has no fix.
  *
  * The transport is the shared `useLiveData` poll rather than a bare
  * `setInterval`: it stops while the tab is hidden (a customer who switched apps
@@ -55,14 +68,14 @@ const MapFrame = memo(
  * "the rider clocked out" renders as the no-location state rather than as a
  * stale pin the customer would read as live.
  */
-export function LiveMap({ riderId, mapsKey }: { riderId: number; mapsKey: string | null }) {
+export function LiveMap({ riderId }: { riderId: number }) {
   const { t, fmt } = useTranslation();
   const { data: loc } = useLiveData<Loc>(`/api/riders/${riderId}/location`, REFRESH_MS);
 
   const hasCoords = loc?.latitude && loc?.longitude;
 
-  if (mapsKey && hasCoords) {
-    return <MapFrame lat={Number(loc!.latitude)} lng={Number(loc!.longitude)} mapsKey={mapsKey} />;
+  if (hasCoords) {
+    return <RiderMap lat={Number(loc!.latitude)} lng={Number(loc!.longitude)} />;
   }
 
   return (
@@ -72,25 +85,11 @@ export function LiveMap({ riderId, mapsKey }: { riderId: number; mapsKey: string
         <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-brand-500/20 ring-4 ring-brand-500/10">
           <span className="flex size-7 items-center justify-center rounded-full bg-brand-500 text-white">🛵</span>
         </div>
-        {hasCoords ? (
-          <>
-            <p className="mt-3 text-sm font-medium text-fg-muted">
-              {fmt.num(Number(loc!.latitude).toFixed(4))}, {fmt.num(Number(loc!.longitude).toFixed(4))}
-            </p>
-            <p className="text-xs text-fg-subtle">
-              {loc!.is_online ? t("riderLoc.online") : t("riderLoc.offline")}
-              {loc!.last_ping_at ? ` · ${fmt.dateTime(loc!.last_ping_at)}` : ""}
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="mt-3 text-sm text-fg-muted">{t("riderLoc.noLocation")}</p>
-            {/* Distinguish "not on duty" from "on duty, no fix yet" — without
-                this they would both read as an unexplained blank map. */}
-            {loc && !loc.is_online ? <p className="text-xs text-fg-subtle">{t("riderLoc.offline")}</p> : null}
-          </>
-        )}
-        {!mapsKey ? <p className="mt-1 max-w-xs text-xs text-fg-subtle">{t("riderLoc.mapNote")}</p> : null}
+        <p className="mt-3 text-sm text-fg-muted">{t("riderLoc.noLocation")}</p>
+        {/* Distinguish "not on duty" from "on duty, no fix yet" — without
+            this they would both read as an unexplained blank map. */}
+        {loc && !loc.is_online ? <p className="text-xs text-fg-subtle">{t("riderLoc.offline")}</p> : null}
+        {loc?.last_ping_at ? <p className="text-xs text-fg-subtle">{fmt.dateTime(loc.last_ping_at)}</p> : null}
       </div>
     </div>
   );

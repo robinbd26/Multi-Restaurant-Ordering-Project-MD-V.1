@@ -94,8 +94,9 @@ Bangladeshi mobile number in any written form (`01711111111`, `8801711111111`,
   categories and products, orders in several states, rider commissions and withdrawals,
   reward rules and ledger entries, reviews, complaints, a notice, delivery time slots, a
   table reservation, Ramadan tables and a booking, a rider route trail and login history.
-- **No external key is required.** With an empty optional-integration block you get a map
-  fallback instead of Google Maps, dev OTP codes instead of real SMS, in-app notifications
+- **No external key is required.** Maps need no key at all (Leaflet + OpenStreetMap). With an
+  empty optional-integration block you get no address SEARCH (drop the pin by hand instead —
+  coverage reads the pin and is unaffected), dev OTP codes instead of real SMS, in-app notifications
   instead of push, and the manual record-and-verify payment flow instead of a live gateway.
   Nothing crashes and no feature disappears from the navigation. See [§7](#7-environment-variables).
 - **The seed is idempotent.** Re-running `npm run seed` is safe.
@@ -242,7 +243,7 @@ The clusters:
 | --- | --- |
 | Identity | `User`, `PasswordResetToken`, `LoginHistory`, `PushSubscription` |
 | Catalogue | `Category`, `Product`, `ProductVariation` |
-| Branches | `Branch`, `BranchDeliveryZone`, `BranchDeliveryArea`, `BranchTable`, `DeliveryTimeSlot`, `BranchManagerAssignment`, `ManagerActivityLog` |
+| Branches | `Branch`, `BranchDeliveryArea` (the drawn coverage shapes), `BranchTable`, `DeliveryTimeSlot`, `BranchManagerAssignment`, `ManagerActivityLog` |
 | Orders | `Order`, `OrderItem`, `OrderStatusEvent`, `OrderNumberCounter`, `RiderOrderAssignment`, `OrderReceiveConfirmation`, `OrderDeliveryChatThread`, `OrderDeliveryChatMessage` |
 | Rider | `RiderProfile`, `RiderCommission`, `RiderWithdrawal`, `RiderRoutePoint`, `RiderDutyLog`, `RiderBranchDutySession`, `RiderDutyChatThread`, `RiderDutyChatMessage` |
 | Money | `Refund`, `BranchExpense`, `BranchSettlement`, `FinancialAdjustment`, `FinancialAuditLog`, `SystemSetting` |
@@ -447,8 +448,9 @@ misconfigured production deploy is visible instead of silently swallowing paymen
 
 | Variable(s) | Purpose | Behaviour when unset |
 | --- | --- | --- |
-| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Renders the actual map surface in `components/maps/map-picker.tsx` (draggable pin), the branch zone editor and the live rider fleet map. | The map canvas is replaced by a fallback panel. **The picker's address search still works**, because it runs against the app's own `/api/geo/search` endpoint rather than a browser Maps library — see the note below. Coverage checks, distance maths and branch resolution are all server-side and unaffected. |
-| `GOOGLE_MAPS_SERVER_API_KEY` | Server-side geocoding and reverse geocoding (`lib/services/geo.ts`), used by `/api/geo/search` and `/api/geo/reverse`. Not listed in `.env.example`; set it when you want a server key separate from (and more tightly restricted than) the browser key. | Falls back to `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`. If that is also unset, geocoding is unavailable and the customer falls back to the pin or a stored address. |
+| `NEXT_PUBLIC_MAP_TILE_URL` | The tile server every Leaflet map draws from. Public by nature (the browser fetches the tiles). | Falls back to the public OpenStreetMap server, which has a usage policy and **no uptime guarantee** — point this at a real tile provider before live traffic. |
+| `NEXT_PUBLIC_MAP_ATTRIBUTION` | The credit line shown on every map; must match the tile provider. | Falls back to the OpenStreetMap credit. |
+| `BARIKOI_API_KEY` | Address search and pin-to-address lookup (`lib/services/geocoding.ts`), behind `/api/geo/search` and `/api/geo/reverse`. **Server-only** — never prefix it with `NEXT_PUBLIC_`. See `docs/integrations.md`. | Search returns nothing and the address text is not prefilled. The customer still drops and drags a pin and types the address, and **coverage is unaffected**: it reads the pin and nothing else. |
 | `SMS_PROVIDER`, `SMS_API_KEY`, `SMS_SENDER_ID`, `SMS_API_URL`, `TWILIO_ACCOUNT_SID` | OTP login and password-reset link delivery. Providers implemented in `lib/auth/sms.ts`: `bulksmsbd`, `ssl_wireless`, `twilio`. `SMS_API_URL` overrides an adapter's endpoint (BD gateways move theirs between plans). | The **demo driver**: the message is logged server-side and nothing is transmitted. Outside production the OTP request response carries the code and the reset request returns a `demoLink`, so both flows are fully testable with no gateway. In production those are always withheld. A driver **never throws** — a gateway outage degrades the flow, it does not crash the request. |
 | `PAYMENT_GATEWAY_PROVIDER` | Which rail the online gateway uses. Defaults to `bkash`. Only `bkash` has a working driver; `nagad`, `rocket` and `sslcommerz` are declared stubs. | Defaults to `bkash`. |
 | `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD` | bKash Tokenized Checkout merchant credentials. **All four are required together.** | No "Pay online" button. Cash-on-delivery and the manual record-and-verify wallet flow keep working unchanged. A partially filled block logs a warning and stays disabled rather than half working. Never commit real values. |
@@ -1014,7 +1016,7 @@ their file paths in [`docs/SECURITY.md` §9](./SECURITY.md#9-known-gaps-and-acce
 
 **Day 4 — data and boundaries.**
 10. `prisma/schema.prisma`. Skim all 66 models; read `User`, `Order`, `OrderItem`,
-    `OrderStatusEvent`, `Branch`, `BranchDeliveryZone`, `BranchDeliveryArea` and
+    `OrderStatusEvent`, `Branch`, `BranchDeliveryArea` and
     `RiderBranchDutySession` properly. The inline comments carry the reasoning.
 11. `docs/SECURITY.md` in full, then `lib/selectors/index.ts` and
     `lib/services/rider-location.ts` — the two clearest examples of how authorization is

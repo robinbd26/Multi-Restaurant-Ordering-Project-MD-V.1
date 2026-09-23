@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 
 import { Icon } from "@/components/layout/icons";
 import { MapPicker } from "@/components/maps/map-picker";
-import { mapsApiKey } from "@/components/maps/use-google-maps";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -93,7 +92,6 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
   // GRACEFUL DEGRADATION: with no Maps key the picker mounts no map at all — it
   // offers area search and labelled manual coordinates instead — so the card
   // must not tell the customer to drag a pin that is not on their screen.
-  const hasMap = mapsApiKey().length > 0;
 
   // Re-request on landing ONLY for a visitor who already said yes to our own
   // consent card. Firing the native prompt unasked was the inconsistent part:
@@ -134,7 +132,7 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
   // walk — and the retry button stays available for a fresh GPS attempt.
   const coarseNote =
     phase === "lowaccuracy"
-      ? t(hasMap ? "location.lowAccuracy" : "location.lowAccuracyNoMap", {
+      ? t("location.lowAccuracy", {
           m: fmt.num(Math.round(status.accuracy ?? 0)),
         })
       : null;
@@ -211,14 +209,14 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
         </div>
 
         {/* WS-4.9 — correct the fix by hand. The shared picker does all of it:
-            the lazily-loaded Maps SDK, a touch-draggable pin, tap-to-place,
-            server-side search, and — with NEXT_PUBLIC_GOOGLE_MAPS_API_KEY empty
+            the lazily-loaded Leaflet map, a touch-draggable pin, tap-to-place,
+            server-side search, and — with no Barikoi key or no map library
             — its own labelled fallback (area search + manual coordinates), so
             this card never shows a broken or blank map frame. Nothing is
             written until the customer confirms the pin below. */}
         <MapPicker
           label={t("location.mapTitle")}
-          hint={t(hasMap ? "location.mapHint" : "location.mapHintNoMap")}
+          hint={t("location.mapHint")}
           lat={pin.lat}
           lng={pin.lng}
           onChange={(point) => setPin({ lat: point.lat, lng: point.lng })}

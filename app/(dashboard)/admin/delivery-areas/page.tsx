@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { DeliveryAreaExplorer } from "@/components/delivery/delivery-area-explorer";
+import { BranchCoverageMap } from "@/components/delivery/branch-coverage-map";
 import { Icon } from "@/components/layout/icons";
 import { ButtonLink } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
@@ -12,6 +13,7 @@ import {
 import { requireRole } from "@/lib/auth/session";
 import { getSessionUser } from "@/lib/auth/current-user";
 import { getT } from "@/lib/i18n/server";
+import { areaShapesForBranches } from "@/lib/services/coverage";
 import { deliveryAreaListForUser } from "@/lib/services/delivery-areas";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -34,9 +36,12 @@ export default async function AdminDeliveryAreasPage({
     prisma.branch.findMany({
       where: { isActive: true, isArchived: false },
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, latitude: true, longitude: true },
     }),
   ]);
+  // THE overview map: every branch and every shape on one canvas, which is the
+  // only way to see overlaps between branches and gaps between them.
+  const shapes = await areaShapesForBranches();
   const initialQuery = deliveryAreaQueryParams({
     ...query,
     page: initial.page,
@@ -49,7 +54,7 @@ export default async function AdminDeliveryAreasPage({
         subtitle={t("deliveryArea.subtitleAdmin")}
         action={
           <ButtonLink
-            href="/admin/delivery-areas/new"
+            href={query.branchId ? `/admin/delivery-areas/new?branch=${query.branchId}` : "/admin/delivery-areas/new"}
             className="w-full sm:w-auto"
           >
             <Icon name="plus" className="size-4" />
@@ -57,10 +62,21 @@ export default async function AdminDeliveryAreasPage({
           </ButtonLink>
         }
       />
+      <BranchCoverageMap
+        title={t("deliveryArea.overviewMapTitle")}
+        shapes={shapes}
+        branches={branches.map((b) => ({
+          id: b.id,
+          name: b.name,
+          lat: b.latitude != null ? Number(b.latitude) : null,
+          lng: b.longitude != null ? Number(b.longitude) : null,
+        }))}
+      />
+      <div className="mt-6" />
       <DeliveryAreaExplorer
         initial={initial}
         initialQuery={initialQuery}
-        branches={branches}
+        branches={branches.map((b) => ({ id: b.id, name: b.name }))}
         isSuperAdmin
         listPath="/admin/delivery-areas"
       />

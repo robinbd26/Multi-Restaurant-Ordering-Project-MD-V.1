@@ -2,11 +2,7 @@ import { requireApproved } from "@/lib/auth/current-user";
 import { parseDeliveryAreaQuery } from "@/lib/delivery-areas/query";
 import { handle } from "@/lib/http/errors";
 import { created, json } from "@/lib/http/respond";
-import {
-  createArea,
-  deliveryAreaListForUser,
-  serializeArea,
-} from "@/lib/services/delivery-areas";
+import { createArea, deliveryAreaListForUser, serializeArea } from "@/lib/services/delivery-areas";
 
 // GET /api/delivery-areas?branch_id=&status=active|held — super admin (all /
 // filtered) or branch manager (own branch only, enforced in the service).
@@ -27,6 +23,10 @@ export const GET = handle(async (req: Request) => {
 
 // POST /api/delivery-areas — super admin (any branch via branch_id) or branch
 // manager (own branch; submitted branch_id ignored → no spoofing).
+//
+// `shape` is the drawn boundary as JSON (a GeoJSON Polygon, or the documented
+// Circle extension). The service validates it and refuses anything reaching
+// past the branch's maximum delivery radius.
 export const POST = handle(async (req: Request) => {
   const me = await requireApproved();
   const body = (await req.json().catch(() => ({}))) as {
@@ -34,22 +34,18 @@ export const POST = handle(async (req: Request) => {
     name?: string;
     estimated_delivery_minutes?: unknown;
     delivery_charge?: unknown;
-    center_lat?: number;
-    center_lng?: number;
+    shape?: unknown;
     is_active?: unknown;
     coverage_window?: unknown;
-    locality_id?: unknown;
   };
   const area = await createArea(me, {
     branchId: body.branch_id,
     name: body.name ?? "",
     estimatedDeliveryMinutes: body.estimated_delivery_minutes,
     deliveryCharge: body.delivery_charge,
-    centerLat: body.center_lat,
-    centerLng: body.center_lng,
+    shape: body.shape,
     isActive: body.is_active,
     coverageWindow: body.coverage_window,
-    localityId: body.locality_id,
   });
   return created(serializeArea(area));
 });

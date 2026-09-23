@@ -225,6 +225,27 @@ export function DeliveryAreaExplorer({
     return { error: null };
   }
 
+  /**
+   * Remove an area outright.
+   *
+   * Safe because an order never reads its area back: the name, charge and
+   * estimate are snapshotted onto the order at checkout and the link is
+   * SetNull, so deleting a shape cannot rewrite an invoice. The server logs who
+   * deleted what.
+   */
+  async function removeArea(area: DeliveryAreaRow): Promise<ActionState> {
+    const response = await fetch(`/api/delivery-areas/${area.id}`, { method: "DELETE" });
+    const body = (await response.json().catch(() => ({}))) as unknown;
+    if (!response.ok) {
+      const parsed = parseFieldErrors(body, t("common.error"));
+      return { error: parsed.formError ?? t("common.error"), fieldErrors: parsed.fieldErrors };
+    }
+    setSuccess(t("deliveryArea.deleted", { name: area.name }));
+    dataQuery.current = "";
+    setRefreshKey((value) => value + 1);
+    return { error: null };
+  }
+
   const totalPages = Math.max(1, Math.ceil(data.count / data.pageSize));
   const pages = Array.from({ length: totalPages }, (_, index) => index + 1).filter(
     (page) =>
@@ -283,6 +304,18 @@ export function DeliveryAreaExplorer({
           withReason={holding}
           reasonPlaceholder={t("deliveryArea.holdReasonPlaceholder")}
           action={(reason) => changeHold(area, reason)}
+        />
+        <ConfirmModal
+          trigger={
+            <Button type="button" size="sm" variant="danger" className={mobile ? "flex-1" : undefined}>
+              <Icon name="trash" className="size-4" />
+              {t("common.delete")}
+            </Button>
+          }
+          title={t("deliveryArea.confirmDeleteTitle", { name: area.name })}
+          description={t("deliveryArea.confirmDeleteDescription")}
+          confirmLabel={t("common.delete")}
+          action={() => removeArea(area)}
         />
       </div>
     );
@@ -565,10 +598,11 @@ export function DeliveryAreaExplorer({
                       >
                         {windowLabel(area.coverage_window)}
                       </Badge>
-                      {area.locality_name ? (
-                        <span className="mt-0.5 block max-w-44 truncate text-xs text-fg-subtle">
-                          {area.zone_name ? area.zone_name + " · " : ""}
-                          {area.locality_name}
+                      {/* A row with no shape drawn covers NOBODY, however
+                          complete the rest of it looks. Say so on the row. */}
+                      {area.shape == null ? (
+                        <span className="mt-0.5 block text-xs font-medium text-amber-600 dark:text-amber-400" data-testid="area-undrawn">
+                          {t("deliveryArea.notDrawn")}
                         </span>
                       ) : null}
                     </Td>
@@ -637,10 +671,10 @@ export function DeliveryAreaExplorer({
                     </div>
                     <div>
                       <dt className="text-xs text-fg-subtle">
-                        {t("deliveryArea.locality")}
+                        {t("deliveryArea.shapeLabel")}
                       </dt>
                       <dd className="mt-0.5 font-medium text-fg-base">
-                        {area.locality_name ?? t("deliveryArea.noLocality")}
+                        {area.shape == null ? t("deliveryArea.notDrawn") : t("deliveryArea.drawn")}
                       </dd>
                     </div>
                     <div>

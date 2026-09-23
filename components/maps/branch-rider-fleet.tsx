@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Table, Td } from "@/components/ui/table";
 import { useLiveData } from "@/lib/hooks/use-live-data";
 import { useTranslation } from "@/lib/i18n/use-translation";
+import { directionsUrl } from "@/lib/services/geo";
 import { cn } from "@/lib/utils";
 
 import { RiderFleetMap, type FleetPin } from "./rider-fleet-map";
@@ -53,9 +54,9 @@ export interface BranchRider {
 
 const REFRESH_MS = 20_000;
 
-/** Google Maps directions deep-link. Inlined so the client bundle stays free of the geocoding module. */
+/** "Open in Google Maps" navigation link — a plain URL, no API key, no SDK. */
 function directionsHref(lat: number, lng: number): string {
-  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  return directionsUrl({ lat, lng });
 }
 
 export function BranchRiderFleet({

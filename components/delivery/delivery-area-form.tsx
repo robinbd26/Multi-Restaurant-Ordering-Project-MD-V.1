@@ -5,6 +5,7 @@ import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { ShapeEditor } from "@/components/maps/shape-editor";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -34,11 +35,17 @@ export interface DeliveryAreaBranchOption {
   name: string;
 }
 
-/** A zone from the master list, with the localities a branch can tick. */
-export interface DeliveryAreaZoneOption {
+/** The branch this area is drawn around, and the ceiling it must stay inside. */
+export interface DeliveryAreaBranchGeometry {
   id: number;
   name: string;
-  localities: { id: number; name: string }[];
+  /** The branch pin. Null when the super admin has not set one — no drawing. */
+  lat: number | null;
+  lng: number | null;
+  /** Maximum coverage radius in km: no shape may reach past it. */
+  maxRadiusKm: number;
+  /** This branch's other areas, drawn faintly so overlaps are visible. */
+  siblings: { id: number; name: string; shape: string | null }[];
 }
 
 const BASE_RULES: FieldRules = {
@@ -75,7 +82,7 @@ export function DeliveryAreaForm({
   listPath,
   isSuperAdmin,
   branches = [],
-  zones = [],
+  geometry = null,
   assignedBranch,
   initial = null,
   returnTo,
@@ -84,7 +91,7 @@ export function DeliveryAreaForm({
   listPath: string;
   isSuperAdmin: boolean;
   branches?: DeliveryAreaBranchOption[];
-  zones?: DeliveryAreaZoneOption[];
+  geometry?: DeliveryAreaBranchGeometry | null;
   assignedBranch?: DeliveryAreaBranchOption | null;
   initial?: DeliveryAreaRow | null;
   returnTo?: string;
@@ -104,11 +111,10 @@ export function DeliveryAreaForm({
   // Which shift this row covers. "both" keeps the pre-window behaviour, which is
   // what every row created before shifts existed already does.
   const [coverageWindow, setCoverageWindow] = useState(initial?.coverage_window ?? "both");
-  // The master locality this row stands for. Optional: a free-text area is still
-  // allowed, and by policy nothing covers it until it is added to the master list.
-  const [localityId, setLocalityId] = useState(
-    initial?.locality_id != null ? String(initial.locality_id) : "",
-  );
+  // THE SHAPE — the only thing that decides whether a customer's pin is inside
+  // this area. Stored JSON, produced by the map editor below. Empty means
+  // nothing has been drawn yet, which covers nobody.
+  const [shape, setShape] = useState(initial?.shape ?? "");
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [submissionId, setSubmissionId] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
@@ -136,7 +142,7 @@ export function DeliveryAreaForm({
               delivery_charge: charge,
               is_active: isActive,
               coverage_window: coverageWindow,
-              locality_id: localityId === "" ? null : Number(localityId),
+              shape: shape === "" ? null : shape,
               ...(isSuperAdmin && !editing
                 ? { branch_id: Number(branchId) }
                 : {}),
@@ -175,7 +181,7 @@ export function DeliveryAreaForm({
       coverageWindow,
       initial,
       isActive,
-      localityId,
+      shape,
       isSuperAdmin,
       listPath,
       minutes,
@@ -288,31 +294,24 @@ export function DeliveryAreaForm({
               </Select>
             </Field>
 
-            {zones.length > 0 ? (
-              <Field
-                label={t("deliveryArea.locality")}
-                name="locality_id"
-                hint={t("deliveryArea.localityHint")}
-              >
-                <Select
-                  name="locality_id"
-                  value={localityId}
-                  onChange={(event) => setLocalityId(event.target.value)}
-                  data-testid="area-locality"
-                >
-                  <option value="">{t("deliveryArea.noLocality")}</option>
-                  {zones.map((zone) => (
-                    <optgroup key={zone.id} label={zone.name}>
-                      {zone.localities.map((locality) => (
-                        <option key={locality.id} value={locality.id}>
-                          {locality.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </Select>
-              </Field>
-            ) : null}
+            {/* THE MAP. Everything above is the terms of delivering here; this
+                is WHERE "here" is, and it is the only part coverage reads. */}
+            <div>
+              <p className="text-sm font-medium text-fg-base">{t("deliveryArea.shapeLabel")}</p>
+              <p className="mt-0.5 mb-2 text-xs text-fg-subtle">{t("deliveryArea.shapeHint")}</p>
+              <ShapeEditor
+                value={shape}
+                onChange={setShape}
+                branchCenter={
+                  geometry && geometry.lat != null && geometry.lng != null
+                    ? { lat: geometry.lat, lng: geometry.lng }
+                    : null
+                }
+                maxRadiusKm={geometry?.maxRadiusKm ?? 0}
+                siblings={geometry?.siblings ?? []}
+                error={errors.shape ?? serverErrors.shape}
+              />
+            </div>
 
             {isEdit && initial ? (
               <div className="flex flex-wrap items-center gap-2">

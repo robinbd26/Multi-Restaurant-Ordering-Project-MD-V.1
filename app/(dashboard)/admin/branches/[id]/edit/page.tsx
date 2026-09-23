@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ApiError, getJSON } from "@/lib/api/client";
 import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
-import { activeZonesWithLocalities } from "@/lib/services/area-master";
+import { activeZones } from "@/lib/services/area-master";
 import type { Branch } from "@/types";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -28,7 +28,7 @@ export default async function BranchEditPage({ params }: { params: Promise<{ id:
     throw err;
   }
   // ITEM 7 — the master zone list, for the branch's location-tag field.
-  const zones = await activeZonesWithLocalities();
+  const zones = await activeZones();
 
   return (
     <>
@@ -42,7 +42,7 @@ export default async function BranchEditPage({ params }: { params: Promise<{ id:
       />
       <Card className="max-w-3xl">
         <CardContent className="py-6">
-          <BranchForm branch={branch} zones={zones.map((z) => ({ id: z.id, name: z.name }))} />
+          <BranchForm branch={branch} zones={zones} />
         </CardContent>
       </Card>
     </>

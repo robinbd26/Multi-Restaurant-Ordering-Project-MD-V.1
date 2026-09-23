@@ -24,7 +24,6 @@ import { readBrowseScope } from "@/lib/browse-scope/server";
 import { isFullClosureWindow } from "@/lib/services/coverage-window";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
 import { savedAddressOptions } from "@/lib/services/addresses";
-import { activeZonesWithLocalities } from "@/lib/services/area-master";
 import { browsesWithoutLocation, resolveHomeBranch } from "@/lib/services/customer-branch";
 import { branchMenu, publicMenu } from "@/lib/services/public-catalog";
 import { publicHomeBranches } from "@/lib/selectors";
@@ -179,7 +178,6 @@ export default async function HomePage() {
   // hours decision, not a second reading of the clock.
   const pickerAddresses = isCustomer ? await savedAddressOptions(user.id) : [];
   // The master list the checkout add-address form offers (Phase 3: names only).
-  const checkoutZones = isCustomer ? await activeZonesWithLocalities() : [];
   // ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery and
   // pickup alike. Computed server-side (Dhaka time, not the visitor's clock)
   // and handed to the drawer so it can block placing an order honestly, the
@@ -253,7 +251,6 @@ export default async function HomePage() {
           signedIn={Boolean(user)}
           customerName={user?.full_name ?? null}
           customerPhone={user?.phone ?? null}
-          zones={checkoutZones}
           platformClosed={platformClosed}
         />
         <CartToast />

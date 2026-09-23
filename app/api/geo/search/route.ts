@@ -3,17 +3,17 @@ import { rateLimit } from "@/lib/auth/rate-limit";
 import { ApiError, handle, sk, validationError } from "@/lib/http/errors";
 import { json } from "@/lib/http/respond";
 import { getLocale } from "@/lib/i18n/server";
-import { geocodeAddress, geocodingAvailable } from "@/lib/services/geo";
+import { geocodeAddress, geocodingAvailable } from "@/lib/services/geocoding";
 
 // POST /api/geo/search  { query } — WS-4.1 address → coordinates.
 //
 // POST, not GET: the body carries where a customer lives, which has no business
-// sitting in a URL (or in a proxy/access log). The Google key stays in this
+// sitting in a URL (or in a proxy/access log). The Barikoi key stays in this
 // process — the browser only ever sees the resolved suggestions.
 //
-// `demo: true` means no geocoding key is configured and the results came from
-// the offline locality table, so the UI can label them as approximate instead of
-// pretending they are a real geocode.
+// `available: false` means no BARIKOI_API_KEY is configured (or it is empty), so
+// search returns nothing and the UI falls back to dropping a pin and typing the
+// address by hand. Coverage never depends on this endpoint.
 export const POST = handle(async (req: Request) => {
   const me = await requireApproved();
   const body = (await req.json().catch(() => ({}))) as { query?: string; limit?: number };
@@ -29,5 +29,5 @@ export const POST = handle(async (req: Request) => {
 
   const locale = await getLocale();
   const results = await geocodeAddress(query, { locale, limit: body.limit ?? 5 });
-  return json({ results, demo: !geocodingAvailable() });
+  return json({ results, available: geocodingAvailable() });
 });

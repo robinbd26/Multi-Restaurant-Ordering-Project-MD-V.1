@@ -20,7 +20,6 @@ import { Field, Input, Select } from "@/components/ui/input";
 import type { FieldErrors } from "@/lib/validation/contract";
 import { maxLength, required } from "@/lib/validation/rules";
 import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-validation";
-import { MAIN_AREA_NAMES, subAreasFor, CUSTOM_VALUE } from "@/lib/constants/area-data";
 import {
   labelForNickname,
   nicknameDisplay,
@@ -28,31 +27,10 @@ import {
   type NicknameKind,
 } from "@/lib/addresses/nickname";
 
-/**
- * A zone from the DATABASE master list (super admin owned). Optional: callers
- * that have not been wired to it yet fall back to the bundled constant, so the
- * form keeps working exactly as before while the two sources coexist.
- */
-export interface AddressZoneOption {
-  id: number;
-  name: string;
-  localities: { id: number; name: string }[];
-}
 import { cn } from "@/lib/utils";
 
 function coord(value: number | null | undefined): string {
   return value != null && Number.isFinite(value) ? value.toFixed(6) : "";
-}
-
-/** Map a stored main-area value onto the offered list, tolerating case drift
- *  (e.g. a legacy "Beaily Road" record now reads as "Bailey Road"). Returns ""
- *  when the value is genuinely custom. The list is passed in because it now
- *  comes from the database, where a super admin can rename or retire a zone. */
-function normalizeMainArea(name: string, names: string[]): string {
-  if (!name) return "";
-  const exact = names.find((a) => a === name);
-  if (exact) return name;
-  return names.find((a) => a.toLowerCase() === name.toLowerCase()) ?? "";
 }
 
 export interface AddressT {
@@ -152,7 +130,7 @@ function buildAddress(parts: {
 const RULES: FieldRules = {
   nickname: [required],
   location_name: [maxLength(40)],
-  main_area: [required],
+  main_area: [maxLength(80)],
   custom_main_area: [maxLength(80)],
   sub_area: [maxLength(80)],
   custom_area: [maxLength(80)],
@@ -164,23 +142,11 @@ const RULES: FieldRules = {
   instructions: [maxLength(200)],
 };
 
-export function AddressManager({
-  addresses,
-  zones = [],
-}: {
-  addresses: AddressT[];
-  zones?: AddressZoneOption[];
-}) {
+export function AddressManager({ addresses }: { addresses: AddressT[] }) {
   const { t } = useTranslation();
   const router = useRouter();
   const [pending, start] = useTransition();
   // The master list from the database wins; the bundled constant is the
-  // fallback until every caller passes zones in.
-  const mainAreaNames = zones.length > 0 ? zones.map((z) => z.name) : MAIN_AREA_NAMES;
-  const subAreaNamesFor = (main: string): string[] =>
-    zones.length > 0
-      ? (zones.find((z) => z.name === main)?.localities.map((l) => l.name) ?? [])
-      : subAreasFor(main);
   const formRef = useRef<HTMLFormElement>(null);
 
   const [editing, setEditing] = useState<AddressT | null>(null);
@@ -211,11 +177,11 @@ export function AddressManager({
   const [lng, setLng] = useState("");
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [addressText, setAddressText] = useState("");
-  // The Google Maps / reverse-geocoded text of the CURRENTLY SELECTED PIN.
+  // The reverse-geocoded text of the CURRENTLY SELECTED PIN.
   // Dedicated state so a map pick is never overwritten or dropped by the
   // manual fields: it is re-set on every pick and saved as `map_address`.
   const [mapAddress, setMapAddress] = useState("");
-  // Google's stable place identifier for the selected pin ("" when the
+  // The provider's place code for the selected pin ("" when the
   // geocoder did not supply one, or when typing a manual address). Kept with
   // the other map data in the MAIN form state, saved as `place_id`.
   const [placeId, setPlaceId] = useState("");
@@ -236,27 +202,19 @@ export function AddressManager({
       if (values.nickname === "custom" && !values.location_name?.trim()) {
         errors.location_name = t("validation.required");
       }
-      // "+ Add your Own" (custom main area) requires the custom name.
-      if (values.main_area === CUSTOM_VALUE && !values.custom_main_area?.trim()) {
-        errors.custom_main_area = t("validation.required");
-      }
-      // Custom sub-area ("+ Add your Own") requires the custom name.
-      if (values.sub_area === CUSTOM_VALUE && !values.custom_area?.trim()) {
-        errors.custom_area = t("validation.required");
-      }
-      // Sub-area is required once a predefined main area is selected. A custom
-      // main area ("+ Add your Own") has no curated sub-area list, so there is
-      // nothing to require there.
-      if (values.main_area && values.main_area !== CUSTOM_VALUE && !values.sub_area?.trim()) {
-        errors.sub_area = t("validation.required");
+      // THE PIN is the one thing an address cannot be saved without: coverage
+      // is decided from it and from nothing else. The area/road text below is
+      // for the rider to find the door and is never matched against anything.
+      if (!values.latitude?.trim() || !values.longitude?.trim()) {
+        errors.latitude = t("addresses.pinRequired");
       }
       return errors;
     },
     [t],
   );
 
-  const resolvedMainArea = mainArea === CUSTOM_VALUE ? customMainArea.trim() : mainArea;
-  const resolvedSubArea = subArea === CUSTOM_VALUE ? customArea.trim() : subArea;
+  const resolvedMainArea = mainArea.trim() || customMainArea.trim();
+  const resolvedSubArea = subArea.trim() || customArea.trim();
   const resolvedRoadLane = roadLane.trim();
 
   // Map-mode data quality: a picked pin must be explicitly confirmed before the
@@ -268,10 +226,10 @@ export function AddressManager({
     housePlot: housePlot.trim(),
     flatNumber: flatNumber.trim(),
     roadLane: resolvedRoadLane,
-    subArea: subArea === CUSTOM_VALUE ? "" : subArea,
-    customArea: subArea === CUSTOM_VALUE ? customArea.trim() : "",
-    mainArea: mainArea === CUSTOM_VALUE ? "" : mainArea,
-    customMainArea: mainArea === CUSTOM_VALUE ? customMainArea.trim() : "",
+    subArea: resolvedSubArea,
+    customArea: "",
+    mainArea: resolvedMainArea,
+    customMainArea: "",
   });
 
   function openCreate() {
@@ -309,34 +267,13 @@ export function AddressManager({
   function openEdit(a: AddressT) {
     setEditing(a);
 
-    const savedMain = a.main_area ?? "";
-    const canonicalMain = normalizeMainArea(savedMain, mainAreaNames);
-    if (canonicalMain) {
-      setMainArea(canonicalMain);
-      setCustomMainArea("");
-    } else {
-      // Main areas are master-list only now: a legacy custom value must be re-picked.
-      setMainArea("");
-      setCustomMainArea(savedMain);
-    }
-
-    const subs = canonicalMain ? subAreaNamesFor(canonicalMain) : [];
-    const savedSub = a.sub_area ?? "";
-    if (savedSub && subs.includes(savedSub)) {
-      setSubArea(savedSub);
-      setCustomArea("");
-    } else if (savedSub) {
-      // Legacy sub-area value not on the current curated list — keep it
-      // selectable so the saved record round-trips intact.
-      setSubArea(savedSub);
-      setCustomArea(a.custom_area ?? "");
-    } else if (a.custom_area) {
-      setSubArea(CUSTOM_VALUE);
-      setCustomArea(a.custom_area);
-    } else {
-      setSubArea("");
-      setCustomArea("");
-    }
+    // Free text both ways now, so a saved row round-trips exactly. The legacy
+    // custom_* columns are folded into the plain fields — they only ever existed
+    // because the visible ones were dropdowns.
+    setMainArea(a.main_area ?? "");
+    setCustomMainArea("");
+    setSubArea(a.sub_area || a.custom_area || "");
+    setCustomArea("");
 
     // Road/Lane is a free-text field; a legacy custom road value becomes the text.
     setRoadLane(a.road_lane ?? a.custom_road ?? "");
@@ -406,10 +343,10 @@ export function AddressManager({
       housePlot: housePlot.trim(),
       flatNumber: flatNumber.trim(),
       roadLane: resolvedRoadLane,
-      subArea: subArea === CUSTOM_VALUE ? "" : subArea,
-      customArea: subArea === CUSTOM_VALUE ? customArea.trim() : "",
-      mainArea: mainArea === CUSTOM_VALUE ? "" : mainArea,
-      customMainArea: mainArea === CUSTOM_VALUE ? customMainArea.trim() : "",
+      subArea: resolvedSubArea,
+      customArea: "",
+      mainArea: resolvedMainArea,
+      customMainArea: "",
     });
 
     start(async () => {
@@ -426,8 +363,8 @@ export function AddressManager({
         longitude: hasCoords ? Number(lng) : null,
         is_default: isDefault,
         main_area: resolvedMainArea,
-        sub_area: subArea === CUSTOM_VALUE ? "" : subArea,
-        custom_area: subArea === CUSTOM_VALUE ? customArea.trim() : "",
+        sub_area: resolvedSubArea,
+        custom_area: "",
         road_lane: roadLane.trim(),
         custom_road: "",
         house_plot: housePlot.trim(),
@@ -448,7 +385,7 @@ export function AddressManager({
     });
   }, [
     nickname, locationName, editing, lat, lng, housePlot, flatNumber,
-    resolvedRoadLane, subArea, customArea, mainArea, resolvedMainArea, customMainArea,
+    resolvedRoadLane, resolvedSubArea, resolvedMainArea,
     roadLane, area, city, postalCode, country, instructions, addressText,
     isDefault, router, landmark, mapAddress, placeId,
   ]);
@@ -645,69 +582,32 @@ export function AddressManager({
                 </Field>
               ) : null}
 
-              <Field label={t("addresses.selectYourArea")} name="main_area" required error={errors.main_area}>
-                <Select
+              {/* AREA IS TEXT, NOT A GATE. These used to be dropdowns fed by a
+                  master locality list, and the pair was matched against branch
+                  coverage — which is why a customer whose block was missing from
+                  the list was refused. They are prefilled from the pin and freely
+                  editable now; coverage is decided by the pin alone. */}
+              <Field label={t("addresses.areaField")} name="main_area" error={errors.main_area}>
+                <Input
                   name="main_area"
                   value={mainArea}
-                  onChange={(e) => {
-                    setMainArea(e.target.value);
-                    // Any main-area switch resets the sub-area choice.
-                    setSubArea("");
-                    setCustomArea("");
-                    if (e.target.value !== CUSTOM_VALUE) {
-                      setCustomMainArea("");
-                    }
-                  }}
+                  onChange={(e) => setMainArea(e.target.value)}
+                  maxLength={80}
+                  placeholder={t("addresses.areaPlaceholder")}
                   data-testid="addr-main-area"
-                >
-                  <option value="" hidden>
-                    {t("addresses.selectYourArea")}
-                  </option>
-                  {mainAreaNames.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </Select>
+                />
               </Field>
 
-              <Field label={t("addresses.selectYourAreaName")} name="sub_area" required error={errors.sub_area}>
-                <Select
+              <Field label={t("addresses.subAreaField")} name="sub_area" error={errors.sub_area}>
+                <Input
                   name="sub_area"
                   value={subArea}
                   onChange={(e) => setSubArea(e.target.value)}
-                  disabled={!mainArea || mainArea === CUSTOM_VALUE}
+                  maxLength={80}
+                  placeholder={t("addresses.subAreaPlaceholder")}
                   data-testid="addr-sub-area"
-                >
-                  <option value="">{t("addresses.selectAreaName")}</option>
-                  {mainArea && mainArea !== CUSTOM_VALUE
-                    ? subAreaNamesFor(mainArea).map((name) => (
-                        <option key={name} value={name}>{name}</option>
-                      ))
-                    : null}
-                  {subArea && subArea !== CUSTOM_VALUE && !subAreaNamesFor(mainArea).includes(subArea) ? (
-                    // Legacy: a stored sub-area that is not on the current list.
-                    <option value={subArea}>{subArea}</option>
-                  ) : null}
-                  {mainArea && mainArea !== CUSTOM_VALUE ? (
-                    <option value={CUSTOM_VALUE}>{t("addresses.addYourOwn")}</option>
-                  ) : null}
-                </Select>
+                />
               </Field>
-              {subArea === CUSTOM_VALUE ? (
-                // Legacy-safe: an OLD saved address stored a free-text custom
-                // sub-area. The "Select Area" dropdown only lists predefined
-                // sub-areas (req #5), so this value is surfaced as a plain text
-                // input instead — never as a dropdown option.
-                <Field label={t("addresses.enterAreaName")} name="custom_area" error={errors.custom_area}>
-                  <Input
-                    name="custom_area"
-                    value={customArea}
-                    onChange={(e) => setCustomArea(e.target.value)}
-                    maxLength={80}
-                    placeholder={t("addresses.enterAreaName")}
-                    data-testid="addr-custom-area"
-                  />
-                </Field>
-              ) : null}
 
               <div className="grid gap-2 sm:grid-cols-2">
                 <Field label={t("addresses.selectRoadLane")} name="road_lane" error={errors.road_lane}>

@@ -1,4 +1,5 @@
 import { Icon } from "@/components/layout/icons";
+import { OrderLocationMap } from "@/components/maps/order-location-map";
 import { OrderStatusActions } from "@/components/orders/order-status-actions";
 import { OrderStatusBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
@@ -64,6 +65,16 @@ export async function RiderCurrentOrder({ orders }: { orders: Order[] }) {
         <Row icon="store" label={t("rider.pickupLocation")} value={current.branch_name} />
         <Row icon="clock" label={t("rider.pickupTime")} value={fmt.time(current.created_at)} />
         <Row icon="pin" label={t("rider.dropoffLocation")} value={current.delivery_address} />
+        {/* The drop-off pin itself. The Navigate button below already carries
+            this coordinate; seeing it first is what stops a rider setting off
+            toward a vague street name. */}
+        <OrderLocationMap
+          lat={current.delivery_lat}
+          lng={current.delivery_lng}
+          showLink={false}
+          heightClass="h-32"
+          testId="rider-current-map"
+        />
         <Row icon="user" label={t("orders.customer")} value={`${current.customer_name || "—"} · ${current.customer_phone || "—"}`} />
         <Row icon="money" label={t("rider.orderPrice")} value={`${fmt.money(current.total_amount)} · ${t(`payment.${current.payment_method}`)}`} />
 

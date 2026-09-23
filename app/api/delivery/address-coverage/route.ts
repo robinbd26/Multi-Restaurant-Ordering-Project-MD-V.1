@@ -3,28 +3,27 @@ import { prisma } from "@/lib/db";
 import { handle, sk, validationError } from "@/lib/http/errors";
 import { json } from "@/lib/http/respond";
 import { coverageForAddress } from "@/lib/services/address-coverage";
-import { resolveEffectiveDelivery } from "@/lib/services/delivery";
+import { coordinateOrNaN, isValidLatLng } from "@/lib/services/geo";
 
-// POST /api/delivery/address-coverage  { branch_id, customer_address_id }
-//   or  { branch_id, main_area, sub_area?, lat?, lng? }  — ITEM 8, a one-time
-//   address for this order only, checked the SAME way, never saved.
+// POST /api/delivery/address-coverage
+//   { branch_id, customer_address_id }  — a saved address (its own pin wins)
+//   { branch_id, lat, lng }             — a pin the customer just dropped,
+//                                         for a one-time checkout address
 //
-// The LIVE check the checkout drawer runs while an address is being chosen:
-// can the cart's branch deliver to this destination, on the shift running
-// now? Computed on every request, never cached on the address — the same
-// address can be covered by one branch and not another, or by day and not
-// by night.
+// The LIVE check the address form and the checkout drawer run while a
+// destination is being chosen: can the cart's branch deliver to this PIN, on
+// the shift running now?  Computed on every request, never cached on the
+// address — the same pin can be covered by one branch and not another, and by
+// day and not by night.
 //
 // Display only. The quote and the order re-run the identical decision
-// (coverageForAddress) and enforce it, so this endpoint cannot be used to
-// talk the server into a delivery it would refuse.
+// (coverageForAddress) and enforce it, so this endpoint cannot be used to talk
+// the server into a delivery it would refuse.
 export const POST = handle(async (req: Request) => {
   const me = await requireApiRole("customer");
   const body = (await req.json().catch(() => ({}))) as {
     branch_id?: unknown;
     customer_address_id?: unknown;
-    main_area?: unknown;
-    sub_area?: unknown;
     lat?: unknown;
     lng?: unknown;
   };
@@ -32,10 +31,12 @@ export const POST = handle(async (req: Request) => {
   if (!Number.isSafeInteger(branchId) || branchId <= 0) {
     throw validationError({ branch_id: sk("errors.orders.selectBranch") });
   }
-  const oneTimeMainArea = typeof body.main_area === "string" ? body.main_area.trim() : "";
   const addressId = Number(body.customer_address_id);
   const hasAddressId = Number.isSafeInteger(addressId) && addressId > 0;
-  if (!hasAddressId && !oneTimeMainArea) {
+  const lat = coordinateOrNaN(body.lat);
+  const lng = coordinateOrNaN(body.lng);
+  const hasPoint = isValidLatLng(lat, lng);
+  if (!hasAddressId && !hasPoint) {
     throw validationError({ customer_address_id: sk("errors.orders.provideDeliveryAddress") });
   }
 
@@ -46,34 +47,22 @@ export const POST = handle(async (req: Request) => {
 
   const coverage = await coverageForAddress(branch, {
     customerId: me.id,
-    ...(hasAddressId
-      ? { customerAddressId: addressId }
-      : {
-          mainArea: oneTimeMainArea,
-          subArea: typeof body.sub_area === "string" ? body.sub_area.trim() : "",
-          lat: body.lat != null ? Number(body.lat) : null,
-          lng: body.lng != null ? Number(body.lng) : null,
-        }),
+    ...(hasAddressId ? { customerAddressId: addressId } : { lat, lng }),
   });
-
-  // The fee the quote will charge: a name-granted coverage row carries its own
-  // price; geometric coverage is priced by the shared resolver at that point.
-  let deliveryFee: number | null = null;
-  if (coverage.via === "locality" && coverage.localityRow) {
-    deliveryFee = coverage.localityRow.charge;
-  } else if (coverage.via === "geometry" && coverage.point) {
-    const effective = await resolveEffectiveDelivery(branch.id, coverage.point);
-    deliveryFee = effective ? Number(effective.charge.toFixed(2)) : null;
-  }
 
   return json({
     covered: coverage.covered,
-    via: coverage.via,
+    // Covered, held (pickup only) or out of area — the three states the form
+    // shows before the customer saves or checks out.
+    status: coverage.coverage?.status ?? "not_covered",
     reason: coverage.reason,
     window: coverage.window,
-    locality_name: coverage.localityName,
-    delivery_fee: deliveryFee,
-    held: coverage.localityRow?.isHeld ?? false,
+    // Only quote a fee for a delivery that can actually happen.
+    delivery_fee: coverage.covered ? Number(coverage.coverage!.charge.toFixed(2)) : null,
+    estimated_minutes: coverage.coverage?.estimatedMinutes ?? null,
+    area_name: (coverage.coverage?.area ?? coverage.coverage?.blockedArea)?.name ?? null,
+    held: coverage.pickupOnly,
+    hold_reason: coverage.coverage?.blockedArea?.holdReason ?? "",
     pickup_enabled: branch.pickupEnabled,
     branch: { id: branch.id, name: branch.name },
   });

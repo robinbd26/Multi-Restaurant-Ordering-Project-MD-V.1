@@ -14,9 +14,7 @@ export interface DeliverToAddress {
   label: string;
   address: string;
   isDefault: boolean;
-  /** For display wording only — a pinless address can still be selectable. */
-  hasCoordinates: boolean;
-  /** False only when NEITHER a map pin NOR a master-list area can resolve a branch. */
+  /** False when the row has no readable map pin, so nothing can be delivered to it. */
   isSelectable: boolean;
 }
 
@@ -85,10 +83,6 @@ export function DeliverToPicker({
               <RadioRow
                 key={a.id}
                 checked={deliverTo.mode === "address" && deliverTo.addressId === a.id}
-                // A pinless address still resolves a branch when its area/sub-area
-                // names a real master-list locality (resolveDeliverTo — the same
-                // rule checkout's own coverage-by-name already uses), so it is only
-                // disabled when NEITHER a pin nor a named area can be matched.
                 disabled={!a.isSelectable}
                 testId={`deliver-to-address-${a.id}`}
                 title={a.label}

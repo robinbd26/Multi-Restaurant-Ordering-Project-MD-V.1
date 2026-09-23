@@ -206,7 +206,7 @@ async function main() {
   // branch cannot be created before at least one zone exists. Additive and
   // idempotent — see syncAreaMaster's own doc comment.
   const master = await syncAreaMaster(prisma);
-  console.log("✔ Area master: " + master.zones + " zones, " + master.localities + " localities (" + master.created + " new)");
+  console.log("✔ Area master: " + master.zones + " zones (" + master.created + " new)");
   async function zoneIdByName(name: string): Promise<number> {
     const zone = await prisma.deliveryZone.findFirst({ where: { name } });
     if (!zone) throw new Error(`Seed zone "${name}" missing after syncAreaMaster — check AREA_MASTER.`);
@@ -323,36 +323,33 @@ async function main() {
       pickupPhone: "01000000000",
     },
   });
-  // A named delivery zone (Gulshan-ish circle).
-  const zoneName = "Gulshan Zone";
-  const existingZone = await prisma.branchDeliveryZone.findFirst({ where: { branchId: branch.id, name: zoneName } });
-  if (!existingZone) {
-    await prisma.branchDeliveryZone.create({
-      data: { branchId: branch.id, name: zoneName, centerLat: new Prisma.Decimal("23.7925000"), centerLng: new Prisma.Decimal("90.4078000"), radiusKm: new Prisma.Decimal("2.5"), deliveryFee: new Prisma.Decimal("40.00") },
-    });
-  }
-  // Named delivery areas for the Main Branch (req #1/#6): one normal, one with a
-  // higher charge/estimate, and one HELD (blocks new delivery orders) so the
-  // checkout area selector + held-area block can be exercised end-to-end.
+  // Delivery areas for the Main Branch — SHAPES, because coverage is now a
+  // customer's pin inside a drawn area (lib/coverage). One wide circle around
+  // the branch so a seeded customer can actually order, one cheaper pocket that
+  // OVERLAPS it (so the "cheapest wins" rule is exercised end to end), and one
+  // HELD area covering a third spot, so the pickup-only path has something real
+  // to hit. Shapes are written as JSON exactly as the editor stores them.
+  const circle = (lat: string, lng: string, radiusKm: number) =>
+    JSON.stringify({ type: "Circle", coordinates: [Number(lng), Number(lat)], radiusKm });
   const seedAreas = [
-    { name: "Gulshan", charge: "40.00", minutes: 35, held: false, lat: "23.7925000", lng: "90.4078000" },
-    { name: "Banani", charge: "60.00", minutes: 45, held: false, lat: "23.7936000", lng: "90.4066000" },
-    { name: "Uttara", charge: "90.00", minutes: 70, held: true, reason: "Temporarily paused (rider shortage)", lat: null, lng: null },
+    // The branch pin is 23.78081, 90.4079 with a 5 km radius: this fills it.
+    { name: "Core (all round)", charge: "60.00", minutes: 45, held: false, shape: circle("23.7808100", "90.4079000", 5) },
+    // A cheaper pocket INSIDE the core area — overlapping on purpose.
+    { name: "Gulshan pocket", charge: "40.00", minutes: 35, held: false, shape: circle("23.7925000", "90.4078000", 1.5) },
+    // Held: covered, but delivery paused there, so checkout offers pickup.
+    { name: "Dhanmondi edge", charge: "90.00", minutes: 70, held: true, reason: "Temporarily paused (rider shortage)", shape: circle("23.7500000", "90.3800000", 1) },
   ];
   for (const a of seedAreas) {
-    const normalizedName = a.name.trim().toLowerCase();
-    const existingA = await prisma.branchDeliveryArea.findFirst({ where: { branchId: branch.id, normalizedName } });
+    const existingA = await prisma.branchDeliveryArea.findFirst({ where: { branchId: branch.id, name: a.name } });
     const data = {
       branchId: branch.id,
       name: a.name,
-      normalizedName,
+      shape: a.shape,
       isActive: true,
       isHeld: a.held,
       holdReason: a.held ? (a.reason ?? "") : "",
       estimatedDeliveryMinutes: a.minutes,
       deliveryCharge: new Prisma.Decimal(a.charge),
-      centerLat: a.lat ? new Prisma.Decimal(a.lat) : null,
-      centerLng: a.lng ? new Prisma.Decimal(a.lng) : null,
     };
     if (existingA) await prisma.branchDeliveryArea.update({ where: { id: existingA.id }, data });
     else await prisma.branchDeliveryArea.create({ data });

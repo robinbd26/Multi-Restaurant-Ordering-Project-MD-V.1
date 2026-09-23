@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { DeliveryAreaForm } from "@/components/delivery/delivery-area-form";
-import { activeZonesWithLocalities } from "@/lib/services/area-master";
+import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth/current-user";
 import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
 import { ApiError } from "@/lib/http/errors";
+import { branchGeometryForAreas } from "@/lib/services/area-geometry";
 import { areaForManage, serializeArea } from "@/lib/services/delivery-areas";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -34,13 +35,20 @@ export default async function AdminEditDeliveryAreaPage({
     throw error;
   }
 
-  // The master list the branch ticks its coverage from.
-  const zones = await activeZonesWithLocalities();
+  const [geometry, branches] = await Promise.all([
+    branchGeometryForAreas(area.branchId, area.id),
+    prisma.branch.findMany({
+      where: { isActive: true, isArchived: false },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
 
   return (
     <DeliveryAreaForm
       mode="edit"
-      zones={zones}
+      branches={branches}
+      geometry={geometry}
       listPath="/admin/delivery-areas"
       isSuperAdmin
       initial={serializeArea(area)}

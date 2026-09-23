@@ -6,7 +6,6 @@ import { LocationPermissionCard } from "@/components/customer/location-permissio
 import { getJSON } from "@/lib/api/client";
 import { requireRole } from "@/lib/auth/session";
 import { getSessionUser } from "@/lib/auth/current-user";
-import { activeZonesWithLocalities } from "@/lib/services/area-master";
 import { customerLocationStatus } from "@/lib/services/customer-location";
 import { getT } from "@/lib/i18n/server";
 import type { Paginated } from "@/types";
@@ -21,12 +20,11 @@ export default async function CustomerAddressesPage() {
   const { t } = await getT();
   await requireRole("customer");
   const me = (await getSessionUser())!;
-  const [data, location, zones] = await Promise.all([
+  const [data, location] = await Promise.all([
     getJSON<Paginated<AddressT>>("/customer/addresses/"),
     customerLocationStatus(me.id),
     // The master list the coverage rules match against, so the area a customer
     // picks here is the same name a branch ticks in Delivery Areas.
-    activeZonesWithLocalities(),
   ]);
 
   return (
@@ -36,7 +34,7 @@ export default async function CustomerAddressesPage() {
       <div className="mb-6">
         <LocationPermissionCard initial={location} />
       </div>
-      <AddressManager addresses={data.results} zones={zones} />
+      <AddressManager addresses={data.results} />
     </>
   );
 }

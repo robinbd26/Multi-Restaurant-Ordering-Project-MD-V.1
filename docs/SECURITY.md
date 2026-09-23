@@ -479,9 +479,12 @@ so the daily-login coin cannot be claimed twice in one Dhaka day.
   commented out and empty and must stay that way. The same applies to `SMS_API_KEY`,
   `VAPID_PRIVATE_KEY`, `NAGAD_*` and any storage keys.
 - **No secret belongs in a `NEXT_PUBLIC_` variable.** Anything so prefixed is inlined into
-  the browser bundle. `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is public by nature — restrict it by
-  HTTP referrer in the Google Cloud console, and use the separate server-side
-  `GOOGLE_MAPS_SERVER_API_KEY` (IP-restricted) for geocoding.
+  the browser bundle. The map tile URL and attribution (`NEXT_PUBLIC_MAP_TILE_URL`,
+  `NEXT_PUBLIC_MAP_ATTRIBUTION`) are public by nature and hold no secret — the tiles are
+  fetched by the browser. The geocoding key (`BARIKOI_API_KEY`) is the billable one and is
+  **server-only**: the browser talks to `/api/geo/*`, which are POST + per-user rate limited,
+  and the key never leaves the process. Maps themselves need no key at all (Leaflet +
+  OpenStreetMap), and the "Open in Google Maps" buttons are plain URLs.
 - The bKash driver uses Tokenized Checkout with `intent: "sale"` and mode `"0011"` — the
   customer authorises inside bKash's own interface, so **no PIN or wallet credential ever
   touches this application**.
@@ -501,7 +504,7 @@ than a surprise.
 | --- | --- | --- |
 | 2 | **The password login path was not rate limited** — `bcrypt.compare` was unthrottled at both the server action and the Credentials provider. | `lib/auth/login-rate-limit.ts`, enforced in `loginAction` (`lib/auth/actions.ts`) and `authorize()` (`auth.ts`). Identifier+IP 10/5 min plus a failures-only per-IP ceiling of 100/15 min; limited attempts return the same generic invalid-credentials response; no lockout (DoS vector). See [§2.5](#25-rate-limiting). |
 | 3 | **Public customer registration was not rate limited.** | `lib/auth/register-rate-limit.ts`, enforced per real client IP in `registerAction` (10/hour) and per observed IP in `app/api/auth/register/customer/route.ts` (30/15 min, HTTP 429). See [§2.5](#25-rate-limiting). |
-| 4 | **No security response headers.** | `headers()` block in `next.config.ts` on every path: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (camera/microphone/payment off, geolocation self — the customer location feature needs it), HSTS (180 days, conservative scope), and a working CSP that accommodates the inline theme bootstrap and Google Maps (JS SDK + Embed iframes) while keeping `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`. The nonce-based tightening path is documented in the config. |
+| 4 | **No security response headers.** | `headers()` block in `next.config.ts` on every path: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (camera/microphone/payment off, geolocation self — the customer location feature needs it), HSTS (180 days, conservative scope), and a working CSP that accommodates the inline theme bootstrap and Leaflet's inline pane styles, with `img-src` allowing only the configured map tile host (derived from `NEXT_PUBLIC_MAP_TILE_URL`), while keeping `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`. The nonce-based tightening path is documented in the config. |
 | 6 | **`LoginHistory.ipAddress` / `.userAgent` were always empty.** | `recordLogin()` in `auth.ts` now captures the proxy-reported client IP and a length-bounded user agent via `next/headers`, degrading to `""` (never a failed login) outside a request scope. |
 
 Gap #1's worst outcome — seeding production with the published super-admin password — is

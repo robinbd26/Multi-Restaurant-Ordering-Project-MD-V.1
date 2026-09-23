@@ -3,7 +3,6 @@ import { Prisma } from "@prisma/client";
 import type { CustomerAddress } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
-import { findLocality } from "@/lib/services/area-master";
 import { isValidLatLng } from "@/lib/services/geo";
 
 
@@ -20,8 +19,8 @@ export function serializeAddress(a: CustomerAddress) {
     postal_code: a.postalCode,
     country: a.country,
     instructions: a.instructions,
-    latitude: a.latitude != null ? Number(a.latitude) : null,
-    longitude: a.longitude != null ? Number(a.longitude) : null,
+    latitude: Number(a.latitude),
+    longitude: Number(a.longitude),
     main_area: a.mainArea,
     sub_area: a.subArea,
     custom_area: a.customArea,
@@ -43,18 +42,35 @@ export function serializeAddress(a: CustomerAddress) {
  * Create the customer's default address at registration (req #17). Idempotent:
  * if the customer already has an address (e.g. a registration retry), it does
  * nothing so the same registration address is never duplicated.
+ *
+ * REQUIRES A PIN. Registration collects an address as TEXT, and a saved address
+ * without coordinates cannot be delivered to (coverage is the pin, and only the
+ * pin), so a row is written only when the form also carried a map location.
+ * Without one the text is kept on the User record alone and the customer picks
+ * their pin the first time they add an address — which is honest, rather than
+ * saving a row that every checkout would then refuse.
  */
 export async function ensureRegistrationAddress(
   tx: Prisma.TransactionClient,
   userId: number,
   address: string,
+  point?: { lat: number; lng: number } | null,
 ): Promise<void> {
   const trimmed = address.trim();
   if (!trimmed) return;
+  if (!point || !isValidLatLng(point.lat, point.lng)) return;
   const existing = await tx.customerAddress.findFirst({ where: { userId } });
   if (existing) return;
   await tx.customerAddress.create({
-    data: { userId, label: "Home", address: trimmed, isDefault: true, isActive: true },
+    data: {
+      userId,
+      label: "Home",
+      address: trimmed,
+      latitude: new Prisma.Decimal(point.lat.toFixed(7)),
+      longitude: new Prisma.Decimal(point.lng.toFixed(7)),
+      isDefault: true,
+      isActive: true,
+    },
   });
 }
 
@@ -64,15 +80,11 @@ export interface SavedAddressOption {
   label: string;
   address: string;
   isDefault: boolean;
-  /** True when the row has a usable map pin — for display wording only. */
-  hasCoordinates: boolean;
   /**
-   * False when NEITHER a map pin NOR a master-list locality can resolve a
-   * branch — matches resolveDeliverTo()'s own `point || locality` rule
-   * (lib/services/customer-branch.ts), so a pinless address whose area/sub-
-   * area names a real locality is still selectable here, exactly as it
-   * already is at checkout (coverageForAddress). Disabling on hasCoordinates
-   * alone used to block every pinless address from ever being chosen.
+   * Whether the row can be delivered to at all. Every saved address carries a
+   * pin now, so this is only false for a row whose stored coordinates are
+   * somehow unreadable — it is kept so the picker degrades visibly instead of
+   * silently offering a destination checkout would refuse.
    */
   isSelectable: boolean;
 }
@@ -98,24 +110,14 @@ export async function savedAddressOptions(userId: number): Promise<SavedAddressO
       isDefault: true,
       latitude: true,
       longitude: true,
-      mainArea: true,
-      subArea: true,
     },
     orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
   });
-  return Promise.all(
-    rows.map(async (a) => {
-      const hasCoordinates =
-        a.latitude != null && a.longitude != null && isValidLatLng(Number(a.latitude), Number(a.longitude));
-      const locality = hasCoordinates ? null : await findLocality(a.mainArea, a.subArea);
-      return {
-        id: a.id,
-        label: a.label === "Others" && a.customLabel ? a.customLabel : a.label,
-        address: a.address,
-        isDefault: a.isDefault,
-        hasCoordinates,
-        isSelectable: hasCoordinates || locality != null,
-      };
-    }),
-  );
+  return rows.map((a) => ({
+    id: a.id,
+    label: a.label === "Others" && a.customLabel ? a.customLabel : a.label,
+    address: a.address,
+    isDefault: a.isDefault,
+    isSelectable: isValidLatLng(Number(a.latitude), Number(a.longitude)),
+  }));
 }

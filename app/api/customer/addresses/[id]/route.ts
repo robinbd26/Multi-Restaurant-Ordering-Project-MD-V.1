@@ -63,15 +63,17 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   if (body.landmark !== undefined) data.landmark = body.landmark.trim();
   if (body.map_address !== undefined) data.mapAddress = body.map_address.trim();
   if (body.place_id !== undefined) data.placeId = body.place_id.trim();
+  // An edit may MOVE the pin but never remove it: coverage is decided from the
+  // pin alone, so a saved address without one could not be delivered to.
   if (body.latitude !== undefined || body.longitude !== undefined) {
     if (body.latitude == null || body.longitude == null) {
-      data.latitude = null;
-      data.longitude = null;
-    } else {
-      if (!isValidLatLng(body.latitude, body.longitude)) throw validationError({ latitude: sk("errors.orders.invalidCoordinates") });
-      data.latitude = new Prisma.Decimal(Number(body.latitude).toFixed(7));
-      data.longitude = new Prisma.Decimal(Number(body.longitude).toFixed(7));
+      throw validationError({ latitude: sk("errors.ops.mapPinRequired") });
     }
+    if (!isValidLatLng(body.latitude, body.longitude)) {
+      throw validationError({ latitude: sk("errors.orders.invalidCoordinates") });
+    }
+    data.latitude = new Prisma.Decimal(Number(body.latitude).toFixed(7));
+    data.longitude = new Prisma.Decimal(Number(body.longitude).toFixed(7));
   }
   if (body.is_active !== undefined) data.isActive = Boolean(body.is_active);
 

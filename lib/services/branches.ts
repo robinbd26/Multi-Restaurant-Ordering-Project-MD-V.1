@@ -219,7 +219,7 @@ export async function archiveOrDeleteBranch(actorId: number, branchId: number) {
   // destroy history — the count list must stay exhaustive.
   const where = { branchId } as const;
   const [
-    orders, products, categories, areas, zones, reservations, ramadan, tables, employees,
+    orders, products, categories, areas, reservations, ramadan, tables, employees,
     sessions, expenses, settlements, commissions, complaints, adjustments,
     activityLogs, attendance, staffAttendance, timeSlots, dutyLogs, orderAssignments,
     receiveConfirmations, dutyChats, managerAssignments, ramadanTables, ramadanBookings,
@@ -229,7 +229,6 @@ export async function archiveOrDeleteBranch(actorId: number, branchId: number) {
     prisma.product.count({ where }),
     prisma.category.count({ where }),
     prisma.branchDeliveryArea.count({ where }),
-    prisma.branchDeliveryZone.count({ where }),
     prisma.tableReservation.count({ where }),
     prisma.ramadanReservation.count({ where }),
     prisma.branchTable.count({ where }),
@@ -258,7 +257,7 @@ export async function archiveOrDeleteBranch(actorId: number, branchId: number) {
   ]);
 
   const dependencies = {
-    orders, products, categories, areas, zones, reservations, ramadan, tables, employees,
+    orders, products, categories, areas, reservations, ramadan, tables, employees,
     sessions, expenses, settlements, commissions, complaints, adjustments,
     activityLogs, attendance, staffAttendance, timeSlots, dutyLogs, orderAssignments,
     receiveConfirmations, dutyChats, managerAssignments, ramadanTables, ramadanBookings,

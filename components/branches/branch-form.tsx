@@ -1,6 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
+
+import { MapPicker } from "@/components/maps/map-picker";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -33,7 +35,11 @@ const RULES: FieldRules = {
   phone: [required, phone],
   brand_type: [required, oneOf(BRAND_TYPES)],
   business_type: [required, oneOf(BUSINESS_TYPES)],
-  zone_id: [selectRequired], // Zone / Area is mandatory — it seeds the delivery-areas helper
+  zone_id: [selectRequired], // Zone / Area is mandatory — it groups branches for filters and reports
+  // The branch PIN anchors every delivery area drawn for this branch, so it is
+  // required. Validated here for the message, and again on the server.
+  latitude: [required, number, min(-90), max(90)],
+  longitude: [required, number, min(-180), max(180)],
   delivery_fee: [number, min(0)],
   address: [required],
   email: [emailRule],
@@ -57,6 +63,12 @@ export function BranchForm({
   zones?: { id: number; name: string }[];
 }) {
   const { t } = useTranslation();
+  // The pin lives in state so the picker and the form's hidden inputs stay in
+  // step; the values are plain decimal strings, exactly as the server expects.
+  const [pin, setPin] = useState({
+    lat: branch?.latitude != null ? String(branch.latitude) : "",
+    lng: branch?.longitude != null ? String(branch.longitude) : "",
+  });
   const action = saveBranchAction.bind(null, branch?.id ?? null);
   const [state, formAction, pending] = useActionState(action, initialActionState);
   const { errors, formProps } = useFormValidation(RULES, {
@@ -93,10 +105,10 @@ export function BranchForm({
             <option value="combined">{t("brands.combined")}</option>
           </Select>
         </Field>
-        {/* ITEM 7 — which master zone this branch is based in (Gulshan, Banani,
-            …). A location tag, not a coverage grant: it seeds the "Suggest
-            areas for my branch" helper on the delivery-areas page and nothing
-            else. Optional — a branch may have none. */}
+        {/* Which master zone this branch sits in (Gulshan, Banani, …). A
+            GROUPING TAG for filtering and reports — never a coverage grant.
+            Where this branch actually delivers is the shapes its manager draws
+            on the Delivery Areas page. */}
         <Field label={t("branches.zoneField")} name="zone_id" required hint={t("branches.zoneFieldHint")} error={errors.zone_id}>
           <Select name="zone_id" defaultValue={branch?.zone_id != null ? String(branch.zone_id) : ""} aria-invalid={!!errors.zone_id}>
             <option value="">{t("branches.zoneSelect")}</option>
@@ -109,8 +121,7 @@ export function BranchForm({
         </Field>
       </div>
 
-      {/* Display-only badge for customers — not an order type, and separate from
-          the Zone / Area tag above (which seeds the delivery-areas helper). */}
+      {/* Display-only badge for customers — not an order type. */}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label={t("branches.businessType")}
@@ -139,12 +150,23 @@ export function BranchForm({
         </Field>
       </div>
 
-      {/* req #2 — raw latitude/longitude text inputs are removed from the branch
-          UI. Existing coordinates are preserved (hidden) so nearest-branch /
-          coverage keeps working; the server validates any coordinates that
-          enter and never trusts client-supplied distance/nearest values. */}
-      <input type="hidden" name="latitude" defaultValue={branch?.latitude ?? ""} />
-      <input type="hidden" name="longitude" defaultValue={branch?.longitude ?? ""} />
+      {/* THE BRANCH PIN. Required: every delivery area is drawn around it and
+          measured from it, and the "maximum coverage" circle below is centred on
+          it, so a branch without a pin can have no coverage at all. Dropped on a
+          map rather than typed as decimal degrees. */}
+      <MapPicker
+        label={t("mapPicker.branchTitle")}
+        hint={t("mapPicker.branchHint")}
+        lat={pin.lat}
+        lng={pin.lng}
+        onChange={(point) => setPin({ lat: point.lat, lng: point.lng })}
+        latName="latitude"
+        lngName="longitude"
+        latError={errors.latitude}
+        lngError={errors.longitude}
+        defaultOpen={!pin.lat || !pin.lng}
+        testId="branch-map"
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field

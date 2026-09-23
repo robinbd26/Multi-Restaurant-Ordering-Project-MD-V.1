@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { DeliveryAreaForm } from "@/components/delivery/delivery-area-form";
-import { activeZonesWithLocalities } from "@/lib/services/area-master";
 import { getSessionUser } from "@/lib/auth/current-user";
 import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
 import { ApiError } from "@/lib/http/errors";
+import { branchGeometryForAreas } from "@/lib/services/area-geometry";
 import { areaForManage, serializeArea } from "@/lib/services/delivery-areas";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -34,13 +34,13 @@ export default async function BranchManagerEditDeliveryAreaPage({
     throw error;
   }
 
-  // The master list the branch ticks its coverage from.
-  const zones = await activeZonesWithLocalities();
+  // This area is excluded from its own backdrop — it is the one being drawn.
+  const geometry = await branchGeometryForAreas(area.branchId, area.id);
 
   return (
     <DeliveryAreaForm
       mode="edit"
-      zones={zones}
+      geometry={geometry}
       listPath="/branch-manager/delivery-areas"
       isSuperAdmin={false}
       initial={serializeArea(area)}

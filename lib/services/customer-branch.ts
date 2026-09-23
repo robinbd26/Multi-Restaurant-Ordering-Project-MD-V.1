@@ -1,8 +1,10 @@
 import "server-only";
 
+import type { Branch } from "@prisma/client";
+
 import { prisma } from "@/lib/db";
 import type { BrowseScope, DeliverTo } from "@/lib/browse-scope/config";
-import { coverageFor, effectiveDeliveryFor } from "@/lib/services/delivery";
+import { areasForCoverage, coverageForPoint } from "@/lib/services/coverage";
 import { isValidLatLng } from "@/lib/services/geo";
 import {
   isBranchCoveredForCustomer,
@@ -11,8 +13,6 @@ import {
   type TrustedPoint,
 } from "@/lib/services/customer-location";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
-import { findLocality } from "@/lib/services/area-master";
-import { branchCoversLocality } from "@/lib/services/locality-coverage";
 
 export { isBranchCoveredForCustomer };
 
@@ -79,14 +79,10 @@ export async function resolveCustomerBranch(
   userId: number,
   preferredBranchId?: number | null,
   pointOverride?: TrustedPoint | null,
-  /** The master locality the deliver-to address names, when it names one. */
-  localityId?: number | null,
 ): Promise<CustomerBranchContext> {
-  const nearest = await nearestEligibleBranch(userId, pointOverride, localityId);
-  // A named locality can resolve a branch with no coordinates at all, so the
-  // absence of a point is only "no location" when nothing covers them either.
-  const coveredByName = nearest.branches.some((b) => b.covered);
-  if (!nearest.point && !coveredByName) return EMPTY;
+  const nearest = await nearestEligibleBranch(userId, pointOverride);
+  // Coverage is a pin inside a shape, so with no pin there is nothing to judge.
+  if (!nearest.point) return EMPTY;
 
   let targetBranchId: number | null = null;
   let targetDistance: number | null = null;
@@ -114,22 +110,10 @@ export async function resolveCustomerBranch(
     return { ...EMPTY, state: "out-of-zone", pointSource: nearest.pointSource };
   }
 
-  // WS-4.5 — coverage and price come from the ONE resolver in
-  // lib/services/delivery.ts, against the same geometry, so the fee this strip
-  // advertises is the fee the order write path snapshots. It used to read the
-  // old `coverageFor().fee`, which was a flat 0 inside the branch radius while
-  // the invoice charged Branch.deliveryFee or a named area's own charge.
-  const [zones, areas] = await Promise.all([
-    prisma.branchDeliveryZone.findMany({ where: { branchId: branch.id, isActive: true } }),
-    prisma.branchDeliveryArea.findMany({ where: { branchId: branch.id, isActive: true } }),
-  ]);
-  // With a point, the shared geometry resolver prices it exactly as the order
-  // write path will. Without one, the named-area row that granted coverage
-  // carries its own charge, which is the only honest figure available.
-  const coverage = nearest.point ? effectiveDeliveryFor(branch, zones, areas, nearest.point) : null;
-  const listedRow = nearest.point == null && localityId != null
-    ? await branchCoversLocality(branch.id, localityId)
-    : null;
+  // Coverage AND price come from the ONE resolver (lib/services/coverage.ts),
+  // against the same shapes, so the fee this strip advertises is the fee the
+  // order write path snapshots.
+  const coverage = await coverageForPoint(branch, nearest.point);
 
   // Open-now state comes from the SAME server decision used everywhere else
   // (nearestEligibleBranch already computed it per branch). Surfaced so the
@@ -151,9 +135,9 @@ export async function resolveCustomerBranch(
       prepTimeMinutes: branch.prepTimeMinutes,
     },
     distanceKm: targetDistance,
-    deliveryFee: coverage
-      ? (coverage.covered ? Number(coverage.charge.toFixed(2)) : null)
-      : (listedRow?.charge ?? null),
+    // No fee for a branch that cannot deliver here: inventing one would be the
+    // lie the whole coverage rewrite exists to avoid.
+    deliveryFee: coverage.covered ? Number(coverage.charge.toFixed(2)) : null,
     pointSource: nearest.pointSource,
     open,
     opensAt: open ? null : elig?.opens_at ?? null,
@@ -230,25 +214,23 @@ export interface HomeBranchContext extends CustomerBranchContext {
  */
 async function coveredSavedAddress(
   userId: number,
-  branch: { id: number } & Parameters<typeof coverageFor>[0],
+  branch: Branch,
 ): Promise<{ id: number; label: string } | null> {
   const rows = await prisma.customerAddress.findMany({
-    where: { userId, isActive: true, latitude: { not: null }, longitude: { not: null } },
+    where: { userId, isActive: true },
     select: { id: true, label: true, customLabel: true, latitude: true, longitude: true },
     orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
   });
   if (rows.length === 0) return null;
-  const zones = await prisma.branchDeliveryZone.findMany({
-    where: { branchId: branch.id, isActive: true },
-  });
+  // The branch's shapes are loaded ONCE and reused for every address, rather
+  // than re-querying per row.
+  const areas = await areasForCoverage(branch.id);
   for (const a of rows) {
-    if (a.latitude == null || a.longitude == null) continue;
     const lat = Number(a.latitude);
     const lng = Number(a.longitude);
     if (!isValidLatLng(lat, lng)) continue;
-    if (coverageFor(branch, zones, { lat, lng }).covered) {
-      return { id: a.id, label: addressLabel(a) };
-    }
+    const coverage = await coverageForPoint(branch, { lat, lng }, { areas });
+    if (coverage.covered) return { id: a.id, label: addressLabel(a) };
   }
   return null;
 }
@@ -274,35 +256,20 @@ export async function resolveDeliverTo(
   deliverTo: DeliverTo;
   point: TrustedPoint | null;
   label: string | null;
-  /** The master locality this address names, when it names one. */
-  localityId: number | null;
-  localityName: string | null;
 }> {
   if (deliverTo.mode === "address") {
     const address = await prisma.customerAddress.findFirst({
       where: { id: deliverTo.addressId, userId, isActive: true },
-      select: { id: true, label: true, customLabel: true, mainArea: true, subArea: true },
+      select: { id: true, label: true, customLabel: true },
     });
     const point = address ? await pointForCustomerAddress(userId, address.id) : null;
-    // Only a zone + locality pair that exists on the MASTER list counts. A
-    // custom-typed area resolves to nothing, so it stays uncovered until a
-    // branch manager adds it — the rule that keeps the coverage list meaningful.
-    const locality = address ? await findLocality(address.mainArea, address.subArea) : null;
-    // An address with no map pin is still usable when it names a covered
-    // locality: that is exactly what named-area coverage is for.
-    if (address && (point || locality)) {
-      return {
-        deliverTo,
-        point,
-        label: addressLabel(address),
-        localityId: locality?.id ?? null,
-        localityName: locality?.name ?? null,
-      };
+    if (address && point) {
+      return { deliverTo, point, label: addressLabel(address) };
     }
   }
   // A null point means "use the customer's own trusted point", which every
   // resolver below already derives when no override is passed.
-  return { deliverTo: { mode: "gps" }, point: null, label: null, localityId: null, localityName: null };
+  return { deliverTo: { mode: "gps" }, point: null, label: null };
 }
 
 /**
@@ -336,7 +303,7 @@ export async function resolveHomeBranch(
       // resolveCustomerBranch honours a preferred branch only when it covers the
       // point, and otherwise falls back to the nearest covering one — so landing
       // on a DIFFERENT branch id is precisely "the browsed branch cannot reach".
-      const context = await resolveCustomerBranch(userId, branch.id, target.point, target.localityId);
+      const context = await resolveCustomerBranch(userId, branch.id, target.point);
       if (context.branchId === branch.id) {
         return {
           ...context,
@@ -375,7 +342,7 @@ export async function resolveHomeBranch(
     }
   }
 
-  const context = await resolveCustomerBranch(userId, null, target.point, target.localityId);
+  const context = await resolveCustomerBranch(userId, null, target.point);
   return {
     ...context,
     selection: { deliverTo: target.deliverTo, branchId: null },

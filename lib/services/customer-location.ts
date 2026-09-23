@@ -4,10 +4,8 @@ import type { User } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { validationError, sk } from "@/lib/http/errors";
-import { haversineKm, isValidLatLng, roundKm, type LatLng } from "@/lib/services/geo";
-import { coverageFor } from "@/lib/services/delivery";
-import { isBranchOpenNow } from "@/lib/services/branch-hours";
-import { branchesCoveringLocality } from "@/lib/services/locality-coverage";
+import { haversineKm, isValidLatLng, type LatLng } from "@/lib/services/geo";
+import { branchOptionsForPoint, coverageForPoint } from "@/lib/services/coverage";
 
 /**
  * WS-4.9 — how a stored fix was obtained. A subset of the picker's
@@ -150,7 +148,7 @@ export async function trustedCustomerPointDetailed(userId: number): Promise<Trus
   // Scoped to THIS customer's own addresses, so an address id can never be
   // borrowed from another account.
   const addr = await prisma.customerAddress.findFirst({
-    where: { userId, isActive: true, isDefault: true, latitude: { not: null }, longitude: { not: null } },
+    where: { userId, isActive: true, isDefault: true },
   });
   if (addr?.latitude != null && addr.longitude != null) {
     const lat = Number(addr.latitude);
@@ -185,8 +183,6 @@ export async function pointForCustomerAddress(
       id: addressId,
       userId,
       isActive: true,
-      latitude: { not: null },
-      longitude: { not: null },
     },
   });
   if (addr?.latitude == null || addr.longitude == null) return null;
@@ -292,7 +288,7 @@ export async function resolveDeliveryCoordinate(input: {
 
   // 3. Or with an address the customer saved earlier (their own rows only).
   const saved = await prisma.customerAddress.findMany({
-    where: { userId: input.customerId, isActive: true, latitude: { not: null }, longitude: { not: null } },
+    where: { userId: input.customerId, isActive: true },
     select: { id: true, latitude: true, longitude: true },
   });
   for (const row of saved) {
@@ -368,59 +364,23 @@ export async function isBranchCoveredForCustomer(userId: number, branchId: numbe
   const branch = await prisma.branch.findFirst({
     where: { id: branchId, isActive: true, isArchived: false },
   });
-  if (!branch || branch.latitude == null || branch.longitude == null) return false;
+  if (!branch) return false;
   const point = await trustedCustomerPoint(userId);
   if (!point) return false;
-  const zones = await prisma.branchDeliveryZone.findMany({
-    where: { branchId, isActive: true },
-  });
-  return coverageFor(branch, zones, point).covered;
+  const coverage = await coverageForPoint(branch, point);
+  return coverage.covered;
 }
 
 /**
- * WS-4.8 — every active zone for a set of branches in ONE query, grouped by
- * branch. The coverage loops below used to run a `findMany` per branch, so the
- * homepage, the branches page and order placement each fired N+1 queries.
- */
-async function activeZonesByBranch(branchIds: number[]) {
-  type Zone = Awaited<ReturnType<typeof prisma.branchDeliveryZone.findMany>>[number];
-  const grouped = new Map<number, Zone[]>();
-  if (branchIds.length === 0) return grouped;
-  const zones = await prisma.branchDeliveryZone.findMany({
-    where: { branchId: { in: branchIds }, isActive: true },
-  });
-  for (const zone of zones) {
-    const list = grouped.get(zone.branchId);
-    if (list) list.push(zone);
-    else grouped.set(zone.branchId, [zone]);
-  }
-  return grouped;
-}
-
-/**
- * Determine the customer's ELIGIBLE branches server-side.
- * Every branch whose radius or active zones cover the customer's trusted location
- * is marked eligible (Foodpanda model). The closest covered branch is tagged as is_nearest.
+ * The branch that should serve a bare coordinate: the nearest one whose drawn
+ * areas contain it. Used where there is no customer account in play.
  */
 export async function nearestEligibleBranchForPoint(
   point: LatLng,
 ): Promise<{ id: number; distanceKm: number } | null> {
-  const branches = await prisma.branch.findMany({
-    where: { isActive: true, isArchived: false },
-  });
-  const zonesByBranch = await activeZonesByBranch(branches.map((b) => b.id));
-  const covered: { id: number; dist: number }[] = [];
-  for (const b of branches) {
-    if (b.latitude == null || b.longitude == null) continue;
-    const zones = zonesByBranch.get(b.id) ?? [];
-    if (!coverageFor(b, zones, point).covered) continue;
-    covered.push({
-      id: b.id,
-      dist: haversineKm({ lat: Number(b.latitude), lng: Number(b.longitude) }, point),
-    });
-  }
-  covered.sort((a, b) => a.dist - b.dist || a.id - b.id);
-  return covered[0] ? { id: covered[0].id, distanceKm: roundKm(covered[0].dist) } : null;
+  const ranked = await branchOptionsForPoint(point);
+  const covered = ranked.find((b) => b.covered);
+  return covered ? { id: covered.branchId, distanceKm: covered.distanceKm ?? 0 } : null;
 }
 
 /**
@@ -433,15 +393,10 @@ export async function nearestEligibleBranchForPoint(
 export async function nearestEligibleBranch(
   userId: number,
   pointOverride?: TrustedPoint | null,
-  /**
-   * The master locality the deliver-to address names, when it names one. A
-   * branch that lists it for the shift running now counts as covering, even
-   * with no coordinates at all — which is the whole point of named areas.
-   */
-  localityId?: number | null,
 ): Promise<{
+  /** The point every verdict below was measured from. Null when unresolved. */
   point: LatLng | null;
-  /** Which source the point came from, for UI wording. Null when unresolved. */
+  /** Which source that point came from, for UI wording. Null when unresolved. */
   pointSource: PointSource | null;
   nearest: BranchEligibility | null;
   branches: BranchEligibility[];
@@ -449,81 +404,43 @@ export async function nearestEligibleBranch(
   allCoveredClosed: boolean;
 }> {
   const point = pointOverride ?? (await trustedCustomerPointDetailed(userId));
-  const branches = await prisma.branch.findMany({
-    where: { isActive: true, isArchived: false },
-    orderBy: { name: "asc" },
-  });
-
-  const zonesByBranch = await activeZonesByBranch(branches.map((b) => b.id));
-  // Named-area coverage, for the shift running now. Unioned with geometry rather
-  // than replacing it: every coverage row starts with no locality attached, so a
-  // straight swap would un-cover every customer until each branch had ticked its
-  // list. See lib/services/locality-coverage.ts.
-  const byLocality = localityId != null
-    ? await branchesCoveringLocality(localityId, { branchIds: branches.map((b) => b.id) })
-    : null;
-  const results: (BranchEligibility & { _dist: number | null })[] = [];
-  for (const b of branches) {
-    // Open-now is independent of the customer's location, so compute it even for
-    // branches we can't distance-rank (no point / no branch coords).
-    const hours = isBranchOpenNow(b);
-    const listed = byLocality?.has(b.id) ?? false;
-    if (!point || b.latitude == null || b.longitude == null) {
-      // No usable geometry. A listed locality still covers — with no distance,
-      // because there is no honest one to report.
-      results.push({ id: b.id, name: b.name, distance_km: null, eligible: listed, covered: listed, open_now: hours.orderable, opens_at: hours.opensAt, is_nearest: false, _dist: null });
-      continue;
-    }
-    const cov = coverageFor(b, zonesByBranch.get(b.id) ?? [], point);
-    const dist = haversineKm({ lat: Number(b.latitude), lng: Number(b.longitude) }, point);
-    const covered = cov.covered || listed;
-    results.push({
-      id: b.id,
-      name: b.name,
-      distance_km: roundKm(dist),
-      eligible: covered,
-      covered,
-      open_now: hours.orderable,
-      opens_at: hours.opensAt,
-      is_nearest: false,
-      _dist: dist,
-    });
+  if (!point) {
+    return { point: null, pointSource: null, nearest: null, branches: [], allCoveredClosed: false };
   }
 
-  // Primary branch = nearest branch that is BOTH covered and open now. When every
-  // covered branch is closed we still surface the nearest COVERED one as primary
-  // (so the UI has a branch to show with "Opens at …"); coverage — not hours —
-  // defines "out of zone", so a covered-but-closed area is not out of zone.
-  // A locality can cover without any coordinates, so "nearest" is no longer
-  // always answerable. Distance still decides wherever it exists; the rest fall
-  // in behind, ordered by name, rather than being ranked by an invented distance
-  // or dropped from selection entirely.
-  const coveredRows = results.filter((r) => r.covered);
-  const measured = coveredRows
-    .filter((r) => r._dist != null)
-    .sort((a, b) => a._dist! - b._dist! || a.id - b.id);
-  const unmeasured = coveredRows
-    .filter((r) => r._dist == null)
-    .sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id);
-  const covered = [...measured, ...unmeasured];
-  const coveredOpen = covered.filter((r) => r.open_now);
-  const nearestId = (coveredOpen[0] ?? covered[0])?.id ?? null;
-  const allCoveredClosed = covered.length > 0 && coveredOpen.length === 0;
-  const branchesOut: BranchEligibility[] = results.map((r) => ({
-    id: r.id,
-    name: r.name,
-    distance_km: r.distance_km,
-    covered: r.covered,
-    eligible: r.covered,
-    open_now: r.open_now,
-    opens_at: r.opens_at,
-    is_nearest: r.id === nearestId,
+  // ONE coverage pass over every live branch, ranked: deliver beats hand-over,
+  // open beats closed, nearest beats further (lib/coverage/resolve.ts). The old
+  // implementation ran its own radius/zone maths here and a second copy in the
+  // storefront, which is exactly how the two screens used to disagree.
+  const ranked = await branchOptionsForPoint(point);
+  const branches: BranchEligibility[] = ranked.map((b) => ({
+    id: b.branchId,
+    name: b.branchName,
+    distance_km: b.distanceKm,
+    // "Eligible" and "covered" have always meant the same thing to callers: this
+    // branch can deliver here. Pickup-only is NOT covered — it is the fallback
+    // offered when nothing can.
+    eligible: b.covered,
+    covered: b.covered,
+    open_now: b.openNow,
+    opens_at: b.opensAt,
+    is_nearest: false,
   }));
+
+  const covered = branches.filter((b) => b.covered);
+  const coveredOpen = covered.filter((b) => b.open_now);
+  // Coverage — not opening hours — defines "out of zone", so when every covered
+  // branch is shut we still surface the nearest COVERED one and let the UI say
+  // "Opens at …" rather than claiming the customer is outside the delivery area.
+  const nearestId = (coveredOpen[0] ?? covered[0])?.id ?? null;
+  for (const b of branches) b.is_nearest = b.id === nearestId;
+
   return {
-    point: point ? { lat: point.lat, lng: point.lng } : null,
-    pointSource: point?.source ?? null,
-    nearest: branchesOut.find((r) => r.id === nearestId) ?? null,
-    branches: branchesOut,
-    allCoveredClosed,
+    point: { lat: point.lat, lng: point.lng },
+    pointSource: point.source,
+    nearest: branches.find((b) => b.id === nearestId) ?? null,
+    branches,
+    allCoveredClosed: covered.length > 0 && coveredOpen.length === 0,
   };
 }
+

@@ -2,19 +2,16 @@ import type { Metadata } from "next";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { DeliveryAreaExplorer } from "@/components/delivery/delivery-area-explorer";
-import { SuggestAreasPanel } from "@/components/delivery/suggest-areas-panel";
+import { BranchCoverageMap } from "@/components/delivery/branch-coverage-map";
 import { Icon } from "@/components/layout/icons";
 import { ButtonLink } from "@/components/ui/button";
 import { requireRole } from "@/lib/auth/session";
 import { getSessionUser } from "@/lib/auth/current-user";
-import {
-  deliveryAreaQueryParams,
-  parseDeliveryAreaQuery,
-} from "@/lib/delivery-areas/query";
+import { deliveryAreaQueryParams, parseDeliveryAreaQuery } from "@/lib/delivery-areas/query";
 import { getT } from "@/lib/i18n/server";
 import { branchForManager } from "@/lib/selectors";
-import { activeZonesWithLocalities } from "@/lib/services/area-master";
-import { coveredLocalityIdsForBranch, deliveryAreaListForUser } from "@/lib/services/delivery-areas";
+import { areaShapesForBranches } from "@/lib/services/coverage";
+import { deliveryAreaListForUser } from "@/lib/services/delivery-areas";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
@@ -41,24 +38,10 @@ export default async function BranchManagerDeliveryAreasPage({
     pageSize: initial.pageSize,
   }).toString();
 
-  // ITEM 7 — "Suggest areas for my branch": pre-fill the master localities in
-  // the branch's own location tag (its zone) that it does not already cover.
-  // No zone tag set on the branch → nothing to suggest from (never guessed).
-  let suggestZoneId: number | null = null;
-  let suggestZoneName: string | null = null;
-  let suggestCandidates: { id: number; name: string }[] = [];
-  if (branch?.zoneId != null) {
-    const [zones, covered] = await Promise.all([
-      activeZonesWithLocalities(),
-      coveredLocalityIdsForBranch(branch.id),
-    ]);
-    const zone = zones.find((z) => z.id === branch.zoneId);
-    if (zone) {
-      suggestZoneId = zone.id;
-      suggestZoneName = zone.name;
-      suggestCandidates = zone.localities.filter((l) => !covered.has(l.id));
-    }
-  }
+  // The branch's own coverage, on one map: where it delivers, what overlaps and
+  // where the gaps are. This replaces the "Suggest areas for my branch" helper,
+  // which only ever proposed NAMES from a master list to match against.
+  const shapes = branch ? await areaShapesForBranches([branch.id]) : [];
 
   return (
     <>
@@ -66,16 +49,25 @@ export default async function BranchManagerDeliveryAreasPage({
         title={t("deliveryArea.title")}
         subtitle={t("deliveryArea.subtitleBm")}
         action={
-          <ButtonLink
-            href="/branch-manager/delivery-areas/new"
-            className="w-full sm:w-auto"
-          >
+          <ButtonLink href="/branch-manager/delivery-areas/new" className="w-full sm:w-auto">
             <Icon name="plus" className="size-4" />
             {t("deliveryArea.addDeliveryArea")}
           </ButtonLink>
         }
       />
-      <SuggestAreasPanel zoneId={suggestZoneId} zoneName={suggestZoneName} candidates={suggestCandidates} />
+      {branch ? (
+        <BranchCoverageMap
+          shapes={shapes}
+          branches={[
+            {
+              id: branch.id,
+              name: branch.name,
+              lat: branch.latitude != null ? Number(branch.latitude) : null,
+              lng: branch.longitude != null ? Number(branch.longitude) : null,
+            },
+          ]}
+        />
+      ) : null}
       <div className="mt-6">
         <DeliveryAreaExplorer
           initial={initial}

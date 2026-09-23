@@ -1,12 +1,13 @@
 import { requireApproved } from "@/lib/auth/current-user";
 import { handle } from "@/lib/http/errors";
 import { json } from "@/lib/http/respond";
-import { serializeArea, updateArea } from "@/lib/services/delivery-areas";
+import { deleteArea, serializeArea, updateArea } from "@/lib/services/delivery-areas";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// PATCH /api/delivery-areas/[id] — update name / time / charge / coords.
-// Ownership enforced in the service (SA any, BM own branch only).
+// PATCH /api/delivery-areas/[id] — name / shift / time / charge / shape.
+// Ownership enforced in the service (SA any, BM own branch only), and every
+// change is written to the activity log.
 export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   const me = await requireApproved();
   const { id } = await ctx.params;
@@ -14,21 +15,31 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
     name?: string;
     estimated_delivery_minutes?: unknown;
     delivery_charge?: unknown;
-    center_lat?: number;
-    center_lng?: number;
+    shape?: unknown;
     is_active?: unknown;
     coverage_window?: unknown;
-    locality_id?: unknown;
   };
   const area = await updateArea(me, Number(id), {
     ...(body.name !== undefined ? { name: body.name } : {}),
-    ...(body.estimated_delivery_minutes !== undefined ? { estimatedDeliveryMinutes: body.estimated_delivery_minutes } : {}),
+    ...(body.estimated_delivery_minutes !== undefined
+      ? { estimatedDeliveryMinutes: body.estimated_delivery_minutes }
+      : {}),
     ...(body.delivery_charge !== undefined ? { deliveryCharge: body.delivery_charge } : {}),
-    ...(body.center_lat !== undefined ? { centerLat: body.center_lat } : {}),
-    ...(body.center_lng !== undefined ? { centerLng: body.center_lng } : {}),
+    ...(body.shape !== undefined ? { shape: body.shape } : {}),
     ...(body.is_active !== undefined ? { isActive: body.is_active } : {}),
     ...(body.coverage_window !== undefined ? { coverageWindow: body.coverage_window } : {}),
-    ...(body.locality_id !== undefined ? { localityId: body.locality_id } : {}),
   });
   return json(serializeArea(area));
+});
+
+// DELETE /api/delivery-areas/[id] — remove the area outright.
+//
+// A real delete, not a deactivation: an order never reads its area back (the
+// name, charge and estimate are snapshotted onto the order at checkout and the
+// link is SetNull), so removing a shape cannot rewrite a single invoice.
+export const DELETE = handle(async (_req: Request, ctx: Ctx) => {
+  const me = await requireApproved();
+  const { id } = await ctx.params;
+  const area = await deleteArea(me, Number(id));
+  return json({ deleted: true, id: area.id, name: area.name });
 });

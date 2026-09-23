@@ -8,16 +8,21 @@ import { forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { LIMITS } from "@/lib/validation/limits";
 
 /**
- * Super-admin editing of the MASTER zone / locality list.
+ * Super-admin editing of the MASTER ZONE list.
  *
  * Deliberately separate from lib/services/area-master.ts: that module is imported
  * by prisma/seed.ts, which runs outside Next, so it must not pull in the HTTP
  * error helpers. This one is server-only and speaks the app's validation errors.
  *
  * The database is the authority once a human has edited it — syncAreaMaster only
- * ever adds — so retiring a place is a DEACTIVATION here, never a delete. Saved
- * addresses and placed orders keep their own text either way; deactivating only
- * stops the name being offered and stops branches covering it.
+ * ever adds — so retiring a zone is a DEACTIVATION here, never a delete: a zone
+ * is a REQUIRED tag on every branch, and deleting one out from under a branch is
+ * refused by the schema (onDelete: Restrict). Deactivating only stops the zone
+ * being offered for new branches.
+ *
+ * A zone groups branches. It grants no delivery coverage — that is a pin inside
+ * a drawn shape (lib/coverage) — so nothing here can widen or narrow where the
+ * platform delivers.
  */
 
 function assertSuperAdmin(user: User): void {
@@ -44,23 +49,16 @@ function parseActive(value: unknown): boolean {
   throw validationError({ is_active: sk("errors.deliveryZone.invalidActive") });
 }
 
-export interface ZoneAdminLocality {
-  id: number;
-  name: string;
-  isActive: boolean;
-  /** How many branch coverage rows point at this locality. */
-  coverageCount: number;
-}
-
 export interface ZoneAdminRow {
   id: number;
   name: string;
   isActive: boolean;
   sortOrder: number;
-  localities: ZoneAdminLocality[];
+  /** Branches tagged with this zone — what a deactivation would strand. */
+  branchCount: number;
 }
 
-/** The whole master list, including inactive rows, for the admin screen. */
+/** Every zone, including inactive ones, for the admin screen. */
 export async function zonesForAdmin(): Promise<ZoneAdminRow[]> {
   const zones = await prisma.deliveryZone.findMany({
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -69,15 +67,7 @@ export async function zonesForAdmin(): Promise<ZoneAdminRow[]> {
       name: true,
       isActive: true,
       sortOrder: true,
-      localities: {
-        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-        select: {
-          id: true,
-          name: true,
-          isActive: true,
-          _count: { select: { coverage: true } },
-        },
-      },
+      _count: { select: { branches: true } },
     },
   });
   return zones.map((zone) => ({
@@ -85,12 +75,7 @@ export async function zonesForAdmin(): Promise<ZoneAdminRow[]> {
     name: zone.name,
     isActive: zone.isActive,
     sortOrder: zone.sortOrder,
-    localities: zone.localities.map((locality) => ({
-      id: locality.id,
-      name: locality.name,
-      isActive: locality.isActive,
-      coverageCount: locality._count.coverage,
-    })),
+    branchCount: zone._count.branches,
   }));
 }
 
@@ -129,48 +114,4 @@ export async function updateZone(
   }
   if (input.isActive !== undefined) data.isActive = parseActive(input.isActive);
   return prisma.deliveryZone.update({ where: { id: zoneId }, data });
-}
-
-export async function createLocality(user: User, zoneId: number, name: unknown) {
-  assertSuperAdmin(user);
-  const zone = await prisma.deliveryZone.findUnique({ where: { id: zoneId }, select: { id: true } });
-  if (!zone) throw validationError({ zone_id: sk("errors.deliveryZone.notFound") });
-  const localityName = validatedName(name);
-  const normalizedName = normalizeMasterName(localityName);
-  const clash = await prisma.deliveryLocality.findUnique({
-    where: { zoneId_normalizedName: { zoneId, normalizedName } },
-  });
-  if (clash) throw validationError({ name: sk("errors.deliveryZone.duplicate") });
-  const last = await prisma.deliveryLocality.findFirst({
-    where: { zoneId },
-    orderBy: { sortOrder: "desc" },
-    select: { sortOrder: true },
-  });
-  return prisma.deliveryLocality.create({
-    data: { zoneId, name: localityName, normalizedName, sortOrder: (last?.sortOrder ?? 0) + 1 },
-  });
-}
-
-export async function updateLocality(
-  user: User,
-  localityId: number,
-  input: { name?: unknown; isActive?: unknown },
-) {
-  assertSuperAdmin(user);
-  const locality = await prisma.deliveryLocality.findUnique({ where: { id: localityId } });
-  if (!locality) throw notFound(sk("errors.deliveryZone.notFound"));
-
-  const data: { name?: string; normalizedName?: string; isActive?: boolean } = {};
-  if (input.name !== undefined) {
-    const localityName = validatedName(input.name);
-    const normalizedName = normalizeMasterName(localityName);
-    const clash = await prisma.deliveryLocality.findFirst({
-      where: { zoneId: locality.zoneId, normalizedName, id: { not: localityId } },
-    });
-    if (clash) throw validationError({ name: sk("errors.deliveryZone.duplicate") });
-    data.name = localityName;
-    data.normalizedName = normalizedName;
-  }
-  if (input.isActive !== undefined) data.isActive = parseActive(input.isActive);
-  return prisma.deliveryLocality.update({ where: { id: localityId }, data });
 }
