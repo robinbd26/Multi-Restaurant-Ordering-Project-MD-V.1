@@ -1,5 +1,16 @@
 # Location, Delivery Zones, Checkout & Fees — Build Plan
 
+> **⚠️ Phase 2 ("Delivery zone system") has been superseded.** Coverage is no longer a
+> customer's typed area name matched against a master locality list — it is their map PIN
+> inside a shape each branch drew. That list could never be complete for Dhaka: a customer
+> standing outside the Banani branch was refused delivery because their block was missing
+> from it. The current design is [`docs/map-coverage-plan.md`](map-coverage-plan.md), and
+> the operations-facing write-up is chapter 18 of
+> [the Bangla documentation](location-zones-checkout-fees-coupons-bn.md).
+>
+> Everything else in this plan — the two browse controls, the day/night shifts, free
+> delivery, the platform fee and coupons — still describes what is built.
+
 This is a plan, not a spec — it describes decisions and constraints, not implementation. You know this codebase better than we do: if anything below conflicts with existing architecture, flag it and propose an alternative rather than forcing it in. Work through this phase by phase, in order. Before starting each phase, restate your plan for that phase. Before moving to the next, report status and anything you're unsure about.
 
 ## Build order

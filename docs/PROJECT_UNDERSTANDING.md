@@ -182,7 +182,9 @@ raw decimal latitude and longitude into two text boxes.** In
 `components/orders/checkout-form.tsx:314-320` those inputs carry the placeholders `23.79` and
 `90.41`; the same pattern repeats in `components/customer/address-manager.tsx:246-251` and in
 the branch manager's `components/branch/delivery-settings-panel.tsx:238-242`. There is **no map
-picker anywhere in the product.** No map SDK is installed — `package.json` has 8 runtime
+picker anywhere in the product.** *(Historical: the product now ships Leaflet +
+OpenStreetMap maps everywhere, with Barikoi search behind `/api/geo/*`.)* No map SDK was
+installed — `package.json` had 8 runtime
 dependencies (`@prisma/client`, `bcryptjs`, `next`, `next-auth`, `react`, `react-dom`, `sharp`,
 `zod`) and none of them is `@googlemaps/js-api-loader`, `mapbox-gl`, `leaflet` or `maplibre`.
 Every "map" in the repo is either a Google Maps **Embed** iframe (a static, unscriptable image —
@@ -210,6 +212,15 @@ returned as a distinct error from "no branch covers you".
 radius plus `BranchDeliveryZone` circles (`lib/services/delivery.ts:23-51`). Separately,
 `BranchDeliveryArea` carries the money — `resolveOrderDeliveryArea`
 (`lib/services/delivery-areas.ts:347-356`) snapshots that area's `deliveryCharge` onto the order.
+
+> **RESOLVED (24 Sep 2026, branch `map-osm-coverage`).** Steps 3 and 4 above, and findings 1
+> and 2 below, describe a system that no longer exists. Coverage is now ONE rule with one
+> implementation (`lib/coverage/` + `lib/services/coverage.ts`): the customer's pin inside a
+> shape the branch drew, for the shift running now. `BranchDeliveryZone` is gone (its circles
+> were migrated into delivery areas), the nearest-centroid split over `BranchDeliveryArea` is
+> gone, and the area that prices an order is the area the POINT resolves to — a client-supplied
+> area id is accepted only when it matches. A saved address must carry coordinates. See
+> [`docs/map-coverage-plan.md`](map-coverage-plan.md).
 
 ### Where it is weak
 
