@@ -211,11 +211,11 @@ export function AddressManager({
   const [lng, setLng] = useState("");
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [addressText, setAddressText] = useState("");
-  // The Google Maps / reverse-geocoded text of the CURRENTLY SELECTED PIN.
+  // The reverse-geocoded text of the CURRENTLY SELECTED PIN.
   // Dedicated state so a map pick is never overwritten or dropped by the
   // manual fields: it is re-set on every pick and saved as `map_address`.
   const [mapAddress, setMapAddress] = useState("");
-  // Google's stable place identifier for the selected pin ("" when the
+  // The provider's place code for the selected pin ("" when the
   // geocoder did not supply one, or when typing a manual address). Kept with
   // the other map data in the MAIN form state, saved as `place_id`.
   const [placeId, setPlaceId] = useState("");

@@ -62,7 +62,6 @@ export default async function CustomerBranchesPage({
     nearestEligibleBranch(me.id, target.point),
     customerLocationStatus(me.id),
   ]);
-  const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null;
   const nearestId = nearest.nearest?.id ?? null;
   const distanceById = new Map(nearest.branches.map((b) => [b.id, b.distance_km]));
   const coveredById = new Map(nearest.branches.map((b) => [b.id, b.covered]));
@@ -267,7 +266,8 @@ export default async function CustomerBranchesPage({
                     distanceKm={distanceById.get(branch.id) ?? null}
                     covered={covered}
                     locationKnown={!noLocation}
-                    mapsKey={mapsKey}
+                    branchLat={branch.latitude}
+                    branchLng={branch.longitude}
                   />
 
                   <div className="mt-auto pt-3">

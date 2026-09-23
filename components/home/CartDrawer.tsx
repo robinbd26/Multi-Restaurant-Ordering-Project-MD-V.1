@@ -182,7 +182,7 @@ export function CartDrawer({
   const [flat, setFlat] = useState("");
   const [landmark, setLandmark] = useState("");
   // Map/current-location add-address ("USE MAP / CURRENT LOCATION"): the picked
-  // point carries lat/lng + the reverse-geocoded address and Google place_id.
+  // point carries lat/lng + the reverse-geocoded address and place code.
   const [showMapForm, setShowMapForm] = useState(false);
   const [mapPoint, setMapPoint] = useState<PickedPoint | null>(null);
   // ITEM 8 — a one-time address for THIS order only: coverage-checked exactly
@@ -1667,7 +1667,7 @@ export function CartDrawer({
               )}
               {showMapForm ? (
                 /* map/current-location address — the SAME MapPicker component the
-                    address book uses (Google maps + device GPS, no new service) */
+                    address book uses (Leaflet map + device GPS, no new service) */
                 <div
                   className="space-y-2 rounded-[10px] border border-white/10 bg-surface-dark p-3"
                   data-testid="drawer-add-map-address-form"

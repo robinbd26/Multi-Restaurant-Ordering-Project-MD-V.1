@@ -30,6 +30,19 @@ function uploadOrigin(): string {
 }
 
 /**
+ * Host pattern of the map tile server, for the CSP img-src allow-list. Derived
+ * from NEXT_PUBLIC_MAP_TILE_URL (the variable the browser reads) so switching
+ * tile providers needs no code change. A `{s}` subdomain placeholder becomes a
+ * CSP wildcard. Falls back to the public OpenStreetMap server.
+ */
+function tileOrigin(): string {
+  const raw = process.env.NEXT_PUBLIC_MAP_TILE_URL?.trim() || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const match = /^(https?):\/\/([^/]+)/i.exec(raw);
+  if (!match) return "https://tile.openstreetmap.org";
+  return `${match[1]}://${match[2].replace(/\{s\}/gi, "*")}`;
+}
+
+/**
  * Content-Security-Policy (SECURITY.md §9 gap #4).
  *
  * A conservative, WORKING policy rather than a maximally strict one, because
@@ -38,9 +51,9 @@ function uploadOrigin(): string {
  *   • the pre-paint THEME_BOOTSTRAP_SCRIPT is inlined into <head>
  *     (app/layout.tsx), and Next itself streams inline bootstrap/hydration
  *     scripts — hence `script-src 'unsafe-inline'`;
- *   • the Google Maps JS SDK is injected at runtime from maps.googleapis.com
- *     and pulls its own chunks, tiles, fonts and inline styles from Google
- *     hosts — hence the maps/gstatic/fonts entries below.
+ *   • Leaflet positions its map panes with inline styles (style-src
+ *     'unsafe-inline') and loads tiles as images from the configured tile
+ *     server (img-src below, taken from NEXT_PUBLIC_MAP_TILE_URL).
  *
  * TIGHTENING PATH (documented, not shipped): dropping 'unsafe-inline' requires
  * per-request nonces — generate one in proxy.ts, forward it via a request
@@ -58,8 +71,7 @@ function uploadOrigin(): string {
  *
  * Verified against the app's own consumers:
  *   • /sw.js (push service worker) is same-origin → `script-src 'self'` +
- *     `worker-src 'self'` cover registration and execution; `blob:` is for the
- *     workers Maps' vector renderer may spawn.
+ *     `worker-src 'self'` cover registration and execution.
  *   • /api/uploads/** images are same-origin (`img-src 'self'`); the optional
  *     CDN origin is appended when configured. `data:`/`blob:` cover inline
  *     placeholders and client-side previews of not-yet-uploaded photos.
@@ -71,17 +83,14 @@ function contentSecurityPolicy(): string {
   const cdn = uploadOrigin();
   return [
     "default-src 'self'",
-    `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""} https://maps.googleapis.com https://maps.gstatic.com`,
-    // Maps injects inline styles and a Roboto stylesheet from fonts.googleapis.com.
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    // Map tiles/sprites arrive from several Google image hosts (incl. *.ggpht.com).
-    `img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com${cdn ? ` ${cdn}` : ""}`,
-    // next/font self-hosts the app's fonts; fonts.gstatic.com is for Maps' Roboto.
-    "font-src 'self' data: https://fonts.gstatic.com",
-    `connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com${cdn ? ` ${cdn}` : ""}${dev ? " ws: wss:" : ""}`,
-    // Rider live-map / assignment-gate / branch-location panels embed the Maps
-    // EMBED API as an <iframe src="https://www.google.com/maps/embed/...">.
-    "frame-src 'self' https://www.google.com",
+    `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
+    // Leaflet sets inline styles on its panes.
+    "style-src 'self' 'unsafe-inline'",
+    // Map tiles arrive from the configured tile server.
+    `img-src 'self' data: blob: ${tileOrigin()}${cdn ? ` ${cdn}` : ""}`,
+    // next/font self-hosts the app's fonts.
+    "font-src 'self' data:",
+    `connect-src 'self'${cdn ? ` ${cdn}` : ""}${dev ? " ws: wss:" : ""}`,
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",

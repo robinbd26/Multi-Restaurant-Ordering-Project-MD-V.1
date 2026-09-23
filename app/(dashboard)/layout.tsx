@@ -36,7 +36,6 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const logoUrl = await getCompanyLogoUrl();
   // req #6/#12 — rider blocking assignment popup + GPS tracking (rider only).
   const riderOnDuty = user.role === "rider" ? Boolean(await activeDutySession(user.id)) : false;
-  const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null;
 
   return (
     <CartProvider>
@@ -59,7 +58,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       </DashboardShell>
       {user.role === "rider" ? (
         <>
-          <RiderAssignmentGate mapsKey={mapsKey} />
+          <RiderAssignmentGate />
           <RiderLocationTracker onDuty={riderOnDuty} />
         </>
       ) : null}

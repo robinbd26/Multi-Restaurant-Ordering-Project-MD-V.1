@@ -3367,7 +3367,6 @@
     "lngLabel": "Longitude",
     "errRadius": "Enter a valid radius",
     "radiusN": "{km} km radius",
-    "mapPlaceholderNote": "Configure a Google Maps API key to show a live map (NEXT_PUBLIC_GOOGLE_MAPS_API_KEY).",
     "hoursTitle": "Delivery Hours",
     "hoursSub": "Opening/closing times and delivery slots",
     "openingHours": "Opening hours",
@@ -3493,7 +3492,6 @@
     "time": "Time",
     "trackRider": "Track rider",
     "noLocation": "No location yet",
-    "mapNote": "Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to show a live Google Map.",
     "todayDeliveries": "Today's deliveries",
     "weekDeliveries": "Weekly deliveries",
     "monthDeliveries": "Monthly deliveries",
@@ -3898,10 +3896,8 @@
     "errUnsupported": "This browser does not support location. Add a saved address with map coordinates instead.",
     "errSave": "Could not save your location. Please try again.",
     "lowAccuracy": "Location accuracy is low (±{m} m). You can correct it on the map below — drag the pin to your exact spot and save it — or move to an open area and retry. Your current fix has still been saved.",
-    "lowAccuracyNoMap": "Location accuracy is low (±{m} m). You can correct it below — search your area or enter your coordinates and save the pin — or move to an open area and retry. Your current fix has still been saved.",
     "mapTitle": "Set your exact location",
     "mapHint": "Drag the pin to the exact spot — your gate, not the main road. Your location changes only when you save the pin.",
-    "mapHintNoMap": "Search your area or enter your coordinates below. Your location changes only when you save the pin.",
     "savePin": "Save this pin",
     "pinMoved": "Pin moved — save it to update your live location.",
     "riderTracking": "GPS tracking on",
@@ -4172,14 +4168,12 @@
     "searching": "Searching…",
     "searchError": "Could not search that address. Please try again.",
     "noResults": "No place found. Drop a pin on the map instead.",
-    "demoResults": "Approximate area centres — live map search is not configured on this installation.",
     "locating": "Getting your location…",
     "manualToggle": "Enter coordinates manually",
     "manualHide": "Hide manual entry",
-    "manualNotice": "The interactive map is not available on this installation. Open the picker to search by area name, or enter the coordinates below.",
+    "manualNotice": "The interactive map could not be loaded. Enter the coordinates below, or try again later.",
     "loading": "Loading map…",
-    "loadError": "The map could not be loaded. Search by area name or enter coordinates instead.",
-    "demoNotice": "Map preview is not configured. Area search, current location and coordinates all still work.",
+    "loadError": "The map could not be loaded. Enter coordinates instead, or try again.",
     "dragHint": "Drag the pin or tap the map to set the exact delivery point.",
     "selected": "Location selected",
     "noneSelected": "No location selected yet.",
@@ -4191,7 +4185,8 @@
     "branchTitle": "Branch location",
     "branchHint": "The delivery radius is measured from this point.",
     "zoneTitle": "Zone centre",
-    "zoneHint": "Coverage and the zone fee are measured from this point."
+    "zoneHint": "Coverage and the zone fee are measured from this point.",
+    "searchUnavailable": "Address search is not available right now. Tap the map or drag the pin to set the location, then type the address."
   },
   "list": {
     "searchLabel": "Search",
@@ -4327,5 +4322,8 @@
     "setOverride": "Set",
     "clearOverride": "Inherit",
     "branch": "Branch"
+  },
+  "orderMap": {
+    "openInGoogleMaps": "Open in Google Maps"
   }
 }

@@ -9,8 +9,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
 
-import type { GMap, GMarker, GMapsListener } from "./google-maps-types";
-import { mapsApiKey, useGoogleMaps } from "./use-google-maps";
+import type { Marker } from "leaflet";
+
+import { pinIcon, useLeafletMap, type LeafletMap } from "./leaflet-core";
 
 /**
  * WS-4.1 — THE location picker. One component, three call sites: checkout, the
@@ -20,18 +21,17 @@ import { mapsApiKey, useGoogleMaps } from "./use-google-maps";
  *
  * What it gives the customer:
  *   · a search box backed by the SERVER-side geocoder (`/api/geo/search`), so
- *     the billable Google key never reaches the browser;
+ *     the Barikoi key never reaches the browser;
  *   · a draggable pin on a real map, reverse-geocoded to a readable Bangladeshi
  *     address (`/api/geo/reverse`);
  *   · "use my current location" straight from the browser's GPS.
  *
- * DEMO FALLBACK (.env.example promises "polished map placeholder + raw
- * coordinates" without a key): with NEXT_PUBLIC_GOOGLE_MAPS_API_KEY empty — or
- * when Google rejects the key at runtime — no map is mounted at all. Search
- * (offline locality table), GPS and clearly-labelled manual coordinate entry all
- * keep working. There is never a broken or blank map.
+ * DEGRADED PATHS: search needs BARIKOI_API_KEY; without it (or when Barikoi is
+ * down / out of quota) the search box simply finds nothing and reverse lookup
+ * leaves the address text blank. The map, the draggable pin, GPS and manual
+ * coordinate entry all keep working, and coverage only ever uses the pin.
  *
- * 3G: the Maps SDK is only fetched once the picker is OPENED, never on page load.
+ * 3G: Leaflet is only fetched once the picker is OPENED, never on page load.
  */
 
 /** Where a coordinate came from — mirrors Order.deliveryCoordSource. */
@@ -52,7 +52,7 @@ export interface PickedPoint {
   postalCode: string;
   /** Country ("" when unknown). */
   country: string;
-  /** Google place_id for this place ("" when unknown / no geocoder). */
+  /** Barikoi place code for this place ("" when unknown / no geocoder). */
   placeId: string;
   /** GPS accuracy in metres, only when the device supplied one. */
   accuracy?: number | null;
@@ -68,7 +68,6 @@ interface Suggestion {
   placeId: string;
   lat: number;
   lng: number;
-  demo: boolean;
 }
 
 /** Six decimals ≈ 0.1 m — more than a delivery pin ever needs. */
@@ -119,8 +118,8 @@ export function MapPicker({
   persistGps?: boolean;
   /**
    * WS-4.9 — start with the picker already open. Off everywhere by default,
-   * because opening it is what fetches the ~500 KB Maps SDK (see
-   * `useGoogleMaps`): only pass it on a screen whose whole purpose is the pin,
+   * because opening it is what fetches the Leaflet chunk (see
+   * `useLeafletMap`): only pass it on a screen whose whole purpose is the pin,
    * and only when the customer actually has something to correct.
    */
   defaultOpen?: boolean;
@@ -131,17 +130,13 @@ export function MapPicker({
   testId?: string;
   className?: string;
 }) {
-  const { t, locale } = useTranslation();
-  const hasKey = mapsApiKey().length > 0;
+  const { t } = useTranslation();
 
   const [open, setOpen] = useState(defaultOpen);
-  const { status, maps } = useGoogleMaps(open && hasKey, locale === "en" ? "en" : "bn");
-  const mapFailed = status === "error" || status === "unavailable";
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<GMap | null>(null);
-  const markerRef = useRef<GMarker | null>(null);
-  const listenersRef = useRef<GMapsListener[]>([]);
+  const mapRef = useRef<LeafletMap | null>(null);
+  const markerRef = useRef<Marker | null>(null);
   /** Guards the "external value changed" sync against our own commits. */
   const lastCommitted = useRef<string>("");
   /** Only the newest reverse-geocode answer may write the address. */
@@ -152,7 +147,7 @@ export function MapPicker({
   const [results, setResults] = useState<Suggestion[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [demoResults, setDemoResults] = useState(false);
+  const [searchAvailable, setSearchAvailable] = useState(true);
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   // Manual decimal entry is the DEGRADED path: shown by default only when there
@@ -234,8 +229,8 @@ export function MapPicker({
   const setPin = useCallback(
     (pLat: number, pLng: number, source: PickerSource, accuracy: number | null = null) => {
       commit(pLat, pLng, source, "", "", "", "", "", "", accuracy);
-      markerRef.current?.setPosition({ lat: pLat, lng: pLng });
-      mapRef.current?.panTo({ lat: pLat, lng: pLng });
+      markerRef.current?.setLatLng([pLat, pLng]);
+      mapRef.current?.panTo([pLat, pLng]);
       void resolveAddress(pLat, pLng, source);
     },
     [commit, resolveAddress],
@@ -257,43 +252,39 @@ export function MapPicker({
     tRef.current = t;
   });
 
-  // Build the map ONCE the SDK is ready and the container is mounted.
+  // Build the map once the picker is open and its container is mounted. The
+  // start point is captured once, so a later coordinate change never rebuilds it.
+  const [startPoint] = useState<{ lat: number; lng: number } | null>(() =>
+    pointValid ? { lat: numLat, lng: numLng } : null,
+  );
+  const { handle, status } = useLeafletMap(
+    containerRef,
+    { center: startPoint, zoom: startPoint ? DEFAULT_ZOOM : 12 },
+    open,
+  );
+  const mapFailed = status === "error";
+
   useEffect(() => {
-    if (!maps || !containerRef.current || mapRef.current) return;
-    const start = pointRef.current;
-    const center = start ?? { lat: 23.8103, lng: 90.4125 };
-    const map = new maps.Map(containerRef.current, {
-      center,
-      zoom: start ? DEFAULT_ZOOM : 12,
-      // A phone map needs a clean, finger-friendly surface: no street view peg,
-      // no map-type switcher, gestures that never fight the page scroll.
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: false,
-      gestureHandling: "greedy",
-      clickableIcons: false,
-    });
-    const marker = new maps.Marker({ position: center, map, draggable: true });
+    if (!handle) return;
+    const { L, map } = handle;
+    const start = pointRef.current ?? startPoint;
+    const marker = L.marker(start ? [start.lat, start.lng] : map.getCenter(), {
+      draggable: true,
+      icon: pinIcon(L, "customer"),
+    }).addTo(map);
     mapRef.current = map;
     markerRef.current = marker;
-    listenersRef.current = [
-      map.addListener("click", (e) => {
-        const p = e.latLng;
-        if (p) setPinRef.current(p.lat(), p.lng(), "map_pin");
-      }),
-      marker.addListener("dragend", () => {
-        const p = markerRef.current?.getPosition();
-        if (p) setPinRef.current(p.lat(), p.lng(), "map_pin");
-      }),
-    ];
+    map.on("click", (e) => setPinRef.current(e.latlng.lat, e.latlng.lng, "map_pin"));
+    marker.on("dragend", () => {
+      const p = marker.getLatLng();
+      setPinRef.current(p.lat, p.lng, "map_pin");
+    });
     return () => {
-      for (const listener of listenersRef.current) listener.remove();
-      listenersRef.current = [];
-      markerRef.current?.setMap(null);
       markerRef.current = null;
       mapRef.current = null;
     };
-  }, [maps]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handle]);
 
   // Keep the pin in sync when the PARENT changes the coordinates (e.g. the
   // customer picked a different saved address at checkout).
@@ -302,12 +293,11 @@ export function MapPicker({
     const key = `${coord(numLat)},${coord(numLng)}`;
     if (key === lastCommitted.current) return;
     lastCommitted.current = key;
-    markerRef.current.setPosition({ lat: numLat, lng: numLng });
-    mapRef.current.panTo({ lat: numLat, lng: numLng });
-    mapRef.current.setZoom(Math.max(mapRef.current.getZoom() ?? DEFAULT_ZOOM, DEFAULT_ZOOM));
-  }, [numLat, numLng, pointValid]);
+    markerRef.current.setLatLng([numLat, numLng]);
+    mapRef.current.setView([numLat, numLng], Math.max(mapRef.current.getZoom(), DEFAULT_ZOOM));
+  }, [numLat, numLng, pointValid, handle]);
 
-  // Debounced address search against our own endpoint (the Google key stays on
+  // Debounced address search against our own endpoint (the Barikoi key stays on
   // the server). 450 ms is deliberately unhurried — every keystroke on a metered
   // prepaid connection costs the customer money.
   useEffect(() => {
@@ -335,10 +325,10 @@ export function MapPicker({
           setSearchError(tRef.current("mapPicker.searchError"));
           return;
         }
-        const data = (await res.json()) as { results: Suggestion[]; demo: boolean };
+        const data = (await res.json()) as { results: Suggestion[]; available?: boolean };
         if (!alive) return;
         setResults(data.results ?? []);
-        setDemoResults(Boolean(data.demo));
+        setSearchAvailable(data.available !== false);
       } catch {
         if (alive) setSearchError(tRef.current("mapPicker.searchError"));
       } finally {
@@ -353,9 +343,8 @@ export function MapPicker({
 
   function chooseSuggestion(s: Suggestion) {
     commit(s.lat, s.lng, "map_pin", s.address, s.area, s.city, s.postalCode, s.country, s.placeId);
-    markerRef.current?.setPosition({ lat: s.lat, lng: s.lng });
-    mapRef.current?.panTo({ lat: s.lat, lng: s.lng });
-    mapRef.current?.setZoom(DEFAULT_ZOOM);
+    markerRef.current?.setLatLng([s.lat, s.lng]);
+    mapRef.current?.setView([s.lat, s.lng], DEFAULT_ZOOM);
     setResults([]);
     setQuery(s.label);
   }
@@ -409,8 +398,8 @@ export function MapPicker({
     // does not re-run its coverage call on every keystroke).
     onChange({ lat: nextLat, lng: nextLng, source: "unverified", address: "", area: "", city: "", postalCode: "", country: "", placeId: "" });
     if (valid) {
-      markerRef.current?.setPosition({ lat: a, lng: b });
-      mapRef.current?.panTo({ lat: a, lng: b });
+      markerRef.current?.setLatLng([a, b]);
+      mapRef.current?.panTo([a, b]);
     }
   }
 
@@ -514,11 +503,10 @@ export function MapPicker({
                 ))}
               </ul>
             ) : null}
-            {demoResults && results.length > 0 ? (
-              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{t("mapPicker.demoResults")}</p>
-            ) : null}
             {!searching && query.trim().length >= 3 && results.length === 0 && !searchError ? (
-              <p className="mt-1 text-xs text-fg-subtle">{t("mapPicker.noResults")}</p>
+              <p className="mt-1 text-xs text-fg-subtle">
+                {searchAvailable ? t("mapPicker.noResults") : t("mapPicker.searchUnavailable")}
+              </p>
             ) : null}
           </div>
 
@@ -535,15 +523,15 @@ export function MapPicker({
           </div>
           <FieldError id={`${testId}-geo-error`} message={geoError} />
 
-          {/* The map itself — mounted only when the SDK actually loaded. */}
-          {hasKey && !mapFailed ? (
+          {/* The map itself — hidden only if Leaflet could not be loaded. */}
+          {!mapFailed ? (
             <div className="relative">
               <div
                 ref={containerRef}
                 className="h-64 w-full rounded-xl border border-border-base sm:h-80"
                 data-testid={`${testId}-canvas`}
               />
-              {status !== "ready" ? (
+              {status === "loading" ? (
                 <div className="absolute inset-0 flex items-center justify-center gap-2 rounded-xl bg-surface-muted text-sm text-fg-muted">
                   <Spinner className="size-4" /> {t("mapPicker.loading")}
                 </div>
@@ -556,7 +544,7 @@ export function MapPicker({
             <div className="rounded-xl bg-surface-muted p-4 text-center" data-testid={`${testId}-fallback`}>
               <span className="text-2xl" aria-hidden="true">🗺️</span>
               <p className="mt-1 text-sm text-fg-muted">
-                {status === "error" ? t("mapPicker.loadError") : t("mapPicker.demoNotice")}
+                {t("mapPicker.loadError")}
               </p>
             </div>
           )}

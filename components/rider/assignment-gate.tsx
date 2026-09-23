@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { OrderLocationMap } from "@/components/maps/order-location-map";
 import { PUSH_READY_EVENT } from "@/components/notifications/push-registrar";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
@@ -45,7 +46,7 @@ interface PendingAssignment {
  * constants above) and a push instead triggers an immediate poll. If push is
  * unconfigured, unsupported or denied, this behaves exactly as it always did.
  */
-export function RiderAssignmentGate({ mapsKey }: { mapsKey?: string | null }) {
+export function RiderAssignmentGate() {
   const { t } = useTranslation();
   const router = useRouter();
   const [queue, setQueue] = useState<PendingAssignment[]>([]);
@@ -221,10 +222,6 @@ export function RiderAssignmentGate({ mapsKey }: { mapsKey?: string | null }) {
 
   if (!current) return null;
 
-  const mapSrc = mapsKey && current.delivery_lat != null && current.delivery_lng != null
-    ? `https://www.google.com/maps/embed/v1/place?key=${mapsKey}&q=${current.delivery_lat},${current.delivery_lng}`
-    : null;
-
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
@@ -252,15 +249,13 @@ export function RiderAssignmentGate({ mapsKey }: { mapsKey?: string | null }) {
           ) : null}
         </dl>
 
-        <div className="mt-3 overflow-hidden rounded-xl border border-border-base">
-          {mapSrc ? (
-            <iframe title="map" src={mapSrc} className="h-40 w-full" loading="lazy" />
-          ) : (
-            <div className="flex h-24 items-center justify-center bg-surface-muted text-xs text-fg-muted">
-              {t("assignment.mapUnavailable")}
-            </div>
-          )}
-        </div>
+        {current.delivery_lat != null && current.delivery_lng != null ? (
+          <OrderLocationMap className="mt-3" lat={current.delivery_lat} lng={current.delivery_lng} testId="assignment-map" />
+        ) : (
+          <div className="mt-3 flex h-24 items-center justify-center rounded-xl border border-border-base bg-surface-muted text-xs text-fg-muted">
+            {t("assignment.mapUnavailable")}
+          </div>
+        )}
 
         {error ? <p className="mt-2 text-sm text-red-600" role="alert">{error}</p> : null}
 

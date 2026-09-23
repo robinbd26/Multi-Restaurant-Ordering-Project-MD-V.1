@@ -2,25 +2,24 @@
 
 import { useState } from "react";
 
+import { OrderLocationMap } from "@/components/maps/order-location-map";
 import { useTranslation } from "@/lib/i18n/use-translation";
+import { directionsUrl } from "@/lib/services/geo";
 
 /**
- * PHASE F — branch location, with a map only when one is actually available.
+ * PHASE F — branch location, with a map only when the branch has a pin.
  *
- * When a public Maps key is configured the embed is mounted LAZILY: the iframe
- * is created on demand, so a page listing a dozen branches does not fetch a
- * dozen maps nobody asked for. When no key is configured, or the embed fails to
- * load, the fallback is not an apology — it is the information a customer
- * actually needs: the address, the server-computed distance, the coverage
- * verdict and a directions link.
+ * The Leaflet map is mounted LAZILY, on tap, so a page listing a dozen branches
+ * does not fetch a dozen maps nobody asked for. Without a pin the panel is not an
+ * apology — it is the information a customer actually needs: the address, the
+ * server-computed distance, the coverage verdict and a directions link.
  *
  * The map is presentation only. Distance and coverage come from the server and
  * are passed in already decided; nothing here recomputes them, so a tampered
  * client cannot talk itself into a delivery it is not entitled to.
  *
- * The query used for both the embed and the directions link is the branch
- * ADDRESS, never raw stored coordinates — the branch's exact latitude/longitude
- * stay server-side.
+ * The directions link uses the branch pin when there is one (a plain URL, no key),
+ * else the branch address.
  */
 export function BranchLocationPanel({
   branchName,
@@ -28,7 +27,8 @@ export function BranchLocationPanel({
   distanceKm,
   covered,
   locationKnown = true,
-  mapsKey,
+  branchLat = null,
+  branchLng = null,
 }: {
   branchName: string;
   address: string;
@@ -42,15 +42,17 @@ export function BranchLocationPanel({
    * verdict line invites a location instead of asserting "unavailable".
    */
   locationKnown?: boolean;
-  mapsKey: string | null;
+  /** The branch's map pin, when it has one. */
+  branchLat?: number | string | null;
+  branchLng?: number | string | null;
 }) {
   const { t, fmt } = useTranslation();
   const [showMap, setShowMap] = useState(false);
-  const [mapFailed, setMapFailed] = useState(false);
+  const hasPin = branchLat != null && branchLng != null && Number.isFinite(Number(branchLat)) && Number.isFinite(Number(branchLng));
 
-  const query = encodeURIComponent(`${branchName} ${address}`);
-  const directions = `https://www.google.com/maps/dir/?api=1&destination=${query}`;
-  const canEmbed = Boolean(mapsKey) && !mapFailed;
+  const directions = hasPin
+    ? directionsUrl({ lat: Number(branchLat), lng: Number(branchLng) })
+    : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${branchName} ${address}`)}`;
 
   return (
     <div className="mt-2 rounded-lg border border-border-base p-2.5 text-xs" data-testid="branch-location-panel">
@@ -81,7 +83,7 @@ export function BranchLocationPanel({
         >
           {t("maps.directions")}
         </a>
-        {canEmbed && !showMap ? (
+        {hasPin && !showMap ? (
           <button
             type="button"
             className="inline-flex min-h-8 items-center font-medium text-brand-600 hover:underline"
@@ -93,19 +95,18 @@ export function BranchLocationPanel({
         ) : null}
       </div>
 
-      {canEmbed && showMap ? (
-        <iframe
-          title={`${branchName} — ${t("maps.showMap")}`}
-          src={`https://www.google.com/maps/embed/v1/place?key=${mapsKey}&q=${query}`}
-          className="mt-2 h-40 w-full rounded-lg border-0"
-          loading="lazy"
-          referrerPolicy="no-referrer-when-downgrade"
-          onError={() => setMapFailed(true)}
-          data-testid="branch-map-embed"
+      {hasPin && showMap ? (
+        <OrderLocationMap
+          lat={branchLat}
+          lng={branchLng}
+          kind="branch"
+          showLink={false}
+          className="mt-2"
+          testId="branch-map-embed"
         />
       ) : null}
 
-      {!mapsKey ? (
+      {!hasPin ? (
         <p className="mt-2 text-fg-subtle" data-testid="branch-map-fallback">
           {t("maps.unavailable")}
         </p>
