@@ -1,4 +1,4 @@
-# Map-based delivery coverage — plan
+# Map-based delivery coverage — plan (DELIVERED)
 
 Goal: the customer's pin (lat/lng) is the source of truth for delivery. Each branch
 draws delivery areas as shapes on a map; a pin inside an active shape is deliverable.
@@ -68,3 +68,36 @@ OpenStreetMap + Leaflet; search/reverse geocoding move to Barikoi (server side o
    wherever an order's delivery address shows.
 8. **Docs + tests + verification** — update old docs (incl. the Bangla one), unit tests
    (`npm run test:unit`), `tsc`, `eslint` on touched files, `npm run build`.
+
+---
+
+## What was actually built, and where the plan changed
+
+All eight phases shipped. Three decisions differ from the plan above, each made once the
+code or the data proved the plan wrong:
+
+1. **A shape can be a Circle, not only a Polygon.** The plan assumed GeoJSON polygons only.
+   Storing a circle AS a circle (`{"type":"Circle",…}`, a documented extension — GeoJSON has
+   none) means an operator's circle stays exact instead of becoming an n-gon that covers
+   slightly less than they set. It also made the migration possible: this SQLite build has no
+   trig functions, so a polygon approximation could not have been generated in SQL.
+2. **The old coverage was migrated, not discarded.** The plan said existing rows get a NULL
+   shape and branches redraw. That would have taken every branch offline for delivery on the
+   day of the merge. Instead each `BranchDeliveryZone` circle became a delivery area, and every
+   branch with a pin got one area from its own radius and fee — which reproduces the old
+   "inside the radius" rule exactly. Rows that only ever had a NAME still get a NULL shape and
+   cover nobody, because there was never a boundary to migrate.
+3. **The unique index on (branch, name, window) is gone** along with `normalizedName`. It existed
+   only for name matching. Names are labels now, so two areas may share one — which also
+   removed a whole class of migration collision.
+
+Also worth knowing:
+
+- The branch **radius and pin are super-admin only**. The branch manager's Delivery Zone page
+  lost its editor for both (and its parallel coverage circles) and gained the delivery-pause
+  control; it shows the pin and radius read-only, since a manager who could move either would
+  be redrawing their own limits.
+- **Pause expires by comparison, not by a job.** `deliveryPausedUntil` is checked against now on
+  every read, so no scheduler exists to fail.
+- Tests live in `tests/coverage.test.mts` (`npm run test:unit`, a new script). The migration was
+  additionally verified against a hostile fixture — see the commit for `20260923183000_map_shape_coverage`.
