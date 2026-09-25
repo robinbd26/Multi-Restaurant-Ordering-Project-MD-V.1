@@ -1951,7 +1951,8 @@
       "maxAddressesReached": "You can save a maximum of 5 delivery addresses.",
       "couponWrongBranch": "This coupon is not valid at this branch.",
       "couponScopeForbidden": "You can only manage coupons for your own branch.",
-      "mapPinRequired": "Pick the delivery location on the map before saving this address."
+      "mapPinRequired": "Pick the delivery location on the map before saving this address.",
+      "employeeHasHistory": "This employee has {count} attendance record(s), so they cannot be deleted. Mark them as Quit Job instead: their history is kept."
     },
     "rider": {
       "selectBranch": "Select a branch to go on duty.",

@@ -2,6 +2,7 @@ import "server-only";
 import type { Prisma, RewardEarningRule, User } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { logAdminAction } from "@/lib/services/audit";
 import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { createNotification } from "@/lib/services/notifications";
 import { PAYMENT_STATUSES } from "@/lib/services/payments";
@@ -271,9 +272,18 @@ export async function deleteEarningRule(user: User, id: number) {
       data: { isArchived: true, isActive: false, updatedById: user.id },
       include: RULE_INCLUDE,
     });
+    await logAdminAction(
+      user.id,
+      "archive",
+      `Archived reward rule "${existing.name}" (#${existing.id}); it has earned coins ${used} time(s), so its history is kept`,
+      { branchId: existing.branchId },
+    );
     return { archived: true, rule: archived, ledgerEntries: used };
   }
   await prisma.rewardEarningRule.delete({ where: { id } });
+  await logAdminAction(user.id, "delete", `Permanently deleted reward rule "${existing.name}" (#${existing.id}); it never earned coins`, {
+    branchId: existing.branchId,
+  });
   return { archived: false, rule: existing, ledgerEntries: 0 };
 }
 
