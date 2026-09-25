@@ -25,6 +25,20 @@ import { useTranslation } from "@/lib/i18n/use-translation";
  * Both return to the list with ?result=archived|deleted for the banner.
  */
 
+/**
+ * Where to land after an archive or delete: the branch list with ?result= for
+ * the banner. From the list itself the admin's search, filter and page are
+ * kept, so they stay in the list they were working through (dropping them
+ * sent a filtered view back to an unfiltered page 1). From a branch's own page
+ * it is the plain list.
+ */
+function listUrlWithResult(result: "archived" | "deleted"): string {
+  const onList = window.location.pathname === "/admin/branches";
+  const params = new URLSearchParams(onList ? window.location.search : "");
+  params.set("result", result);
+  return `/admin/branches?${params.toString()}`;
+}
+
 interface RemovalCheck {
   deletable: boolean;
   history: Record<string, number>;
@@ -52,7 +66,7 @@ export function BranchArchiveButton({
       confirmLabel={t("branchRemoval.confirmArchive")}
       action={() => archiveBranchAction(branchId)}
       onDone={() => {
-        router.replace("/admin/branches?result=archived");
+        router.replace(listUrlWithResult("archived"));
         router.refresh();
       }}
     />
@@ -159,7 +173,7 @@ export function BranchPermanentDelete({
       confirmDisabled={!check?.deletable || !nameMatches}
       action={() => permanentlyDeleteBranchAction(branchId, typed)}
       onDone={() => {
-        router.replace("/admin/branches?result=deleted");
+        router.replace(listUrlWithResult("deleted"));
         router.refresh();
       }}
     />
