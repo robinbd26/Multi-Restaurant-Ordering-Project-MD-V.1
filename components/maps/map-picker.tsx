@@ -355,7 +355,8 @@ export function MapPicker({
   function chooseSuggestion(s: Suggestion) {
     commit(s.lat, s.lng, "map_pin", s.address, s.area, s.city, s.postalCode, s.country, s.placeId);
     markerRef.current?.setLatLng([s.lat, s.lng]);
-    mapRef.current?.setView([s.lat, s.lng], DEFAULT_ZOOM);
+    // Never zoom OUT from where the customer already zoomed in to.
+    mapRef.current?.setView([s.lat, s.lng], Math.max(mapRef.current.getZoom(), DEFAULT_ZOOM));
     searchSeq.current += 1;
     setChosenLabel(s.label.trim());
     setResults([]);
