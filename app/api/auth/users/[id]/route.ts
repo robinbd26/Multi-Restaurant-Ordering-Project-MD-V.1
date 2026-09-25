@@ -3,11 +3,12 @@ import type { Prisma } from "@prisma/client";
 import { requireApiRole } from "@/lib/auth/current-user";
 import { ROLES } from "@/lib/constants/enums";
 import { prisma } from "@/lib/db";
-import { forbidden, handle, notFound, sk, validationError } from "@/lib/http/errors";
+import { handle, notFound, sk, validationError } from "@/lib/http/errors";
 import { parseBody } from "@/lib/http/form";
 import { json, noContent } from "@/lib/http/respond";
 import { deleteUpload, saveUpload } from "@/lib/http/upload";
 import { serializeUser } from "@/lib/serializers";
+import { permanentlyDeleteUser } from "@/lib/services/user-removal";
 import { assertPhoneAvailable, hashPassword } from "@/lib/services/users";
 import { validatePhone } from "@/lib/validation/server";
 
@@ -73,23 +74,14 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   return json(serializeUser(fresh));
 });
 
-// DELETE /api/auth/users/[id] — cannot delete a super admin.
+// DELETE /api/auth/users/[id] — Super Admin only, and only for an account with
+// no history. Anyone who has ordered, delivered, earned coins, been paid or
+// left an audit trail is DEACTIVATED instead (see lib/services/user-removal).
+// This used to delete a customer's orders first to force the delete through.
 export const DELETE = handle(async (_req: Request, ctx: Ctx) => {
-  await requireApiRole("super_admin");
+  const me = await requireApiRole("super_admin");
   const { id } = await ctx.params;
   const target = await getTarget(Number(id));
-  if (target.role === "super_admin") throw forbidden(sk("errors.auth.cannotDeleteSuperAdmin"));
-
-  // A customer's orders reference them (FK restrict), so remove those orders
-  // (and their items) first. Every other relation cascades / nulls on its own.
-  await prisma.$transaction(async (tx) => {
-    const orders = await tx.order.findMany({ where: { customerId: target.id }, select: { id: true } });
-    if (orders.length) {
-      const orderIds = orders.map((o) => o.id);
-      await tx.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
-      await tx.order.deleteMany({ where: { id: { in: orderIds } } });
-    }
-    await tx.user.delete({ where: { id: target.id } });
-  });
+  await permanentlyDeleteUser(me, target);
   return noContent();
 });

@@ -1263,7 +1263,7 @@
     "deactivate": "Deactivate",
     "activate": "Activate",
     "deleteTitle": "Delete user?",
-    "deleteDesc": "This account will be permanently deleted. This action cannot be undone.",
+    "deleteDesc": "Only an account with no orders or other history can be permanently deleted. If this one has any, you will be asked to deactivate it instead, which keeps every record.",
     "confirmDelete": "Delete",
     "rejectTitle": "Reject application?",
     "rejectDesc": "The user will see this reason when they log in.",
@@ -1745,7 +1745,10 @@
       "accountRejected": "Account has been rejected. Reason: {reason}",
       "notSpecified": "Not specified",
       "staffCreatedBySuperAdminOnly": "Staff accounts can only be created by a super admin.",
-      "registerRateLimited": "Too many registration attempts. Try again in {n} seconds."
+      "registerRateLimited": "Too many registration attempts. Try again in {n} seconds.",
+      "cannotDeleteSelf": "You cannot delete your own account.",
+      "deleteManagesBranch": "This user manages {count} branch(es). Assign those branches to another manager first.",
+      "deleteHasHistory": "This account has history ({orders} orders, {records} records in total), so it cannot be permanently deleted. Deactivate it instead: sign-in stops and every record is kept."
     },
     "orders": {
       "onlyCustomerCanOrder": "Only customers can place orders.",
