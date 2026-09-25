@@ -4214,6 +4214,8 @@
   },
   "mapPicker": {
     "open": "Choose on map",
+    "fullscreenEnter": "View map full screen",
+    "fullscreenExit": "Exit full screen",
     "close": "Hide map",
     "searchLabel": "Search your area or address",
     "searchPlaceholder": "e.g. Dhanmondi 27, Dhaka",

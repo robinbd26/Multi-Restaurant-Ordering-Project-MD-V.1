@@ -4214,6 +4214,8 @@
   },
   "mapPicker": {
     "open": "ম্যাপে বাছুন",
+    "fullscreenEnter": "ম্যাপ পূর্ণ স্ক্রিনে দেখুন",
+    "fullscreenExit": "পূর্ণ স্ক্রিন থেকে বের হন",
     "close": "ম্যাপ লুকান",
     "searchLabel": "আপনার এলাকা বা ঠিকানা খুঁজুন",
     "searchPlaceholder": "যেমন: ধানমন্ডি ২৭, ঢাকা",

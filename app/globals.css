@@ -177,6 +177,28 @@ body {
   scrollbar-color: rgb(148 163 184 / 0.5) transparent;
 }
 
+/* Map fullscreen button (components/maps/leaflet-core.tsx). The native
+   Fullscreen API sizes the element itself; the pseudo class is the fallback
+   where that API is missing, pinned over the whole viewport. */
+.leaflet-control-fullscreen {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  color: #333;
+}
+.leaflet-container:fullscreen {
+  border-radius: 0;
+}
+.leaflet-container.map-pseudo-fullscreen {
+  position: fixed !important;
+  inset: 0;
+  width: 100vw !important;
+  height: 100dvh !important;
+  z-index: 10000;
+  border-radius: 0;
+  border: 0;
+}
+
 /* ─────────────────────────────────────────────────────────────
    Dashboard shell — ported from static_design/Branch-manager_dashboard.html.
    Only the parts Tailwind utilities can't express live here; the accent color

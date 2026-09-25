@@ -85,6 +85,7 @@ export function ShapeEditor({
     center: branchCenter,
     // Frame the whole allowed circle, not just the pin.
     zoom: maxRadiusKm > 6 ? 12 : maxRadiusKm > 2 ? 13 : 14,
+    fullscreen: { enter: t("mapPicker.fullscreenEnter"), exit: t("mapPicker.fullscreenExit") },
   });
 
   const shape = parseShape(value);
@@ -384,7 +385,11 @@ export function ShapeOverview({
 }) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { handle, status } = useLeafletMap(containerRef, { center: null, zoom: 11 });
+  const { handle, status } = useLeafletMap(containerRef, {
+    center: null,
+    zoom: 11,
+    fullscreen: { enter: t("mapPicker.fullscreenEnter"), exit: t("mapPicker.fullscreenExit") },
+  });
   // Callers pass freshly mapped arrays on every render; keyed on identity, any
   // parent re-render redrew everything and re-framed the view, undoing the
   // admin's own zoom. Keyed on content, and framed once per map.

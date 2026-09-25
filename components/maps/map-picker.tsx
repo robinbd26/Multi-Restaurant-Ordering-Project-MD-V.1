@@ -268,7 +268,11 @@ export function MapPicker({
   );
   const { handle, status } = useLeafletMap(
     containerRef,
-    { center: startPoint, zoom: startPoint ? DEFAULT_ZOOM : 12 },
+    {
+      center: startPoint,
+      zoom: startPoint ? DEFAULT_ZOOM : 12,
+      fullscreen: { enter: t("mapPicker.fullscreenEnter"), exit: t("mapPicker.fullscreenExit") },
+    },
     open,
   );
   const mapFailed = status === "error";
