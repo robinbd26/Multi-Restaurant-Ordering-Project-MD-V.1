@@ -12,8 +12,13 @@ import {
 
 import type { Brand } from "@/lib/home/types";
 
-/** localStorage key for the public homepage cart (cart preservation, req #13). */
-const HOME_CART_STORAGE_KEY = "mad-delivery-home-cart";
+/**
+ * localStorage key for THE cart (cart preservation, req #13). v2 = lines that
+ * carry size / crust / note. The key it replaces is simply dropped on load:
+ * its lines were keyed differently and could never merge with new ones.
+ */
+const HOME_CART_STORAGE_KEY = "mad-delivery-cart-v2";
+const RETIRED_CART_KEYS = ["mad-delivery-home-cart"];
 
 /** Normalised payload sent to the cart when a product (or a configured size) is added. */
 export interface CartAddInput {
@@ -27,6 +32,14 @@ export interface CartAddInput {
   branchName?: string;
   /** Distinguishes a configured variant (size / flavour / add-ons) of the same item. */
   variant?: string;
+  /**
+   * The chosen size (ProductVariation id). Sent with the order so the server
+   * prices THAT size; without it the server falls back to the default size,
+   * which is what used to happen to every sized item added from the homepage.
+   */
+  variationId?: number | null;
+  /** The chosen crust ("THICK" | "THIN"), re-validated server-side; "" / absent = none. */
+  variationType?: string;
   image?: string;
   emoji?: string;
   qty?: number;
@@ -43,6 +56,10 @@ export interface HomeCartLine {
   branchId?: number;
   branchName?: string;
   variant?: string;
+  variationId?: number | null;
+  variationType?: string;
+  /** The customer's note for this line (edited on the dashboard Cart page). */
+  foodNote?: string;
   image?: string;
   emoji?: string;
   qty: number;
@@ -86,7 +103,8 @@ interface HomeCartValue {
   setBrand: (brand: Brand) => void;
   /** The menu tabs the browsed branch serves; both for guests / all-branches. */
   servedBrands: Brand[];
-  add: (input: CartAddInput) => void;
+  /** "branch-conflict" = refused; the switch dialog is now pending. */
+  add: (input: CartAddInput) => "added" | "branch-conflict";
   /** The branch this cart is locked to, or null when the cart is empty. */
   cartBranchId: number | null;
   cartBranchName: string | null;
@@ -96,6 +114,7 @@ interface HomeCartValue {
   cancelBranchSwitch: () => void;
   remove: (lineId: string) => void;
   setQty: (lineId: string, qty: number) => void;
+  setNote: (lineId: string, note: string) => void;
   clear: () => void;
   openCart: () => void;
   closeCart: () => void;
@@ -104,8 +123,12 @@ interface HomeCartValue {
 
 const HomeCartContext = createContext<HomeCartValue | null>(null);
 
+/**
+ * One line per product + size + crust + configured variant, so two sizes (or
+ * a Thick and a Thin) of the same pizza are never merged into one line.
+ */
 function lineKey(input: CartAddInput): string {
-  return input.variant ? `${input.id}::${input.variant}` : input.id;
+  return [input.id, input.variationId ?? "", input.variationType ?? "", input.variant ?? ""].join("::");
 }
 
 /**
@@ -182,13 +205,14 @@ export function HomeCartProvider({
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     try {
+      for (const key of RETIRED_CART_KEYS) window.localStorage.removeItem(key);
       const raw = window.localStorage.getItem(HOME_CART_STORAGE_KEY);
+      const parsed: unknown = raw ? JSON.parse(raw) : null;
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (raw) setLines(JSON.parse(raw) as HomeCartLine[]);
+      if (Array.isArray(parsed)) setLines(parsed as HomeCartLine[]);
     } catch {
       /* corrupted storage — start fresh */
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHydrated(true);
   }, []);
   useEffect(() => {
@@ -225,6 +249,9 @@ export function HomeCartProvider({
           branchId: input.branchId,
           branchName: input.branchName,
           variant: input.variant,
+          variationId: input.variationId ?? null,
+          variationType: input.variationType ?? "",
+          foodNote: "",
           image: input.image,
           emoji: input.emoji,
           qty,
@@ -246,7 +273,7 @@ export function HomeCartProvider({
    * guest showcase item) never trigger the guard.
    */
   const add = useCallback(
-    (input: CartAddInput) => {
+    (input: CartAddInput): "added" | "branch-conflict" => {
       if (
         input.branchId != null &&
         cartBranchId != null &&
@@ -258,9 +285,10 @@ export function HomeCartProvider({
           currentBranchName: cartBranchName ?? "",
           nextBranchName: input.branchName ?? "",
         });
-        return;
+        return "branch-conflict";
       }
       addLine(input);
+      return "added";
     },
     [addLine, cartBranchId, cartBranchName],
   );
@@ -322,6 +350,10 @@ export function HomeCartProvider({
     );
   }, []);
 
+  const setNote = useCallback((lineId: string, note: string) => {
+    setLines((prev) => prev.map((l) => (l.lineId === lineId ? { ...l, foodNote: note } : l)));
+  }, []);
+
   const clear = useCallback(() => setLines([]), []);
   const dismissToast = useCallback(() => setLastAdded(null), []);
 
@@ -345,13 +377,14 @@ export function HomeCartProvider({
       add,
       remove,
       setQty,
+      setNote,
       clear,
       openCart: () => setOpen(true),
       closeCart: () => setOpen(false),
       dismissToast,
     };
   }, [
-    lines, isOpen, lastAdded, brand, setBrand, servedBrands, add, remove, setQty, clear, dismissToast,
+    lines, isOpen, lastAdded, brand, setBrand, servedBrands, add, remove, setQty, setNote, clear, dismissToast,
     cartBranchId, cartBranchName, pendingBranchSwitch, confirmBranchSwitch, cancelBranchSwitch,
   ]);
 

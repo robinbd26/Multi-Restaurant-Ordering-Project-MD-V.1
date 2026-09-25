@@ -126,6 +126,9 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
       qty,
       image: item.image,
       variant: parts.join(" · ") || undefined,
+      // Size keys ARE the variation ids (lib/services/public-catalog.ts), so
+      // the order is priced at the size picked here, not the default one.
+      variationId: size ? Number(size.key) : null,
     });
     onClose();
   };

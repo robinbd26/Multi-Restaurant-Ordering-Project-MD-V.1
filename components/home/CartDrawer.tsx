@@ -210,6 +210,22 @@ export function CartDrawer({
   // lazily in event handlers (never during render — react-hooks/purity).
   const attemptKeyRef = useRef("");
 
+  /**
+   * The cart as order items, for the quote and for the order itself. Each line
+   * carries its size and crust, so the server prices and validates the item
+   * the customer actually picked (both are re-checked there), plus each line's
+   * note from the Cart page (the quote ignores it).
+   */
+  function orderItems() {
+    return lines.map((l) => ({
+      product_id: Number(l.itemId),
+      ...(l.variationId != null ? { variation_id: l.variationId } : {}),
+      ...(l.variationType ? { variation_type: l.variationType } : {}),
+      quantity: l.qty,
+      food_note: l.foodNote ?? "",
+    }));
+  }
+
   /** Fresh idempotency key — called only from event handlers. */
   function rotateAttemptKey() {
     attemptKeyRef.current = `hd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -616,7 +632,7 @@ export function CartDrawer({
           ? {
               branch_id: pickupBranch!.id,
               fulfillment_type: "pickup",
-              items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty })),
+              items: orderItems(),
             }
           : oneTimeAddress
             ? // ITEM 8 — a one-time address for this order: judged from its
@@ -627,7 +643,7 @@ export function CartDrawer({
                 fulfillment_type: "delivery",
                 lat: Number(oneTimeAddress.lat),
                 lng: Number(oneTimeAddress.lng),
-                items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty })),
+                items: orderItems(),
               }
             : (() => {
                 const lat = chosenAddress!.latitude != null ? Number(chosenAddress!.latitude) : undefined;
@@ -638,7 +654,7 @@ export function CartDrawer({
                   fulfillment_type: "delivery",
                   ...(hasCoords ? { lat, lng } : {}),
                   customer_address_id: chosenAddress!.id,
-                  items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty })),
+                  items: orderItems(),
                 };
               })();
       const res = await fetch("/api/delivery/quote", {
@@ -810,7 +826,7 @@ export function CartDrawer({
               food_notes: "",
               fulfillment_type: "pickup" as const,
               pickup_time: pickupAt!.toISOString(),
-              items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
+              items: orderItems(),
             }
           : oneTimeAddress
             ? // ITEM 8 — never saved: no customer_address_id, just this order's
@@ -825,7 +841,7 @@ export function CartDrawer({
                 lat: Number(oneTimeAddress.lat),
                 lng: Number(oneTimeAddress.lng),
                 coord_source: "one_time_address",
-                items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
+                items: orderItems(),
               }
             : (() => {
                 const lat = chosenAddress!.latitude != null ? Number(chosenAddress!.latitude) : undefined;
@@ -841,7 +857,7 @@ export function CartDrawer({
                   ...(hasCoords ? { lat, lng } : {}),
                   customer_address_id: chosenAddress!.id,
                   coord_source: "saved_address",
-                  items: lines.map((l) => ({ product_id: Number(l.itemId), quantity: l.qty, food_note: "" })),
+                  items: orderItems(),
                 };
               })();
       const result = await placeOrderAction(payload);
