@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef } from "react";
 
 import { Button, ButtonLink } from "@/components/ui/button";
+import { accuracyKm } from "@/lib/constants/location";
 import { LocationPermissionCard, type LocationStatus } from "@/components/customer/location-permission-card";
 import { NearestPickupCallout } from "@/components/maps/nearest-pickup-callout";
 import { useTranslation } from "@/lib/i18n/use-translation";
@@ -46,7 +48,18 @@ export function BranchesLocationGate({
   locationInitial: LocationStatus;
 }) {
   const { t, fmt } = useTranslation();
-  const { request, phase, busy, saveError } = useLocationRequest();
+  const { request, phase, busy, saveError, fix } = useLocationRequest();
+  // A coarse network guess is saved but not used to pick a branch (see
+  // APPROXIMATE_FIX_M); the note sends the customer to confirm or move the pin.
+  const approximateNote =
+    phase === "approximate" && fix?.accuracy != null ? (
+      <p className="mt-2 text-xs text-amber-700 dark:text-amber-300" role="status" data-testid="branches-approximate">
+        {t("location.approximateElsewhere", { km: fmt.num(accuracyKm(fix.accuracy)) })}{" "}
+        <Link href="/customer/addresses" className="font-semibold underline underline-offset-2">
+          {t("location.fixApproximate")}
+        </Link>
+      </p>
+    ) : null;
   const autoFired = useRef(false);
   const { consent } = useLocationConsent();
 
@@ -157,9 +170,10 @@ export function BranchesLocationGate({
             {errorText}
           </p>
         ) : null}
+        {approximateNote}
       </div>
     );
   }
 
-  return null;
+  return approximateNote ? <div className="mb-4">{approximateNote}</div> : null;
 }

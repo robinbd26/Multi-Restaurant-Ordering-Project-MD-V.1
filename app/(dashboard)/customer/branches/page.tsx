@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -9,10 +8,11 @@ import { requireRole } from "@/lib/auth/session";
 import { getSessionUser } from "@/lib/auth/current-user";
 import { readBrowseScope } from "@/lib/browse-scope/server";
 import { getT } from "@/lib/i18n/server";
-import { cn, mediaUrl } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { nearestEligibleBranch, customerLocationStatus } from "@/lib/services/customer-location";
 import { resolveDeliverTo } from "@/lib/services/customer-branch";
 import { BranchLocationPanel } from "@/components/customer/branch-location-panel";
+import { BranchLogo } from "@/components/customer/branch-logo";
 import { BranchesLocationGate } from "@/components/customer/branches-location-gate";
 import { BrowseBranchButton, BrowseBranchLink } from "@/components/customer/browse-branch-link";
 import type { Branch, Paginated } from "@/types";
@@ -62,7 +62,19 @@ export default async function CustomerBranchesPage({
     nearestEligibleBranch(me.id, target.point),
     customerLocationStatus(me.id),
   ]);
-  const nearestId = nearest.nearest?.id ?? null;
+  // The badge means "nearest branch that is OPEN and DELIVERS here", which is
+  // not always the branch physically closest to the customer. When the two
+  // differ, the page says why the closest one is not the pick.
+  const badgeBranch =
+    nearest.nearest && nearest.nearest.covered && nearest.nearest.open_now ? nearest.nearest : null;
+  const closest = nearest.branches
+    .filter((b) => b.distance_km != null)
+    .reduce<(typeof nearest.branches)[number] | null>(
+      (best, b) => (best == null || b.distance_km! < best.distance_km! ? b : best),
+      null,
+    );
+  const closestDiffers = badgeBranch != null && closest != null && closest.id !== badgeBranch.id;
+  const closestReason = closest && !closest.covered ? "notCovered" : "closed";
   const distanceById = new Map(nearest.branches.map((b) => [b.id, b.distance_km]));
   const coveredById = new Map(nearest.branches.map((b) => [b.id, b.covered]));
   // Open-now is decided SERVER-SIDE (lib/services/branch-hours.ts, Asia/Dhaka) —
@@ -115,7 +127,7 @@ export default async function CustomerBranchesPage({
           placeholder={t("branchSearch.placeholder")}
           aria-label={t("branchSearch.placeholder")}
           data-testid="branch-search-input"
-          className="w-full max-w-xs rounded-xl border border-border-strong bg-surface-card px-3.5 py-2.5 text-sm text-fg-base placeholder:text-fg-subtle focus:border-brand-500 focus:outline-2 focus:outline-brand-500/20 sm:w-auto"
+          className="w-full rounded-xl border sm:w-96 border-border-strong bg-surface-card px-3.5 py-2.5 text-sm text-fg-base placeholder:text-fg-subtle focus:border-brand-500 focus:outline-2 focus:outline-brand-500/20"
         />
         <Button type="submit" size="sm" data-testid="branch-search-submit">{t("branchSearch.submit")}</Button>
         {search ? (
@@ -132,6 +144,15 @@ export default async function CustomerBranchesPage({
           : nearest.point
             ? t("nearestBranch.explainerNone")
             : t("nearestBranch.explainerNoLocation")}
+        {closestDiffers ? (
+          <span className="mt-1 block text-xs" data-testid="nearest-differs-note">
+            {t("nearestBranch.closestDiffers", {
+              closest: closest!.name,
+              nearest: badgeBranch!.name,
+              reason: t(closestReason === "notCovered" ? "nearestBranch.reasonNotCovered" : "nearestBranch.reasonClosed"),
+            })}
+          </span>
+        ) : null}
         {!nearest.point ? (
           <span className="ml-2 inline-block">
             <ButtonLink href="/customer/addresses" size="sm" variant="outline">{t("nearestBranch.setLocation")}</ButtonLink>
@@ -155,14 +176,17 @@ export default async function CustomerBranchesPage({
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {data.results.map((branch) => {
-            const logo = mediaUrl(branch.logo);
             const covered = coveredById.get(branch.id) ?? false;
             const open = openById.get(branch.id) ?? true;
             // Orderable = covered AND open now — or, with no location yet, treated
             // as orderable-pending (WS-8.14): browsing must not look refused before
             // we even know where they are.
             const orderable = (covered && open) || noLocation;
-            const isNearest = branch.id === nearestId && covered && open;
+            const isNearest = branch.id === badgeBranch?.id;
+            const isClosestNotPicked = closestDiffers && branch.id === closest?.id;
+            const brandKey = ["cheez", "madchef", "combined"].includes(branch.brand_type ?? "")
+              ? (branch.brand_type as string)
+              : "combined";
             // We know where they are and this branch cannot reach it.
             const browseOnly = !noLocation && !covered;
             const closedNow = covered && !open;
@@ -178,14 +202,12 @@ export default async function CustomerBranchesPage({
                 )}
               >
                 <div className="relative flex h-28 items-center justify-center bg-gradient-to-br from-ink-900 to-ink-950">
-                  {logo ? (
-                    <Image src={logo} alt={branch.name} width={64} height={64} className="size-16 rounded-2xl object-cover" />
-                  ) : (
-                    <span className="text-4xl">🏪</span>
-                  )}
+                  <BranchLogo logo={branch.logo} name={branch.name} />
                   {isNearest ? (
                     <span className="absolute right-2 top-2 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm" data-testid="branch-nearest-badge">
-                      {t("nearestBranch.nearestBadge")}
+                      {/* Plain "Nearest" when it IS the closest branch too;
+                          otherwise say what it is nearest among. */}
+                      {closestDiffers ? t("nearestBranch.nearestServingBadge") : t("nearestBranch.nearestBadge")}
                     </span>
                   ) : null}
                 </div>
@@ -193,10 +215,12 @@ export default async function CustomerBranchesPage({
                   <BrowseBranchLink branchId={branch.id} className="group/title">
                     <h3 className="font-semibold text-fg-base transition-colors group-hover/title:text-brand-600 group-hover/title:underline">{branch.name}</h3>
                   </BrowseBranchLink>
-                  <p className="mt-0.5 line-clamp-1 text-sm text-fg-muted">📍 {branch.address}</p>
+                  <p className="mt-0.5 line-clamp-2 text-sm text-fg-muted" title={branch.address} data-testid="branch-address">
+                    📍 {branch.address}
+                  </p>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-fg-subtle">
                     <span data-testid="branch-brand">
-                      {branch.brand_type}
+                      {t(`brandName.${brandKey}`)}
                       <span
                         className="ml-2 rounded-full border border-border-base px-2 py-0.5 text-[10px] font-semibold"
                         data-testid="branch-business-type"
@@ -206,13 +230,15 @@ export default async function CustomerBranchesPage({
                     </span>
                     <span>📞 {branch.phone}</span>
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-fg-subtle">
+                  {/* No "Delivery N km" here: the radius is only the ceiling a
+                      branch may draw up to, not where it actually delivers. The
+                      delivery verdict below is the real answer. */}
+                  <div className="mt-1 text-xs text-fg-subtle">
                     <span data-testid="branch-hours">
                       {branch.opening_time && branch.closing_time
                         ? `🕒 ${fmt.clock(branch.opening_time)} – ${fmt.clock(branch.closing_time)}`
                         : t("outOfZone.hoursUnknown")}
                     </span>
-                    <span>{t("customer.deliveryRadius", { km: fmt.num(branch.delivery_radius_km) })}</span>
                   </div>
                   <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
                     <span className="text-fg-subtle" data-testid="branch-distance">
@@ -254,6 +280,13 @@ export default async function CustomerBranchesPage({
                         : t("nearestHome.browseOnlyTitle")}
                     </span>
                   ) : null}
+                  {isClosestNotPicked ? (
+                    <p className="mt-2 text-xs font-medium text-fg-muted" data-testid="branch-closest-note">
+                      {closestReason === "notCovered"
+                        ? t("nearestBranch.closestNotCovered")
+                        : t("nearestBranch.closestClosed")}
+                    </p>
+                  ) : null}
                   {closedNow ? (
                     <p className="mt-2 text-xs font-medium text-amber-600 dark:text-amber-400" data-testid="branch-status-note">
                       {t("nearestBranch.opensAt", { time: fmt.clock(opensAtById.get(branch.id) ?? branch.opening_time) })}
@@ -263,9 +296,6 @@ export default async function CustomerBranchesPage({
                   <BranchLocationPanel
                     branchName={branch.name}
                     address={branch.address}
-                    distanceKm={distanceById.get(branch.id) ?? null}
-                    covered={covered}
-                    locationKnown={!noLocation}
                     branchLat={branch.latitude}
                     branchLng={branch.longitude}
                   />

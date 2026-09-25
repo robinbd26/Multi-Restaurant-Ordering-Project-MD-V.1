@@ -6,14 +6,21 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 
 import type { Brand } from "@/lib/home/types";
 
-/** localStorage key for the public homepage cart (cart preservation, req #13). */
-const HOME_CART_STORAGE_KEY = "mad-delivery-home-cart";
+/**
+ * localStorage key for THE cart (cart preservation, req #13). v2 = lines that
+ * carry size / crust / note. The keys it replaces (the homepage cart's and the
+ * retired dashboard cart's) are simply dropped on load: their lines were keyed
+ * differently and could never merge with new ones.
+ */
+const HOME_CART_STORAGE_KEY = "mad-delivery-cart-v2";
+const RETIRED_CART_KEYS = ["mad-delivery-home-cart", "mad-delivery-cart"];
 
 /** Normalised payload sent to the cart when a product (or a configured size) is added. */
 export interface CartAddInput {
@@ -21,12 +28,21 @@ export interface CartAddInput {
   id: string;
   name: string;
   unitPrice: number;
-  brand: Brand;
+  /** Storefront brand tab the item came from; the dashboard menu has none. */
+  brand?: Brand;
   /** Owning branch — one order belongs to exactly one branch. */
   branchId?: number;
   branchName?: string;
   /** Distinguishes a configured variant (size / flavour / add-ons) of the same item. */
   variant?: string;
+  /**
+   * The chosen size (ProductVariation id). Sent with the order so the server
+   * prices THAT size; without it the server falls back to the default size,
+   * which is what used to happen to every sized item added from the homepage.
+   */
+  variationId?: number | null;
+  /** The chosen crust ("THICK" | "THIN"), re-validated server-side; "" / absent = none. */
+  variationType?: string;
   image?: string;
   emoji?: string;
   qty?: number;
@@ -39,10 +55,14 @@ export interface HomeCartLine {
   itemId: string;
   name: string;
   unitPrice: number;
-  brand: Brand;
+  brand?: Brand;
   branchId?: number;
   branchName?: string;
   variant?: string;
+  variationId?: number | null;
+  variationType?: string;
+  /** The customer's note for this line (edited on the dashboard Cart page). */
+  foodNote?: string;
   image?: string;
   emoji?: string;
   qty: number;
@@ -86,7 +106,8 @@ interface HomeCartValue {
   setBrand: (brand: Brand) => void;
   /** The menu tabs the browsed branch serves; both for guests / all-branches. */
   servedBrands: Brand[];
-  add: (input: CartAddInput) => void;
+  /** "branch-conflict" = refused; the switch dialog is now pending. */
+  add: (input: CartAddInput) => "added" | "branch-conflict";
   /** The branch this cart is locked to, or null when the cart is empty. */
   cartBranchId: number | null;
   cartBranchName: string | null;
@@ -96,6 +117,7 @@ interface HomeCartValue {
   cancelBranchSwitch: () => void;
   remove: (lineId: string) => void;
   setQty: (lineId: string, qty: number) => void;
+  setNote: (lineId: string, note: string) => void;
   clear: () => void;
   openCart: () => void;
   closeCart: () => void;
@@ -104,15 +126,23 @@ interface HomeCartValue {
 
 const HomeCartContext = createContext<HomeCartValue | null>(null);
 
+/**
+ * One line per product + size + crust + configured variant, so two sizes (or
+ * a Thick and a Thin) of the same pizza are never merged into one line.
+ */
 function lineKey(input: CartAddInput): string {
-  return input.variant ? `${input.id}::${input.variant}` : input.id;
+  return [input.id, input.variationId ?? "", input.variationType ?? "", input.variant ?? ""].join("::");
 }
 
 /**
- * Client-side cart for the public homepage. Purely local state — the reference
- * site is a showcase menu, so ordering funnels to the phone line / login.
- * Lines are keyed by item + variant so sized items (pizzas, wings) stay distinct.
- * Also owns the active brand tab so the navbar search can switch the menu.
+ * THE cart, and the one checkout it feeds (CartDrawer). Mounted by the public
+ * homepage AND the dashboard layout, both reading the same localStorage key,
+ * so the homepage drawer and the dashboard Cart page always show the same
+ * lines. There used to be a second cart (lib/hooks/use-cart, its own key and
+ * its own checkout page), so the two screens disagreed about what was in the
+ * cart. Lines are keyed by item + size + crust + variant so sized items stay
+ * distinct. On the homepage it also owns the active brand tab so the navbar
+ * search can switch the menu; the dashboard does not use that part.
  */
 export function HomeCartProvider({
   children,
@@ -179,26 +209,41 @@ export function HomeCartProvider({
   // used to live only in component state, so navigating to /login to sign in
   // (the exact moment the ordering flow demands it) threw the whole selection
   // away. Hydrate once on mount, then mirror every change back to storage.
-  const [hydrated, setHydrated] = useState(false);
+  //
+  // NO state update on mount unless there is a stored cart to restore. This
+  // provider wraps the whole dashboard, and a state update here while a page
+  // below is still streaming in makes React client-render that page next to
+  // the streamed copy (two of every form for a moment, which broke strict e2e
+  // locators). An always-on setHydrated(true) did exactly that on every
+  // dashboard page. So readiness is a ref, and lines are set only when there
+  // are lines.
+  const persistReady = useRef(false);
   useEffect(() => {
     try {
+      for (const key of RETIRED_CART_KEYS) window.localStorage.removeItem(key);
       const raw = window.localStorage.getItem(HOME_CART_STORAGE_KEY);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (raw) setLines(JSON.parse(raw) as HomeCartLine[]);
+      const parsed: unknown = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setLines(parsed as HomeCartLine[]);
+      }
     } catch {
       /* corrupted storage — start fresh */
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setHydrated(true);
   }, []);
   useEffect(() => {
-    if (!hydrated) return;
+    // The first run is the empty initial state, before the restore above has
+    // re-rendered; writing it would wipe the stored cart.
+    if (!persistReady.current) {
+      persistReady.current = true;
+      return;
+    }
     try {
       window.localStorage.setItem(HOME_CART_STORAGE_KEY, JSON.stringify(lines));
     } catch {
       /* storage full/blocked — the in-memory cart still works */
     }
-  }, [lines, hydrated]);
+  }, [lines]);
 
   // One order belongs to exactly one branch, so the FIRST item locks the cart to
   // its branch. Derived from the lines rather than stored separately, so it can
@@ -225,6 +270,9 @@ export function HomeCartProvider({
           branchId: input.branchId,
           branchName: input.branchName,
           variant: input.variant,
+          variationId: input.variationId ?? null,
+          variationType: input.variationType ?? "",
+          foodNote: "",
           image: input.image,
           emoji: input.emoji,
           qty,
@@ -246,7 +294,7 @@ export function HomeCartProvider({
    * guest showcase item) never trigger the guard.
    */
   const add = useCallback(
-    (input: CartAddInput) => {
+    (input: CartAddInput): "added" | "branch-conflict" => {
       if (
         input.branchId != null &&
         cartBranchId != null &&
@@ -258,9 +306,10 @@ export function HomeCartProvider({
           currentBranchName: cartBranchName ?? "",
           nextBranchName: input.branchName ?? "",
         });
-        return;
+        return "branch-conflict";
       }
       addLine(input);
+      return "added";
     },
     [addLine, cartBranchId, cartBranchName],
   );
@@ -277,7 +326,8 @@ export function HomeCartProvider({
    * silently drift. Guarded so it never clobbers a pending "add" conflict.
    */
   useEffect(() => {
-    if (!hydrated) return;
+    // Before the stored cart is restored the cart is empty, so cartBranchId is
+    // null and this waits for the restore on its own.
     if (activeBranchId == null || cartBranchId == null) return;
     if (activeBranchId === cartBranchId) return;
     // Reconciling against an EXTERNAL signal (the server-resolved branch, which
@@ -293,7 +343,7 @@ export function HomeCartProvider({
         nextBranchName: activeBranchName ?? "",
       },
     );
-  }, [hydrated, activeBranchId, activeBranchName, cartBranchId, cartBranchName]);
+  }, [activeBranchId, activeBranchName, cartBranchId, cartBranchName]);
 
   const confirmBranchSwitch = useCallback(() => {
     setPendingBranchSwitch((pending) => {
@@ -322,6 +372,10 @@ export function HomeCartProvider({
     );
   }, []);
 
+  const setNote = useCallback((lineId: string, note: string) => {
+    setLines((prev) => prev.map((l) => (l.lineId === lineId ? { ...l, foodNote: note } : l)));
+  }, []);
+
   const clear = useCallback(() => setLines([]), []);
   const dismissToast = useCallback(() => setLastAdded(null), []);
 
@@ -345,13 +399,14 @@ export function HomeCartProvider({
       add,
       remove,
       setQty,
+      setNote,
       clear,
       openCart: () => setOpen(true),
       closeCart: () => setOpen(false),
       dismissToast,
     };
   }, [
-    lines, isOpen, lastAdded, brand, setBrand, servedBrands, add, remove, setQty, clear, dismissToast,
+    lines, isOpen, lastAdded, brand, setBrand, servedBrands, add, remove, setQty, setNote, clear, dismissToast,
     cartBranchId, cartBranchName, pendingBranchSwitch, confirmBranchSwitch, cancelBranchSwitch,
   ]);
 

@@ -5,7 +5,8 @@ import { BrandCardLink } from "@/components/home/BrandCardLink";
 import type { Brand } from "@/lib/home/types";
 import { getT } from "@/lib/i18n/server";
 
-export async function HeroSection() {
+/** `signedIn` hides the "New here? Create an account" line from anyone already logged in. */
+export async function HeroSection({ signedIn = false }: { signedIn?: boolean }) {
   const { t, fmt } = await getT();
 
   const STATS = [
@@ -123,13 +124,15 @@ export async function HeroSection() {
                 <span className="text-[#606070] transition-transform group-hover:translate-x-1">→</span>
               </BrandCardLink>
             ))}
-            <p className="text-center text-xs text-white/40">
-              {t("home.hero.newHere")}{" "}
-              <Link href="/register" className="font-semibold text-brand-400 hover:underline">
-                {t("home.hero.createAccount")}
-              </Link>{" "}
-              {t("home.hero.toPlaceOrders")}
-            </p>
+            {signedIn ? null : (
+              <p className="text-center text-xs text-white/40" data-testid="hero-signup-prompt">
+                {t("home.hero.newHere")}{" "}
+                <Link href="/register" className="font-semibold text-brand-400 hover:underline">
+                  {t("home.hero.createAccount")}
+                </Link>{" "}
+                {t("home.hero.toPlaceOrders")}
+              </p>
+            )}
           </div>
         </div>
       </div>

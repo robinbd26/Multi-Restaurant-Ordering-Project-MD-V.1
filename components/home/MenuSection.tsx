@@ -194,7 +194,13 @@ export function MenuSection({
     <section id="menu-section" className="scroll-mt-14 bg-[#0c0c0e] md:scroll-mt-18">
       {/* Brand toggle — sticky full-width underline tab bar (below the sticky nav) */}
       <div className="sticky top-14 z-30 border-y border-white/10 bg-[#111115] md:top-18">
-        <div className="scrollbar-thin mx-auto flex max-w-300 items-center overflow-x-auto px-4">
+        {/* overflow-x-auto makes overflow-y compute to auto too, and each tab's
+            -mb-px underline stuck out one pixel below this box, which drew a
+            tiny vertical scrollbar at the right. pb-px gives that pixel room
+            (the underline keeps its full 3px), overflow-y is hidden for good
+            measure, and the horizontal swipe on a narrow phone still works,
+            just without a visible bar. */}
+        <div className="scrollbar-none mx-auto flex max-w-300 items-center overflow-x-auto overflow-y-hidden px-4 pb-px">
           {/* Only the brands the browsed branch serves get a tab. */}
           {servedBrands.includes("cheez") ? (
             <BrandTab

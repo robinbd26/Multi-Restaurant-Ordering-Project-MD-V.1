@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { BrowsingPicker, type BrowseBranchOption } from "@/components/home/BrowsingPicker";
@@ -8,6 +9,7 @@ import { DeliverToPicker, type DeliverToAddress } from "@/components/home/Delive
 import { NearestPickupCallout } from "@/components/maps/nearest-pickup-callout";
 import { updateBrowseScope } from "@/lib/browse-scope/client";
 import type { BrowseScope } from "@/lib/browse-scope/config";
+import { accuracyKm } from "@/lib/constants/location";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { useLocationRequest } from "@/lib/hooks/use-location-request";
 
@@ -71,7 +73,10 @@ export function BranchBar({
   // Same shared live-location flow the location card uses — no second location
   // system, no client-side distance maths. The server re-derives the nearest
   // branch on the refresh the hook performs.
-  const { request, phase, busy, saveError } = useLocationRequest();
+  const { request, phase, busy, saveError, fix } = useLocationRequest();
+  // A desktop network guess (±tens of km) is saved but NOT used to pick the
+  // branch; say so, and send the customer to confirm or move the pin.
+  const approximateKm = phase === "approximate" && fix?.accuracy != null ? accuracyKm(fix.accuracy) : null;
 
   // A refusal is not an error state to nag about — the saved default address is
   // the documented fallback, so point at it; other failures surface a short
@@ -300,6 +305,14 @@ export function BranchBar({
       {error ? (
         <p className="mx-auto mt-2 max-w-300 text-[0.78rem] text-red-400" role="alert">
           {error}
+        </p>
+      ) : null}
+      {approximateKm != null ? (
+        <p className="mx-auto mt-2 max-w-300 text-[0.78rem] text-amber-300" role="status" data-testid="branch-bar-approximate">
+          {t("location.approximateElsewhere", { km: fmt.num(approximateKm) })}{" "}
+          <Link href="/customer/addresses" className="font-semibold underline underline-offset-2">
+            {t("location.fixApproximate")}
+          </Link>
         </p>
       ) : null}
     </section>

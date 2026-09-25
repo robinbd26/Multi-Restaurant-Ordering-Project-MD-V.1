@@ -344,14 +344,39 @@ test.describe("nearest-branch + GPS ownership", () => {
 });
 
 // ── req #6/#9 — full customer checkout journey through the browser ─────────
+// ONE cart and ONE checkout: the dashboard menu, the dashboard Cart page and
+// the homepage drawer all share one cart (localStorage "mad-delivery-cart-v2"),
+// and checkout is the drawer's flow wherever it is opened from. The old
+// /customer/checkout page (with its area dropdown) is retired.
+const CART_KEY = "mad-delivery-cart-v2";
+
+async function readCart(page: import("@playwright/test").Page): Promise<{ qty: number }[]> {
+  const raw = await page.evaluate((key) => localStorage.getItem(key), CART_KEY);
+  const parsed = raw ? JSON.parse(raw) : [];
+  return Array.isArray(parsed) ? parsed : [];
+}
+
 test.describe("customer checkout journey (UI)", () => {
+  /**
+   * The first product with no crust to choose. test.db keeps the Thick/Thin
+   * pizzas other specs create, and those (correctly) refuse to be added
+   * until a crust is picked, so a bare .first() is not a simple add.
+   */
+  function plainAddButton(page: import("@playwright/test").Page) {
+    return page
+      .locator('[data-testid^="product-card-"]')
+      .filter({ hasNot: page.getByTestId("crust-choice") })
+      .first()
+      .getByTestId("menu-add");
+  }
+
   async function seedLocationAndOpenMenu(session: Awaited<ReturnType<typeof newSession>>, branchId: number) {
     await session.req.post(`${API_BASE}/api/customer/location`, { data: { lat: INSIDE.lat, lng: INSIDE.lng } });
     await session.page.goto(`/customer/branches/${branchId}/menu`);
     await expect(session.page.getByTestId("menu-add").first()).toBeVisible();
   }
 
-  test("browse nearest branch → add to cart → area + coverage → place order", async ({ browser }) => {
+  test("dashboard menu → Cart page shows the line → Checkout runs the drawer flow → one order", async ({ browser }) => {
     const customer = await newSession(browser, "customer");
     await seedCustomerLocation(customer.req);
     const admin = await newSession(browser, "super_admin");
@@ -364,48 +389,35 @@ test.describe("customer checkout journey (UI)", () => {
     await expect(customer.page.getByTestId("branch-nearest-badge")).toHaveCount(1);
 
     await seedLocationAndOpenMenu(customer, main);
-    await customer.page.getByTestId("menu-add").first().click();
+    await plainAddButton(customer.page).click();
+    await expect.poll(async () => (await readCart(customer.page)).length).toBe(1);
+
+    // The dashboard Cart page reads the SAME cart.
+    await customer.page.goto("/customer/cart");
+    await expect(customer.page.getByTestId("cart-line")).toHaveCount(1);
 
     const ordersBefore = (await (await customer.req.get(`${API_BASE}/api/orders/?page_size=1`)).json()).count;
 
-    // seedCustomerLocation already stored INSIDE coords — checkout pre-fills
-    // them and auto-runs coverage, so customers do not re-type GPS every time.
-    const coverageWait = customer.page.waitForResponse(
-      (r) => r.url().includes("/api/delivery/coverage") && r.request().method() === "POST",
-      { timeout: 20_000 },
-    );
-    await customer.page.goto("/customer/checkout");
-    const coverageRes = await coverageWait;
-    expect(coverageRes.ok(), "coverage API ok").toBeTruthy();
-    expect((await coverageRes.json()).covered, "INSIDE coords cover the cart branch").toBe(true);
-    await expect(customer.page.getByTestId("cov-covered")).toBeVisible({ timeout: 10_000 });
+    // Checkout opens the drawer in place; Self Pickup needs no address.
+    await customer.page.getByTestId("cart-checkout").click();
+    await customer.page.getByTestId("self-pickup").click();
+    await expect(customer.page.getByTestId("drawer-pickup-confirm-step")).toBeVisible();
+    await customer.page.getByTestId("drawer-confirm-pickup-branch").click();
+    await expect(customer.page.getByTestId("drawer-checkout-payment-step")).toBeVisible();
+    await customer.page.getByTestId("drawer-order-note").fill("Ring the bell");
+    await customer.page.getByTestId("drawer-next-overview").click();
+    await expect(customer.page.getByTestId("drawer-confirm-order")).toBeEnabled({ timeout: 15_000 });
+    await customer.page.getByTestId("drawer-confirm-order").click();
+    await expect(customer.page.getByTestId("drawer-checkout-success")).toBeVisible({ timeout: 20_000 });
 
-    // Pick a delivery area when the selector is present → server-derived total.
-    const areaSelect = customer.page.getByTestId("area-select");
-    if (await areaSelect.count()) {
-      const options = areaSelect.locator("option:not([disabled])");
-      const optionCount = await options.count();
-      if (optionCount > 1) {
-        const value = await options.nth(1).getAttribute("value");
-        if (value) await areaSelect.selectOption(value);
-      }
-    }
-    await expect(customer.page.getByTestId("summary-total")).toBeVisible({ timeout: 15_000 });
-
-    await customer.page.getByTestId("summary-address").scrollIntoViewIfNeeded().catch(() => {});
-    const addr = customer.page.locator('textarea[name="delivery_address"]');
-    if ((await addr.inputValue()).trim() === "") await addr.fill("Dhanmondi 27, Dhaka");
-
-    await customer.page.getByTestId("place-order").click();
-    await customer.page.waitForURL("**/customer/orders/**", { timeout: 20_000 });
-    await expect(customer.page).toHaveURL(/placed=1/);
-
-    // Exactly ONE order was created (no duplicate on a single confirm).
-    const ordersAfter = (await (await customer.req.get(`${API_BASE}/api/orders/?page_size=1`)).json()).count;
-    expect(ordersAfter).toBe(ordersBefore + 1);
+    // Exactly ONE order, and the cart is empty everywhere afterwards.
+    const after = await (await customer.req.get(`${API_BASE}/api/orders/?page_size=1`)).json();
+    expect(after.count).toBe(ordersBefore + 1);
+    expect(after.results[0].food_notes, "the order note travels with the order").toBe("Ring the bell");
+    expect(await readCart(customer.page)).toHaveLength(0);
   });
 
-  test("a failed order leaves the cart intact; identical adds dedupe into one line", async ({ browser }) => {
+  test("identical adds dedupe into one line, and the homepage drawer shows the same cart", async ({ browser }) => {
     const customer = await newSession(browser, "customer");
     await seedCustomerLocation(customer.req);
     const admin = await newSession(browser, "super_admin");
@@ -413,37 +425,18 @@ test.describe("customer checkout journey (UI)", () => {
 
     await seedLocationAndOpenMenu(customer, main);
     // Add the SAME product twice → the cart must dedupe to a single line, qty 2.
-    await customer.page.getByTestId("menu-add").first().click();
-    await customer.page.getByTestId("menu-add").first().click();
-    const cart = await customer.page.evaluate(() => JSON.parse(localStorage.getItem("mad-delivery-cart") || "{}"));
-    expect(cart.items).toHaveLength(1);
-    expect(cart.items[0].quantity).toBe(2);
+    await plainAddButton(customer.page).click();
+    await plainAddButton(customer.page).click();
+    await expect.poll(async () => (await readCart(customer.page)).map((l) => l.qty)).toEqual([2]);
 
-    // Force a server rejection: delivery with OUT-OF-COVERAGE coords (no coverage
-    // check, so fulfillment stays "delivery"). The order fails and the cart stays.
-    await customer.page.goto("/customer/checkout");
-    await customer.page.getByTestId("cov-lat").fill(String(OUTSIDE.lat));
-    await customer.page.getByTestId("cov-lng").fill(String(OUTSIDE.lng));
-    const addr = customer.page.locator('textarea[name="delivery_address"]');
-    if ((await addr.inputValue()).trim() === "") await addr.fill("Nowhere, Dhaka");
-    await customer.page.getByTestId("place-order").click();
-
-    // An error surfaces AND the cart is untouched (still one line, qty 2).
-    await expect(customer.page.locator('[role="alert"]').first()).toBeVisible();
-    const cartAfter = await customer.page.evaluate(() => JSON.parse(localStorage.getItem("mad-delivery-cart") || "{}"));
-    expect(cartAfter.items).toHaveLength(1);
-    expect(cartAfter.items[0].quantity).toBe(2);
+    // The storefront's cart button counts the very same lines.
+    await customer.page.goto("/");
+    await expect(customer.page.getByTestId("home-cart-button")).toContainText("2");
   });
 
-  test("checkout renders in Bangla (bn)", async ({ browser }) => {
-    const customer = await newSession(browser, "customer", "bn");
-    await seedCustomerLocation(customer.req);
-    const admin = await newSession(browser, "super_admin");
-    const main = (await branchMap(admin.req))["Main Branch"];
-    await seedLocationAndOpenMenu(customer, main);
-    await customer.page.getByTestId("menu-add").first().click();
+  test("the retired /customer/checkout page redirects to the Cart page", async ({ browser }) => {
+    const customer = await newSession(browser, "customer");
     await customer.page.goto("/customer/checkout");
-    // Bangla summary heading (checkout.summaryTitle = "অর্ডার সারাংশ").
-    await expect(customer.page.getByTestId("order-summary")).toContainText("অর্ডার সারাংশ");
+    await expect(customer.page).toHaveURL(/\/customer\/cart$/);
   });
 });

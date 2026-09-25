@@ -42,6 +42,11 @@ export interface MapInit {
   zoom?: number;
   /** false = a display-only map: no drag, zoom or tap handling. */
   interactive?: boolean;
+  /**
+   * Adds a fullscreen button under the + / − zoom buttons (interactive maps
+   * only). Carries its own translated labels because this module has no i18n.
+   */
+  fullscreen?: { enter: string; exit: string };
 }
 
 export type MapHandle = { L: Leaflet; map: LeafletMap } | null;
@@ -64,12 +69,13 @@ export function useLeafletMap(
   });
 
   // The init object is read once, at creation; later moves are the caller's job.
-  const { center, zoom, interactive = true } = init;
+  const { center, zoom, interactive = true, fullscreen } = init;
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !mountKey) return;
     let cancelled = false;
     let created: LeafletNS.Map | null = null;
+    let detachFullscreen: (() => void) | null = null;
     loadLeaflet()
       .then((L) => {
         if (cancelled || !containerRef.current) return;
@@ -88,6 +94,7 @@ export function useLeafletMap(
         });
         const tiles = tileConfig();
         L.tileLayer(tiles.url, { attribution: tiles.attribution, maxZoom: 19 }).addTo(map);
+        if (interactive && fullscreen) detachFullscreen = addFullscreenControl(L, map, fullscreen);
         created = map;
         setState({ handle: { L, map }, status: "ready" });
       })
@@ -96,6 +103,7 @@ export function useLeafletMap(
       });
     return () => {
       cancelled = true;
+      detachFullscreen?.();
       created?.remove();
       created = null;
       setState({ handle: null, status: "loading" });
@@ -159,4 +167,103 @@ export function fitPoints(map: LeafletMap, L: Leaflet, points: { lat: number; ln
     return;
   }
   map.fitBounds(L.latLngBounds(points.map((p) => [p.lat, p.lng] as [number, number])), { padding: [24, 24], maxZoom });
+}
+
+const ENTER_ICON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+const EXIT_ICON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
+
+/** Class for the fallback where the Fullscreen API is missing (iPhone Safari). */
+const PSEUDO_CLASS = "map-pseudo-fullscreen";
+
+/**
+ * A fullscreen toggle, stacked under the zoom buttons in the top-left corner.
+ *
+ * It is the SAME map element that goes fullscreen, never a second map, so the
+ * zoom, the pin and any half-drawn shape are simply still there, in both
+ * directions. The browser's Fullscreen API is used when the element supports
+ * it; otherwise the container is pinned over the viewport with CSS (Escape or
+ * the button leaves). Either way Leaflet is told its size changed, which keeps
+ * the centre and zoom and loads tiles for the new area.
+ *
+ * Returns a detach function for the map's teardown.
+ */
+function addFullscreenControl(L: Leaflet, map: LeafletMap, labels: { enter: string; exit: string }): () => void {
+  const el = map.getContainer();
+  let button: HTMLAnchorElement | null = null;
+
+  const isNative = () => typeof document !== "undefined" && document.fullscreenElement === el;
+  const isPseudo = () => el.classList.contains(PSEUDO_CLASS);
+  const isOn = () => isNative() || isPseudo();
+
+  const sync = () => {
+    if (button) {
+      const on = isOn();
+      button.innerHTML = on ? EXIT_ICON : ENTER_ICON;
+      button.title = on ? labels.exit : labels.enter;
+      button.setAttribute("aria-label", button.title);
+      button.setAttribute("aria-pressed", String(on));
+    }
+    // After the browser has applied the new size. The default invalidateSize
+    // keeps the same centre and zoom.
+    requestAnimationFrame(() => map.invalidateSize());
+  };
+
+  const setPseudo = (on: boolean) => {
+    el.classList.toggle(PSEUDO_CLASS, on);
+    // Stop the page behind the map scrolling under the customer's finger.
+    document.documentElement.style.overflow = on ? "hidden" : "";
+    sync();
+  };
+
+  const toggle = () => {
+    if (isNative()) {
+      void document.exitFullscreen?.().catch(() => {});
+    } else if (isPseudo()) {
+      setPseudo(false);
+    } else if (typeof el.requestFullscreen === "function" && document.fullscreenEnabled !== false) {
+      el.requestFullscreen().catch(() => setPseudo(true));
+    } else {
+      setPseudo(true);
+    }
+  };
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && isPseudo()) setPseudo(false);
+  };
+
+  const Control = L.Control.extend({
+    options: { position: "topleft" },
+    onAdd() {
+      const bar = L.DomUtil.create("div", "leaflet-bar leaflet-control");
+      button = L.DomUtil.create("a", "leaflet-control-fullscreen", bar) as HTMLAnchorElement;
+      button.href = "#";
+      button.setAttribute("role", "button");
+      button.dataset.testid = "map-fullscreen";
+      L.DomEvent.disableClickPropagation(bar);
+      L.DomEvent.on(button, "click", (e) => {
+        L.DomEvent.preventDefault(e);
+        toggle();
+      });
+      sync();
+      return bar;
+    },
+  });
+  const control = new Control();
+  control.addTo(map);
+  document.addEventListener("fullscreenchange", sync);
+  document.addEventListener("keydown", onKey);
+
+  return () => {
+    document.removeEventListener("fullscreenchange", sync);
+    document.removeEventListener("keydown", onKey);
+    if (isNative()) void document.exitFullscreen?.().catch(() => {});
+    if (isPseudo()) {
+      el.classList.remove(PSEUDO_CLASS);
+      document.documentElement.style.overflow = "";
+    }
+    control.remove();
+    button = null;
+  };
 }

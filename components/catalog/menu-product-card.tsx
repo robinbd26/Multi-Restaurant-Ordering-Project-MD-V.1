@@ -5,12 +5,16 @@ import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useCart } from "@/lib/hooks/use-cart";
+import { useHomeCart } from "@/components/home/home-cart-context";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { mediaUrl } from "@/lib/utils";
 import type { Product } from "@/types";
 
-/** Customer menu card with quantity picker + add-to-cart. */
+/**
+ * Customer menu card with quantity picker + add-to-cart. Adds to THE cart (the
+ * same one the homepage drawer shows); a product from another branch than the
+ * cart holds opens the shared branch-switch dialog instead of being mixed in.
+ */
 export function MenuProductCard({
   product,
   branchId,
@@ -21,9 +25,8 @@ export function MenuProductCard({
   branchName: string;
 }) {
   const { t, fmt } = useTranslation();
-  const { addItem, clearCart } = useCart();
+  const { add: addToCart } = useHomeCart();
   const [quantity, setQuantity] = useState(1);
-  const [conflict, setConflict] = useState(false);
   const [added, setAdded] = useState(false);
 
   // Only enabled variations are purchasable.
@@ -59,21 +62,24 @@ export function MenuProductCard({
       return;
     }
     setCrustError(false);
-    const result = addItem(branchId, branchName, {
-      productId: product.id,
-      variationId: selected?.id ?? null,
-      variationType: crust,
-      variationName: selected?.name ?? "",
+    // The size name only when there was a size to choose, plus the crust, as
+    // the line's readable label; the ids travel separately for the server.
+    const variant = [variations.length > 1 ? selected?.name : "", crust ? t(`variationType.${crust}`) : ""]
+      .filter(Boolean)
+      .join(" · ");
+    const result = addToCart({
+      id: String(product.id),
       name: product.name,
       unitPrice: Number(unitPrice.toFixed(2)),
-      quantity,
-      foodNote: "",
-      image: product.image,
+      branchId,
+      branchName,
+      variant: variant || undefined,
+      variationId: selected?.id ?? null,
+      variationType: crust,
+      image: image ?? undefined,
+      qty: quantity,
     });
-    if (result === "branch-conflict") {
-      setConflict(true);
-      return;
-    }
+    if (result === "branch-conflict") return; // the switch dialog takes over
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
   }
@@ -198,21 +204,6 @@ export function MenuProductCard({
           </Button>
         </div>
       </div>
-
-      {conflict ? (
-        <div className="border-t border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-          {t("catalog.branchConflict")}
-          <button
-            className="ml-1 font-semibold text-brand-600 hover:underline"
-            onClick={() => {
-              clearCart();
-              setConflict(false);
-            }}
-          >
-            {t("catalog.clearCart")}
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

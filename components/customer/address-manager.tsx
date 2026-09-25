@@ -15,6 +15,7 @@ import {
   saveAddressAction,
   setDefaultAddressAction,
 } from "@/lib/api/actions";
+import { accuracyKm, isApproximateFix } from "@/lib/constants/location";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { Field, Input, Select } from "@/components/ui/input";
 import type { FieldErrors } from "@/lib/validation/contract";
@@ -748,7 +749,12 @@ export function AddressManager({ addresses }: { addresses: AddressT[] }) {
                         ) : null}
                         <PreviewRow label={t("addresses.previewLatitude")} value={lat ?? ""} testId="preview-lat" />
                         <PreviewRow label={t("addresses.previewLongitude")} value={lng ?? ""} testId="preview-lng" />
-                        {typeof accuracy === "number" && Number.isFinite(accuracy) ? (
+                        {isApproximateFix(accuracy) ? (
+                          // A network guess: the picker above already asks for the pin to be moved.
+                          <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                            {t("location.approximateAccuracy", { km: accuracyKm(accuracy!) })}
+                          </p>
+                        ) : typeof accuracy === "number" && Number.isFinite(accuracy) ? (
                           <p className="text-xs text-fg-subtle">
                             {t("location.accuracy", { m: Math.round(accuracy) })}
                           </p>

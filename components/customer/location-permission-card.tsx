@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useTranslation } from "@/lib/i18n/use-translation";
+import { accuracyKm, isApproximateFix } from "@/lib/constants/location";
 import { useLocationConsent } from "@/lib/hooks/use-location-consent";
 import { LOW_ACCURACY_M, useLocationRequest } from "@/lib/hooks/use-location-request";
 
@@ -73,7 +74,14 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
   // the phase to "saved" itself. A COARSE fix is still a saved fix — the
   // green confirmation must show, with the ± note rendered as a calm hint
   // below (never as an error-style alert that reads like the save failed).
-  const showSaved = phase === "saved" || phase === "lowaccuracy" || (phase === "idle" && hasLocation);
+  // A device fix too coarse to decide anything (a desktop network guess, often
+  // tens of km off) is shown as APPROXIMATE, not as a confirmed save: the
+  // server does not use it for branch or coverage until the customer confirms
+  // it or moves the pin. A hand-placed pin carries no accuracy, so confirming
+  // clears this state.
+  const approximate = hasLocation && status.source !== "map_pin" && isApproximateFix(status.accuracy);
+  const showSaved =
+    !approximate && (phase === "saved" || phase === "lowaccuracy" || (phase === "idle" && hasLocation));
 
   // The pin is "moved" only once it is a usable coordinate that differs from the
   // stored one — half-typed decimals in the no-key fallback must not offer a
@@ -163,7 +171,11 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
               <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
                 <Icon name="check" className="size-4" /> {t("location.statusSaved")}
               </span>
-              {status.accuracy != null ? (
+              {approximate && status.accuracy != null ? (
+                <span className="font-medium text-amber-600 dark:text-amber-400" data-testid="location-approximate">
+                  {t("location.approximateAccuracy", { km: fmt.num(accuracyKm(status.accuracy)) })}
+                </span>
+              ) : status.accuracy != null ? (
                 <span className="text-fg-subtle">{t("location.accuracy", { m: fmt.num(Math.round(status.accuracy)) })}</span>
               ) : status.source === "map_pin" ? (
                 // A dragged pin has no metre-accuracy: the customer placed it,
@@ -184,7 +196,25 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
 
         {showSaved ? <Alert tone="success" message={t("location.savedOk")} /> : null}
         {problem ? <Alert tone={problem.tone} message={problem.message} /> : null}
-        {coarseNote ? (
+        {approximate && status.lat != null && status.lng != null ? (
+          <div
+            className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+            data-testid="location-approximate-note"
+          >
+            <p>{t("location.approximateNote", { km: fmt.num(accuracyKm(status.accuracy ?? 0)) })}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => savePin(status.lat!, status.lng!)}
+              disabled={busy}
+              data-testid="location-confirm-approximate"
+            >
+              <Icon name="check" className="size-4" />
+              {t("location.confirmApproximate")}
+            </Button>
+          </div>
+        ) : null}
+        {coarseNote && !approximate ? (
           <p className="rounded-lg bg-surface-muted px-3 py-2 text-xs text-fg-muted" data-testid="location-coarse-note">
             ℹ️ {coarseNote}
           </p>
@@ -215,6 +245,9 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
             this card never shows a broken or blank map frame. Nothing is
             written until the customer confirms the pin below. */}
         <MapPicker
+          // Remounted open when a fresh fix turns out approximate, so the pin
+          // to move is already on screen (defaultOpen is read at mount only).
+          key={approximate ? "approximate" : "normal"}
           label={t("location.mapTitle")}
           hint={t("location.mapHint")}
           lat={pin.lat}
@@ -222,7 +255,7 @@ export function LocationPermissionCard({ initial }: { initial: LocationStatus })
           onChange={(point) => setPin({ lat: point.lat, lng: point.lng })}
           latName="current_lat"
           lngName="current_lng"
-          defaultOpen={startOpen}
+          defaultOpen={startOpen || approximate}
           testId="location-map"
         />
 

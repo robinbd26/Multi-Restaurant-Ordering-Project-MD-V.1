@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { Field, Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { accuracyKm, isApproximateFix } from "@/lib/constants/location";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
 
@@ -141,6 +142,15 @@ export function MapPicker({
   const lastCommitted = useRef<string>("");
   /** Only the newest reverse-geocode answer may write the address. */
   const reverseSeq = useRef(0);
+  /**
+   * The label a chosen suggestion wrote into the search box. Filling the box
+   * with it changes `query`, which used to start a fresh search whose answer
+   * reopened the list the customer had just picked from, so every pick took
+   * two clicks. The search effect skips this exact text.
+   */
+  const [chosenLabel, setChosenLabel] = useState<string | null>(null);
+  /** Bumped on every pick, so a search already in flight cannot reopen the list. */
+  const searchSeq = useRef(0);
 
   const [address, setAddress] = useState("");
   const [query, setQuery] = useState("");
@@ -150,6 +160,13 @@ export function MapPicker({
   const [searchAvailable, setSearchAvailable] = useState(true);
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
+  /**
+   * ±km of the last device fix when it was only a network guess (see
+   * APPROXIMATE_FIX_M). The pin still lands there so there is something to
+   * drag, but the customer is told plainly it needs moving. Cleared by any pin
+   * they place themselves.
+   */
+  const [approximateKm, setApproximateKm] = useState<number | null>(null);
   // Manual decimal entry is the DEGRADED path: shown by default only when there
   // is no usable map, otherwise tucked behind a toggle for power users.
   const [manual, setManual] = useState(false);
@@ -228,6 +245,7 @@ export function MapPicker({
   /** A pin the customer placed by hand — committed first, named afterwards. */
   const setPin = useCallback(
     (pLat: number, pLng: number, source: PickerSource, accuracy: number | null = null) => {
+      setApproximateKm(source === "device_gps" && isApproximateFix(accuracy) ? accuracyKm(accuracy!) : null);
       commit(pLat, pLng, source, "", "", "", "", "", "", accuracy);
       markerRef.current?.setLatLng([pLat, pLng]);
       mapRef.current?.panTo([pLat, pLng]);
@@ -259,7 +277,11 @@ export function MapPicker({
   );
   const { handle, status } = useLeafletMap(
     containerRef,
-    { center: startPoint, zoom: startPoint ? DEFAULT_ZOOM : 12 },
+    {
+      center: startPoint,
+      zoom: startPoint ? DEFAULT_ZOOM : 12,
+      fullscreen: { enter: t("mapPicker.fullscreenEnter"), exit: t("mapPicker.fullscreenExit") },
+    },
     open,
   );
   const mapFailed = status === "error";
@@ -302,7 +324,7 @@ export function MapPicker({
   // prepaid connection costs the customer money.
   useEffect(() => {
     const trimmed = query.trim();
-    if (trimmed.length < 3) {
+    if (trimmed.length < 3 || trimmed === chosenLabel) {
       // Clearing a stale suggestion list is part of syncing with the external
       // search; nothing is rendered from it until the next answer arrives.
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -310,6 +332,8 @@ export function MapPicker({
       return;
     }
     let alive = true;
+    const seq = searchSeq.current;
+    const current = () => alive && seq === searchSeq.current;
     const timer = setTimeout(async () => {
       setSearching(true);
       setSearchError(null);
@@ -319,18 +343,18 @@ export function MapPicker({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: trimmed }),
         });
-        if (!alive) return;
+        if (!current()) return;
         if (!res.ok) {
           setResults([]);
           setSearchError(tRef.current("mapPicker.searchError"));
           return;
         }
         const data = (await res.json()) as { results: Suggestion[]; available?: boolean };
-        if (!alive) return;
+        if (!current()) return;
         setResults(data.results ?? []);
         setSearchAvailable(data.available !== false);
       } catch {
-        if (alive) setSearchError(tRef.current("mapPicker.searchError"));
+        if (current()) setSearchError(tRef.current("mapPicker.searchError"));
       } finally {
         if (alive) setSearching(false);
       }
@@ -339,13 +363,18 @@ export function MapPicker({
       alive = false;
       clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, chosenLabel]);
 
   function chooseSuggestion(s: Suggestion) {
+    setApproximateKm(null);
     commit(s.lat, s.lng, "map_pin", s.address, s.area, s.city, s.postalCode, s.country, s.placeId);
     markerRef.current?.setLatLng([s.lat, s.lng]);
-    mapRef.current?.setView([s.lat, s.lng], DEFAULT_ZOOM);
+    // Never zoom OUT from where the customer already zoomed in to.
+    mapRef.current?.setView([s.lat, s.lng], Math.max(mapRef.current.getZoom(), DEFAULT_ZOOM));
+    searchSeq.current += 1;
+    setChosenLabel(s.label.trim());
     setResults([]);
+    setSearching(false);
     setQuery(s.label);
   }
 
@@ -503,7 +532,7 @@ export function MapPicker({
                 ))}
               </ul>
             ) : null}
-            {!searching && query.trim().length >= 3 && results.length === 0 && !searchError ? (
+            {!searching && query.trim().length >= 3 && query.trim() !== chosenLabel && results.length === 0 && !searchError ? (
               <p className="mt-1 text-xs text-fg-subtle">
                 {searchAvailable ? t("mapPicker.noResults") : t("mapPicker.searchUnavailable")}
               </p>
@@ -522,6 +551,15 @@ export function MapPicker({
             ) : null}
           </div>
           <FieldError id={`${testId}-geo-error`} message={geoError} />
+          {approximateKm != null ? (
+            <p
+              className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+              role="status"
+              data-testid={`${testId}-approximate`}
+            >
+              {t("mapPicker.approximateGps", { km: approximateKm })}
+            </p>
+          ) : null}
 
           {/* The map itself — hidden only if Leaflet could not be loaded. */}
           {!mapFailed ? (

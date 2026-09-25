@@ -4,7 +4,11 @@ import { getT } from "@/lib/i18n/server";
 
 const LOCATIONS = ["Dhanmondi", "Banani", "Uttara", "Bashundhara", "Mirpur"];
 
-export async function Footer() {
+/**
+ * `signedIn` drops the "Staff login" and "Create account" links, which are
+ * noise to someone already logged in (the header carries their dashboard link).
+ */
+export async function Footer({ signedIn = false }: { signedIn?: boolean }) {
   const { t, fmt } = await getT();
 
   const colTitle = "mb-3.5 text-[0.75rem] font-bold uppercase tracking-wide text-[#606070]";
@@ -55,8 +59,12 @@ export async function Footer() {
             <h4 className={colTitle}>{t("home.footer.accountContact")}</h4>
             <ul className="space-y-2">
               <li><a href="tel:09638050505" className={colLink}>{t("home.footer.callForOrder", { phone: "09638-050505" })}</a></li>
-              <li><Link href="/login" className={colLink}>{t("home.footer.staffLogin")}</Link></li>
-              <li><Link href="/register" className={colLink}>{t("home.footer.createAccount")}</Link></li>
+              {signedIn ? null : (
+                <>
+                  <li><Link href="/login" className={colLink}>{t("home.footer.staffLogin")}</Link></li>
+                  <li><Link href="/register" className={colLink}>{t("home.footer.createAccount")}</Link></li>
+                </>
+              )}
             </ul>
           </div>
         </div>

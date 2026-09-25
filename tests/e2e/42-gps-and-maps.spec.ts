@@ -154,9 +154,15 @@ test.describe("Phase F — map UI and its fallback", () => {
     const panels = customer.page.getByTestId("branch-location-panel");
     expect(await panels.count(), "a location panel per branch").toBeGreaterThan(0);
 
-    const first = panels.first();
-    await expect(first.getByTestId("branch-location-distance")).not.toBeEmpty();
-    await expect(first.getByTestId("branch-location-coverage")).not.toBeEmpty();
+    // Address, distance and the delivery verdict are shown ONCE, on the card
+    // itself; the panel carries only the way-finding actions.
+    const card = customer.page.locator('[data-testid="branch-enabled"], [data-testid="branch-not-orderable"]').first();
+    await expect(card.getByTestId("branch-address")).not.toBeEmpty();
+    await expect(card.getByTestId("branch-distance")).not.toBeEmpty();
+    await expect(card.getByTestId("branch-delivery-availability")).not.toBeEmpty();
+    await expect(card.getByTestId("branch-location-distance")).toHaveCount(0);
+
+    const first = card.getByTestId("branch-location-panel");
 
     // The directions link goes to a real maps destination, built from the
     // branch ADDRESS — the branch's stored coordinates are not published here.

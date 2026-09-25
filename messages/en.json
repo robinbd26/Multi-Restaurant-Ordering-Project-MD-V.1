@@ -675,7 +675,10 @@
       "useOneTimeAddress": "Use a one-time address",
       "oneTimeAddressLabel": "One-time address",
       "oneTimeAddressNotice": "Used for this order only — not added to your saved addresses.",
-      "useOneTimeAddressConfirm": "Use for this order"
+      "useOneTimeAddressConfirm": "Use for this order",
+      "discount": "Discount",
+      "couponOnConfirm": "Coupon {code} is checked and applied when you confirm the order.",
+      "orderNoteLabel": "Note for the restaurant (optional)"
     }
   },
   "superAdmin": {
@@ -906,7 +909,6 @@
     "restaurantsSubtitle": "Pick your favourite branch and browse the menu",
     "noOpenRestaurants": "No open restaurants",
     "noOpenRestaurantsDesc": "Please check back later.",
-    "deliveryRadius": "Delivery {km} km",
     "menuTitle": "Menu",
     "viewCart": "View cart →",
     "allWithCount": "All ({count})",
@@ -933,7 +935,6 @@
   "orders": {
     "cartEmpty": "Cart is empty",
     "cartEmptyDesc": "Add your favourite food from the menu to the cart.",
-    "cartEmptyCheckoutDesc": "Add something to the cart before checkout.",
     "viewRestaurants": "View Restaurants",
     "branch": "Branch",
     "itemNotePlaceholder": "Note for this item (e.g. less spicy)…",
@@ -943,12 +944,8 @@
     "wantMore": "Want more?",
     "backToMenu": "Back to menu",
     "addressRequired": "Please provide a delivery address.",
-    "deliveryAddress": "Delivery Address",
-    "addressPlaceholder": "Enter house/road/area…",
-    "paymentMethod": "Payment Method",
     "cashHint": "Pay cash on delivery",
     "bkashHint": "Pay to the branch's bKash number",
-    "orderNote": "Order Note",
     "orderNotePlaceholder": "Special instructions for the whole order…",
     "orderSummary": "Order Summary",
     "confirmOrder": "Confirm Order",
@@ -1110,8 +1107,6 @@
     "increase": "Increase",
     "added": "Added",
     "addToCart": "Add to Cart",
-    "branchConflict": "Your cart has items from another branch. An order can only contain items from a single branch.",
-    "clearCart": "Clear Cart",
     "errReason": "Enter a deactivation reason",
     "reasonPlaceholder": "Reason…",
     "branch": "Branch",
@@ -3547,17 +3542,6 @@
     "both": "Both (CHEEZ + MADCHEF)"
   },
   "b1": {
-    "checkCoverageTitle": "Delivery coverage",
-    "checkCoverage": "Check coverage",
-    "coverageError": "Could not check coverage.",
-    "enterLocation": "Enter your location coordinates.",
-    "deliveryAvailable": "Delivery is available to your location.",
-    "deliveryFee": "Delivery fee ৳{fee}",
-    "deliveryUnavailable": "Delivery is not available at your address.",
-    "nearestPickup": "Nearest pickup point: {branch}. You can collect your order from this location.",
-    "distance": "Distance: {km} km",
-    "directions": "Get directions",
-    "orderForPickup": "Order for pickup from this point",
     "namedZones": "Named delivery zones",
     "noZones": "No named zones yet.",
     "zoneName": "Zone name",
@@ -3568,7 +3552,6 @@
     "pickupEnabled": "Offer pickup at this branch",
     "pickupAddress": "Pickup address",
     "pickupPhone": "Pickup contact number",
-    "deliveryLocationRequired": "Check your delivery location before placing a delivery order.",
     "effectiveError": "Could not check this location.",
     "effectiveTitle": "Effective coverage preview",
     "effectiveHint": "Drop a pin to see exactly what a customer at that point would be charged.",
@@ -3920,7 +3903,13 @@
     "setLocation": "Set location",
     "nearestBadge": "Nearest",
     "opensAt": "Opens at {time}",
-    "finding": "Finding restaurants near you…"
+    "finding": "Finding restaurants near you…",
+    "nearestServingBadge": "Nearest that delivers",
+    "closestClosed": "Closest to you, but closed right now",
+    "closestNotCovered": "Closest to you, but it does not deliver to your location",
+    "closestDiffers": "{closest} is closer to you, but {reason}. {nearest} is the nearest branch that is open and delivers to you.",
+    "reasonClosed": "it is closed right now",
+    "reasonNotCovered": "it does not deliver to your location"
   },
   "location": {
     "consentTitle": "Use your location?",
@@ -3954,28 +3943,14 @@
     "pinMoved": "Pin moved — save it to update your live location.",
     "riderTracking": "GPS tracking on",
     "riderDenied": "Location permission denied",
-    "riderUnavailable": "Location unavailable"
+    "riderUnavailable": "Location unavailable",
+    "approximateAccuracy": "Approximate (±{km} km)",
+    "approximateNote": "Your device only gave an approximate location (±{km} km), so we have not used it to choose your branch or check delivery. Move the pin on the map below to where you are, or confirm it if it is right.",
+    "confirmApproximate": "Yes, this is where I am",
+    "approximateElsewhere": "Your device only gave an approximate location (±{km} km), so it was not used to pick a branch. Confirm it or move the pin first.",
+    "fixApproximate": "Confirm or move the pin"
   },
   "checkout": {
-    "deliveryArea": "Delivery area",
-    "deliveryAreaHint": "Delivery charge and time depend on your area.",
-    "selectArea": "Select your delivery area",
-    "areaPaused": "{name} — paused",
-    "areaHeldNote": "This area is temporarily paused and cannot be selected right now.",
-    "summaryTitle": "Order summary",
-    "summaryAddress": "Delivery address",
-    "summaryBranch": "Branch",
-    "summaryArea": "Area",
-    "summaryDeliveryCharge": "Delivery charge",
-    "summaryPrepTime": "Preparation time",
-    "summaryDeliveryTime": "Delivery time",
-    "summaryOverall": "Estimated total time",
-    "summarySubtotal": "Subtotal",
-    "summaryTotal": "Total",
-    "minutes": "{n} min",
-    "pickupNoCharge": "Pickup — no delivery charge",
-    "quoteHint": "Check delivery coverage and pick your area to see the full total.",
-    "deliverTo": "Deliver to",
     "otherLocation": "Another location (choose on map)",
     "rewardVoucher": "Reward voucher",
     "rewardVoucherHint": "Use a voucher you got by redeeming coins. It applies to the food total only, not the delivery charge.",
@@ -4214,6 +4189,8 @@
   },
   "mapPicker": {
     "open": "Choose on map",
+    "fullscreenEnter": "View map full screen",
+    "fullscreenExit": "Exit full screen",
     "close": "Hide map",
     "searchLabel": "Search your area or address",
     "searchPlaceholder": "e.g. Dhanmondi 27, Dhaka",
@@ -4238,7 +4215,8 @@
     "branchHint": "The delivery radius is measured from this point.",
     "zoneTitle": "Zone centre",
     "zoneHint": "Coverage and the zone fee are measured from this point.",
-    "searchUnavailable": "Address search is not available right now. Tap the map or drag the pin to set the location, then type the address."
+    "searchUnavailable": "Address search is not available right now. Tap the map or drag the pin to set the location, then type the address.",
+    "approximateGps": "Your device only gave an approximate location (±{km} km). Drag the pin to where you actually are before you continue."
   },
   "list": {
     "searchLabel": "Search",
@@ -4399,5 +4377,10 @@
       "shift": "Rest of this shift",
       "until_resumed": "Until I resume"
     }
+  },
+  "brandName": {
+    "cheez": "Cheez!",
+    "madchef": "Madchef",
+    "combined": "Cheez! + Madchef"
   }
 }

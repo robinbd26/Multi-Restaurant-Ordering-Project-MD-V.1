@@ -2,6 +2,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import type { User } from "@prisma/client";
 
+import { isApproximateFix } from "@/lib/constants/location";
 import { prisma } from "@/lib/db";
 import { validationError, sk } from "@/lib/http/errors";
 import { haversineKm, isValidLatLng, type LatLng } from "@/lib/services/geo";
@@ -132,16 +133,29 @@ export interface TrustedPoint extends LatLng {
 export async function trustedCustomerPointDetailed(userId: number): Promise<TrustedPoint | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { currentLat: true, currentLng: true, locationUpdatedAt: true, currentLocationSource: true },
+    select: {
+      currentLat: true,
+      currentLng: true,
+      currentAccuracy: true,
+      locationUpdatedAt: true,
+      currentLocationSource: true,
+    },
   });
   if (user?.currentLat != null && user.currentLng != null) {
     const lat = Number(user.currentLat);
     const lng = Number(user.currentLng);
     const stamped = user.locationUpdatedAt?.getTime() ?? null;
     const fresh = stamped != null && Date.now() - stamped <= LOCATION_TRUST_WINDOW_MS;
+    // A network-guessed device fix (±50 km on a desktop) can sit in another
+    // city. It is not used to pick a branch until the customer confirms it or
+    // moves the pin; until then the saved address, if any, decides. A hand-
+    // placed pin never carries an accuracy, so it is never caught by this.
+    const approximate =
+      user.currentLocationSource !== "map_pin" &&
+      isApproximateFix(user.currentAccuracy != null ? Number(user.currentAccuracy) : null);
     // "" is a row written before the provenance column existed — those could
     // only ever be device fixes, so they keep their old standing.
-    if (fresh && isValidLatLng(lat, lng)) {
+    if (fresh && !approximate && isValidLatLng(lat, lng)) {
       return { lat, lng, source: "gps", deviceGps: user.currentLocationSource !== "map_pin" };
     }
   }

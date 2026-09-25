@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Circle, Layer, Marker, Polygon } from "leaflet";
 
 import { Button } from "@/components/ui/button";
@@ -65,10 +65,27 @@ export function ShapeEditor({
 }) {
   const { t, fmt } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // The parent builds `branchCenter` and `siblings` fresh on every render, and
+  // every committed edit re-renders it. Keyed on those identities, the effects
+  // below re-ran after each dragged point and snapped the view back to the
+  // whole limit circle, throwing away the manager's zoom mid-edit. They are
+  // keyed on the VALUES instead.
+  const centerLat = branchCenter?.lat;
+  const centerLng = branchCenter?.lng;
+  const center = useMemo(
+    () => (centerLat != null && centerLng != null ? { lat: centerLat, lng: centerLng } : null),
+    [centerLat, centerLng],
+  );
+  const siblingsKey = JSON.stringify(siblings.map((s) => [s.id, s.shape]));
+  const siblingShapes = useMemo(
+    () => (JSON.parse(siblingsKey) as [number, string | null][]).map(([, s]) => s),
+    [siblingsKey],
+  );
   const { handle, status } = useLeafletMap(containerRef, {
     center: branchCenter,
     // Frame the whole allowed circle, not just the pin.
     zoom: maxRadiusKm > 6 ? 12 : maxRadiusKm > 2 ? 13 : 14,
+    fullscreen: { enter: t("mapPicker.fullscreenEnter"), exit: t("mapPicker.fullscreenExit") },
   });
 
   const shape = parseShape(value);
@@ -94,16 +111,19 @@ export function ShapeEditor({
   /** The polygon ring currently on the map, as [lng, lat] pairs. */
   const ringRef = useRef<[number, number][]>([]);
 
+  /** The map instance whose view has already been framed — framing happens once. */
+  const framedRef = useRef<LeafletMap | null>(null);
+
   // ── draw the fixed furniture: branch pin, limit circle, sibling areas ──
   useEffect(() => {
-    if (!handle || !branchCenter) return;
+    if (!handle || !center) return;
     const { L, map } = handle;
-    const pin = L.marker([branchCenter.lat, branchCenter.lng], {
+    const pin = L.marker([center.lat, center.lng], {
       icon: pinIcon(L, "branch"),
       interactive: false,
     }).addTo(map);
     // The ceiling the super admin set: a dashed circle nothing may cross.
-    const limit = L.circle([branchCenter.lat, branchCenter.lng], {
+    const limit = L.circle([center.lat, center.lng], {
       radius: maxRadiusKm * 1000,
       color: "#64748b",
       weight: 1,
@@ -113,19 +133,24 @@ export function ShapeEditor({
     }).addTo(map);
     limitRef.current = limit;
     const others: Layer[] = [];
-    for (const sibling of siblings) {
-      const parsed = parseShape(sibling.shape);
+    for (const sibling of siblingShapes) {
+      const parsed = parseShape(sibling);
       if (!parsed) continue;
       others.push(drawShape(L, map, parsed, { color: "#94a3b8", weight: 1, fillOpacity: 0.08 }));
     }
-    map.fitBounds(limit.getBounds(), { padding: [16, 16] });
+    // Auto-fit on first load only. After that the view is the manager's own;
+    // "Start from a circle" is the one control that re-frames it on purpose.
+    if (framedRef.current !== map) {
+      framedRef.current = map;
+      map.fitBounds(limit.getBounds(), { padding: [16, 16] });
+    }
     return () => {
       pin.remove();
       limit.remove();
       limitRef.current = null;
       for (const layer of others) layer.remove();
     };
-  }, [handle, branchCenter, maxRadiusKm, siblings]);
+  }, [handle, center, maxRadiusKm, siblingShapes]);
 
   // ── render the shape being edited, and keep it editable ────────────────
   const redraw = useCallback(
@@ -139,7 +164,7 @@ export function ShapeEditor({
       vertexRef.current = [];
       if (!next) return;
 
-      const inside = branchCenter ? shapeWithinRadius(next, branchCenter, maxRadiusKm) : true;
+      const inside = center ? shapeWithinRadius(next, center, maxRadiusKm) : true;
       const color = inside ? "#2563eb" : "#dc2626";
       drawnRef.current = drawShape(L, map, next, { color, weight: 2, fillOpacity: 0.18 });
 
@@ -156,7 +181,7 @@ export function ShapeEditor({
               coordinates: [[...ringRef.current, ringRef.current[0]]],
             };
             drawnRef.current?.remove();
-            const live = branchCenter ? shapeWithinRadius(updated, branchCenter, maxRadiusKm) : true;
+            const live = center ? shapeWithinRadius(updated, center, maxRadiusKm) : true;
             drawnRef.current = drawShape(L, map, updated, {
               color: live ? "#2563eb" : "#dc2626",
               weight: 2,
@@ -176,7 +201,7 @@ export function ShapeEditor({
         });
       }
     },
-    [handle, branchCenter, maxRadiusKm, commit],
+    [handle, center, maxRadiusKm, commit],
   );
 
   useEffect(() => {
@@ -209,12 +234,19 @@ export function ShapeEditor({
   }, [handle, mode, commit]);
 
   function applyCircle(nextRadius: number) {
-    if (!branchCenter) return;
+    if (!center) return;
     const clamped = Math.max(0.1, Math.min(nextRadius, maxRadiusKm));
     setRadiusKm(clamped);
     setMode("circle");
     ringRef.current = [];
-    commit(circleShape(branchCenter, clamped));
+    commit(circleShape(center, clamped));
+  }
+
+  /** The "Start from a circle" button: a fresh start, so the view is re-framed too. */
+  function startFromCircle() {
+    applyCircle(radiusKm);
+    const limit = limitRef.current;
+    if (handle && limit) handle.map.fitBounds(limit.getBounds(), { padding: [16, 16] });
   }
 
   function convertToPolygon() {
@@ -222,8 +254,8 @@ export function ShapeEditor({
     const base =
       current?.type === "Circle"
         ? circleToPolygon({ lat: current.coordinates[1], lng: current.coordinates[0] }, current.radiusKm, 16)
-        : branchCenter
-          ? circleToPolygon(branchCenter, Math.min(radiusKm, maxRadiusKm), 16)
+        : center
+          ? circleToPolygon(center, Math.min(radiusKm, maxRadiusKm), 16)
           : null;
     if (!base) return;
     setMode("polygon");
@@ -237,10 +269,10 @@ export function ShapeEditor({
   }
 
   const current = parseShape(value);
-  const reach = current && branchCenter ? shapeReachKm(current, branchCenter) : null;
-  const overLimit = current && branchCenter ? !shapeWithinRadius(current, branchCenter, maxRadiusKm) : false;
+  const reach = current && center ? shapeReachKm(current, center) : null;
+  const overLimit = current && center ? !shapeWithinRadius(current, center, maxRadiusKm) : false;
 
-  if (!branchCenter) {
+  if (!center) {
     return (
       <div className={cn("rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950/30", className)} data-testid={`${testId}-no-branch`}>
         {t("deliveryArea.branchPinMissing")}
@@ -251,7 +283,7 @@ export function ShapeEditor({
   return (
     <div className={cn("space-y-3", className)} data-testid={testId}>
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant={mode === "circle" ? "primary" : "outline"} size="sm" onClick={() => applyCircle(radiusKm)} data-testid={`${testId}-circle`}>
+        <Button type="button" variant={mode === "circle" ? "primary" : "outline"} size="sm" onClick={startFromCircle} data-testid={`${testId}-circle`}>
           {t("deliveryArea.startFromCircle")}
         </Button>
         <Button type="button" variant="outline" size="sm" onClick={convertToPolygon} data-testid={`${testId}-reshape`}>
@@ -353,7 +385,17 @@ export function ShapeOverview({
 }) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { handle, status } = useLeafletMap(containerRef, { center: null, zoom: 11 });
+  const { handle, status } = useLeafletMap(containerRef, {
+    center: null,
+    zoom: 11,
+    fullscreen: { enter: t("mapPicker.fullscreenEnter"), exit: t("mapPicker.fullscreenExit") },
+  });
+  // Callers pass freshly mapped arrays on every render; keyed on identity, any
+  // parent re-render redrew everything and re-framed the view, undoing the
+  // admin's own zoom. Keyed on content, and framed once per map.
+  const dataKey = JSON.stringify({ shapes, branches });
+  const data = useMemo(() => JSON.parse(dataKey) as { shapes: typeof shapes; branches: typeof branches }, [dataKey]);
+  const framedRef = useRef<LeafletMap | null>(null);
 
   useEffect(() => {
     if (!handle) return;
@@ -361,7 +403,7 @@ export function ShapeOverview({
     const layers: Layer[] = [];
     const points: { lat: number; lng: number }[] = [];
 
-    for (const branch of branches) {
+    for (const branch of data.branches) {
       if (branch.lat == null || branch.lng == null) continue;
       layers.push(
         L.marker([branch.lat, branch.lng], { icon: pinIcon(L, "branch") })
@@ -371,7 +413,7 @@ export function ShapeOverview({
       points.push({ lat: branch.lat, lng: branch.lng });
     }
 
-    for (const area of shapes) {
+    for (const area of data.shapes) {
       const parsed = parseShape(area.shape);
       if (!parsed) continue;
       // Held and inactive areas are drawn differently rather than hidden: the
@@ -391,11 +433,14 @@ export function ShapeOverview({
       }
     }
 
-    fitPoints(map, L, points, 14);
+    if (framedRef.current !== map && points.length > 0) {
+      framedRef.current = map;
+      fitPoints(map, L, points, 14);
+    }
     return () => {
       for (const layer of layers) layer.remove();
     };
-  }, [handle, shapes, branches]);
+  }, [handle, data]);
 
   return (
     <div className={cn("relative", className)} data-testid={testId}>

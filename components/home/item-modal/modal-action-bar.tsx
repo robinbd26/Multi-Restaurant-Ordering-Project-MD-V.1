@@ -24,6 +24,7 @@ export function ModalActionBar({
       <button
         type="button"
         onClick={onAdd}
+        data-testid="modal-add-to-cart"
         className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-[10px] bg-brand-500 py-3 text-sm font-bold text-white transition-colors hover:bg-brand-600"
       >
         🛒 {t("home.modal.addToCart")} · {fmt.money(total)}

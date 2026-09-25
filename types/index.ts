@@ -623,23 +623,5 @@ export interface AccountsDashboard {
   sales_by_payment: { payment_method: PaymentMethod; orders: number; sales: string | number }[];
 }
 
-// ── Cart (client-side only) ──────────────────────────────────────────
-
-export interface CartItem {
-  productId: number;
-  variationId: number | null;
-  variationName: string;
-  /** req #4 — chosen crust ("THICK" | "THIN" | ""); part of the cart line identity. */
-  variationType?: string;
-  name: string;
-  unitPrice: number;
-  quantity: number;
-  foodNote: string;
-  image: string | null;
-}
-
-export interface Cart {
-  branchId: number | null;
-  branchName: string;
-  items: CartItem[];
-}
+// The cart is client-side only; its line shape lives with it, in
+// components/home/home-cart-context.tsx (HomeCartLine).
