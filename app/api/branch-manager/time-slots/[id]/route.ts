@@ -2,6 +2,7 @@ import { requireApiRole } from "@/lib/auth/current-user";
 import { forbidden, handle, notFound } from "@/lib/http/errors";
 import { noContent } from "@/lib/http/respond";
 import { prisma } from "@/lib/db";
+import { logAdminAction } from "@/lib/services/audit";
 import { requireManagerBranch } from "@/lib/services/branch-ops";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -23,5 +24,11 @@ export const DELETE = handle(async (_req: Request, ctx: Ctx) => {
   if (!slot) throw notFound();
   if (slot.branchId !== branch.id) throw forbidden();
   await prisma.deliveryTimeSlot.delete({ where: { id: slot.id } });
+  await logAdminAction(
+    me.id,
+    "delete",
+    `Deleted delivery time slot "${slot.label || `${slot.startTime}–${slot.endTime}`}" (#${slot.id})`,
+    { branchId: slot.branchId },
+  );
   return noContent();
 });

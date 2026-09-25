@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import type { RamadanConfig, RamadanMenu, RamadanReservation, RamadanReservationPayment, RamadanTimeSlot, User } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { logAdminAction } from "@/lib/services/audit";
 import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { assertManagesBranch, resolveManageableBranch } from "@/lib/services/branch-ops";
 import { createNotification, notifyBranchManagers, notifyRole, notifySuperAdmins } from "@/lib/services/notifications";
@@ -125,6 +126,12 @@ export async function deleteSlot(user: User, slotId: number) {
   if (!slot) throw notFound(sk("errors.ramadan.slotNotFound"));
   await assertManagesBranch(user, slot.branchId);
   await prisma.ramadanTimeSlot.delete({ where: { id: slotId } });
+  await logAdminAction(
+    user.id,
+    "delete",
+    `Deleted Ramadan time slot "${slot.label || `${slot.startTime}–${slot.endTime}`}" (#${slot.id})`,
+    { branchId: slot.branchId },
+  );
 }
 
 // ── Menus (B8) ──────────────────────────────────────────────────────────────
@@ -253,9 +260,18 @@ export async function deleteMenu(user: User, menuId: number) {
       data: { isArchived: true, isActive: false },
       include: { items: true },
     });
+    await logAdminAction(
+      user.id,
+      "archive",
+      `Archived Ramadan menu "${menu.name}" (#${menu.id}); it has ${reservations} reservation(s)`,
+      { branchId: menu.branchId },
+    );
     return { archived: true, menu: archived, reservations };
   }
   await prisma.ramadanMenu.delete({ where: { id: menuId } });
+  await logAdminAction(user.id, "delete", `Deleted Ramadan menu "${menu.name}" (#${menu.id}); it was never booked`, {
+    branchId: menu.branchId,
+  });
   return { archived: false, menu, reservations: 0 };
 }
 
