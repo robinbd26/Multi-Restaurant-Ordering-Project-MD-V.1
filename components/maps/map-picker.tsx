@@ -141,6 +141,15 @@ export function MapPicker({
   const lastCommitted = useRef<string>("");
   /** Only the newest reverse-geocode answer may write the address. */
   const reverseSeq = useRef(0);
+  /**
+   * The label a chosen suggestion wrote into the search box. Filling the box
+   * with it changes `query`, which used to start a fresh search whose answer
+   * reopened the list the customer had just picked from, so every pick took
+   * two clicks. The search effect skips this exact text.
+   */
+  const [chosenLabel, setChosenLabel] = useState<string | null>(null);
+  /** Bumped on every pick, so a search already in flight cannot reopen the list. */
+  const searchSeq = useRef(0);
 
   const [address, setAddress] = useState("");
   const [query, setQuery] = useState("");
@@ -302,7 +311,7 @@ export function MapPicker({
   // prepaid connection costs the customer money.
   useEffect(() => {
     const trimmed = query.trim();
-    if (trimmed.length < 3) {
+    if (trimmed.length < 3 || trimmed === chosenLabel) {
       // Clearing a stale suggestion list is part of syncing with the external
       // search; nothing is rendered from it until the next answer arrives.
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -310,6 +319,8 @@ export function MapPicker({
       return;
     }
     let alive = true;
+    const seq = searchSeq.current;
+    const current = () => alive && seq === searchSeq.current;
     const timer = setTimeout(async () => {
       setSearching(true);
       setSearchError(null);
@@ -319,18 +330,18 @@ export function MapPicker({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: trimmed }),
         });
-        if (!alive) return;
+        if (!current()) return;
         if (!res.ok) {
           setResults([]);
           setSearchError(tRef.current("mapPicker.searchError"));
           return;
         }
         const data = (await res.json()) as { results: Suggestion[]; available?: boolean };
-        if (!alive) return;
+        if (!current()) return;
         setResults(data.results ?? []);
         setSearchAvailable(data.available !== false);
       } catch {
-        if (alive) setSearchError(tRef.current("mapPicker.searchError"));
+        if (current()) setSearchError(tRef.current("mapPicker.searchError"));
       } finally {
         if (alive) setSearching(false);
       }
@@ -339,13 +350,16 @@ export function MapPicker({
       alive = false;
       clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, chosenLabel]);
 
   function chooseSuggestion(s: Suggestion) {
     commit(s.lat, s.lng, "map_pin", s.address, s.area, s.city, s.postalCode, s.country, s.placeId);
     markerRef.current?.setLatLng([s.lat, s.lng]);
     mapRef.current?.setView([s.lat, s.lng], DEFAULT_ZOOM);
+    searchSeq.current += 1;
+    setChosenLabel(s.label.trim());
     setResults([]);
+    setSearching(false);
     setQuery(s.label);
   }
 
@@ -503,7 +517,7 @@ export function MapPicker({
                 ))}
               </ul>
             ) : null}
-            {!searching && query.trim().length >= 3 && results.length === 0 && !searchError ? (
+            {!searching && query.trim().length >= 3 && query.trim() !== chosenLabel && results.length === 0 && !searchError ? (
               <p className="mt-1 text-xs text-fg-subtle">
                 {searchAvailable ? t("mapPicker.noResults") : t("mapPicker.searchUnavailable")}
               </p>
