@@ -12,6 +12,7 @@ export function SizeOptionCard({
   active,
   accent,
   onSelect,
+  testId,
 }: {
   label: string;
   sub?: string;
@@ -19,6 +20,7 @@ export function SizeOptionCard({
   active: boolean;
   accent: string;
   onSelect: () => void;
+  testId?: string;
 }) {
   return (
     <button
@@ -26,6 +28,7 @@ export function SizeOptionCard({
       role="radio"
       aria-checked={active}
       onClick={onSelect}
+      data-testid={testId}
       className="flex w-full items-center justify-between gap-3 rounded-[10px] border px-3 py-2.75 text-left transition-colors"
       style={{
         borderColor: active ? accent : "rgba(255,255,255,0.07)",

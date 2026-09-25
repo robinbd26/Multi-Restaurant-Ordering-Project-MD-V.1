@@ -1,6 +1,13 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, API_BASE } from "./helpers";
+import {
+  newSession,
+  API_BASE,
+  inNightOrderBlackout,
+  NIGHT_BLACKOUT_REASON,
+  isDhakaFullClosureWindow,
+  FULL_CLOSURE_REASON,
+} from "./helpers";
 
 /**
  * REQ #4  product variation type (Thick / Thin / Both)
@@ -177,6 +184,50 @@ test.describe("#4 product variation type", () => {
     await card.getByTestId("crust-THICK").click();
     await card.getByTestId("menu-add").click();
     await expect.poll(async () => (await readLines()).length).toBe(2);
+  });
+
+  test("homepage UI: a BOTH pizza asks for the crust, and the chosen crust reaches the order", async ({ browser }) => {
+    // It places a real order, so it follows the ordering-hours skips.
+    test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
+    test.skip(isDhakaFullClosureWindow(), FULL_CLOSURE_REASON);
+    const admin = await newSession(browser, "super_admin");
+    const customer = await newSession(browser, "customer");
+    await seedCustomerLocation(customer.req);
+    const main = (await branchMap(admin.req))["Main Branch"];
+    const both = await (await makeProduct(admin.req, main, "BOTH", { name: uniq("HomeBoth") })).json();
+
+    const readLines = async (): Promise<{ variationType?: string }[]> => {
+      const raw = await customer.page.evaluate(() => localStorage.getItem("mad-delivery-cart-v2"));
+      return raw ? JSON.parse(raw) : [];
+    };
+
+    await customer.page.goto("/", { waitUntil: "domcontentloaded" });
+    const card = customer.page.locator("article", { hasText: both.name }).first();
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    // A BOTH product opens the modal instead of adding straight away.
+    await card.getByTestId("card-place-order").click();
+    await customer.page.getByTestId("modal-add-to-cart").click();
+    await expect(customer.page.getByText("Please choose a crust before adding to cart.")).toBeVisible();
+    expect(await readLines()).toHaveLength(0);
+
+    await customer.page.getByTestId("home-crust-THIN").click();
+    await customer.page.getByTestId("modal-add-to-cart").click();
+    await expect.poll(async () => (await readLines()).map((l) => l.variationType)).toEqual(["THIN"]);
+
+    // Checkout through the drawer (pickup: no address needed); the server
+    // accepts it and records the crust.
+    await customer.page.getByTestId("home-cart-button").click();
+    await customer.page.getByTestId("self-pickup").click();
+    await customer.page.getByTestId("drawer-confirm-pickup-branch").click();
+    await customer.page.getByTestId("drawer-next-overview").click();
+    await expect(customer.page.getByTestId("drawer-confirm-order")).toBeEnabled({ timeout: 15_000 });
+    await customer.page.getByTestId("drawer-confirm-order").click();
+    await expect(customer.page.getByTestId("drawer-checkout-success")).toBeVisible({ timeout: 20_000 });
+
+    const latest = (await (await customer.req.get(`${API_BASE}/api/orders/?page_size=1`)).json()).results[0];
+    const order = await (await customer.req.get(`${API_BASE}/api/orders/${latest.id}/`)).json();
+    expect(order.items[0].product, "the order is for the pizza just added").toBe(both.id);
+    expect(order.items[0].variation_type).toBe("THIN");
   });
 });
 

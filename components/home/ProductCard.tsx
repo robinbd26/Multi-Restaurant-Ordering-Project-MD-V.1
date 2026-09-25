@@ -20,7 +20,15 @@ const BADGE_TONE: Record<string, string> = {
 
 /** True when the item needs a configuration modal before adding. */
 export function itemHasOptions(item: MenuItem): boolean {
-  return Boolean(item.sizes?.length || item.options?.length || item.addOns?.length || item.choiceGroups?.length);
+  return Boolean(
+    item.sizes?.length ||
+      item.options?.length ||
+      item.addOns?.length ||
+      item.choiceGroups?.length ||
+      // A pizza offered in both crusts needs the customer to pick one; the
+      // server refuses the order without it, so it opens the modal too.
+      item.variationType === "BOTH",
+  );
 }
 
 export function ProductCard({
@@ -68,6 +76,9 @@ export function ProductCard({
       unitPrice: item.price,
       image: item.image,
       emoji: item.emoji,
+      // A single-crust pizza carries its one crust, so the line says what is
+      // being ordered (the server would apply the same crust anyway).
+      variationType: item.variationType === "THICK" || item.variationType === "THIN" ? item.variationType : undefined,
       qty,
     });
     openCart();

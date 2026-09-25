@@ -38,6 +38,13 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
     Object.fromEntries((item.choiceGroups ?? []).map((g) => [g.key, g.options[0]])),
   );
   const [addOns, setAddOns] = useState<Set<string>>(new Set());
+  // Crust, the same rule as the dashboard menu card: a THICK/THIN product has
+  // its one fixed crust, a BOTH product must be chosen before adding (the
+  // server refuses the order otherwise), anything else has no crust at all.
+  const crustPolicy = item.variationType ?? "";
+  const mustChooseCrust = crustPolicy === "BOTH";
+  const [crust, setCrust] = useState<string>(crustPolicy === "THICK" || crustPolicy === "THIN" ? crustPolicy : "");
+  const crustGroupRef = useRef<HTMLDivElement>(null);
   const [qty, setQty] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -96,17 +103,20 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
     // Validate required selections (defaults normally cover these).
     const nextErrors: Record<string, string> = {};
     if (item.sizes?.length && !size) nextErrors.size = t("home.modal.selectSize");
+    if (mustChooseCrust && !crust) nextErrors.crust = t("variationType.required");
     for (const group of item.choiceGroups ?? []) {
       if (!choices[group.key]) nextErrors[group.key] = t("home.modal.selectionRequired");
     }
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
-      sizeGroupRef.current?.scrollIntoView({ block: "center" });
+      const firstError = !nextErrors.size && nextErrors.crust ? crustGroupRef : sizeGroupRef;
+      firstError.current?.scrollIntoView({ block: "center" });
       return;
     }
 
     const parts: string[] = [];
     if (size) parts.push(size.label.split(" –")[0]);
+    if (mustChooseCrust && crust) parts.push(t(`variationType.${crust}`));
     for (const group of item.choiceGroups ?? []) {
       const picked = choices[group.key];
       // Skip defaults so simple picks don't bloat the variant label.
@@ -129,6 +139,9 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
       // Size keys ARE the variation ids (lib/services/public-catalog.ts), so
       // the order is priced at the size picked here, not the default one.
       variationId: size ? Number(size.key) : null,
+      // Part of the line's identity (a Thick and a Thin are separate lines)
+      // and sent with the order; the server re-validates it.
+      variationType: crust || undefined,
     });
     onClose();
   };
@@ -246,6 +259,29 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
                     onSelect={() => {
                       setSizeKey(s.key);
                       setErrors((prev) => ({ ...prev, size: "" }));
+                    }}
+                  />
+                ))}
+              </OptionGroup>
+            ) : null}
+
+            {mustChooseCrust ? (
+              <OptionGroup
+                ref={crustGroupRef}
+                title={t("variationType.chooseCrust")}
+                emoji="🍕"
+                error={errors.crust}
+              >
+                {(["THICK", "THIN"] as const).map((option) => (
+                  <SizeOptionCard
+                    key={option}
+                    label={t(`variationType.${option}`)}
+                    active={crust === option}
+                    accent={accent}
+                    testId={`home-crust-${option}`}
+                    onSelect={() => {
+                      setCrust(option);
+                      setErrors((prev) => ({ ...prev, crust: "" }));
                     }}
                   />
                 ))}
