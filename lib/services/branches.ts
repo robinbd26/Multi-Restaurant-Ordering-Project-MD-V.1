@@ -2,7 +2,6 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import type { Branch, User } from "@prisma/client";
 
-import { revalidateCatalog } from "@/lib/cache/catalog";
 import { prisma } from "@/lib/db";
 import { forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { notifyUser } from "@/lib/services/notifications";
@@ -123,7 +122,7 @@ export async function getManagedBranch(
   });
 }
 
-// ── req #5: Branch archive / delete (super admin only) ───────────────────
+// Branch archive / delete lives in lib/services/branch-removal.ts.
 /**
  * PHASE 11 — delivery radius + fee configuration.
  *
@@ -201,83 +200,3 @@ export async function updateBranchDeliverySettings(
   return prisma.branch.update({ where: { id: branch.id }, data });
 }
 
-/**
- * Dependency-aware branch removal. A branch with ANY historical or operational
- * data (orders, products, categories, delivery areas, reservations, Ramadan
- * reservations, tables, employees, rider duty sessions, expenses, settlements,
- * commissions) is ARCHIVED (isArchived=true) — all history is preserved and it
- * stops accepting new orders and disappears from active customer choices.
- * Only a genuinely unused branch is hard-deleted. Returns which action ran +
- * the dependency counts (so the UI can explain the result accurately).
- */
-export async function archiveOrDeleteBranch(actorId: number, branchId: number) {
-  const branch = await prisma.branch.findUnique({ where: { id: branchId } });
-  if (!branch) throw validationError({ branch_id: sk("errors.catalog.branchNotFound") });
-
-  // EVERY model that references a branch is counted. Several relations cascade
-  // on branch delete (e.g. Category), so an uncounted dependency would silently
-  // destroy history — the count list must stay exhaustive.
-  const where = { branchId } as const;
-  const [
-    orders, products, categories, areas, reservations, ramadan, tables, employees,
-    sessions, expenses, settlements, commissions, complaints, adjustments,
-    activityLogs, attendance, staffAttendance, timeSlots, dutyLogs, orderAssignments,
-    receiveConfirmations, dutyChats, managerAssignments, ramadanTables, ramadanBookings,
-    ramadanConfigs, ramadanSlots, ramadanMenus, ramadanPayments,
-  ] = await Promise.all([
-    prisma.order.count({ where }),
-    prisma.product.count({ where }),
-    prisma.category.count({ where }),
-    prisma.branchDeliveryArea.count({ where }),
-    prisma.tableReservation.count({ where }),
-    prisma.ramadanReservation.count({ where }),
-    prisma.branchTable.count({ where }),
-    prisma.branchEmployee.count({ where }),
-    prisma.riderBranchDutySession.count({ where }),
-    prisma.branchExpense.count({ where }),
-    prisma.branchSettlement.count({ where }),
-    prisma.riderCommission.count({ where }),
-    prisma.complaint.count({ where }),
-    prisma.financialAdjustment.count({ where }),
-    prisma.managerActivityLog.count({ where }),
-    prisma.employeeAttendance.count({ where }),
-    prisma.staffAttendance.count({ where }),
-    prisma.deliveryTimeSlot.count({ where }),
-    prisma.riderDutyLog.count({ where }),
-    prisma.riderOrderAssignment.count({ where }),
-    prisma.orderReceiveConfirmation.count({ where }),
-    prisma.riderDutyChatThread.count({ where }),
-    prisma.branchManagerAssignment.count({ where }),
-    prisma.ramadanTable.count({ where }),
-    prisma.ramadanBooking.count({ where }),
-    prisma.ramadanConfig.count({ where }),
-    prisma.ramadanTimeSlot.count({ where }),
-    prisma.ramadanMenu.count({ where }),
-    prisma.ramadanReservationPayment.count({ where }),
-  ]);
-
-  const dependencies = {
-    orders, products, categories, areas, reservations, ramadan, tables, employees,
-    sessions, expenses, settlements, commissions, complaints, adjustments,
-    activityLogs, attendance, staffAttendance, timeSlots, dutyLogs, orderAssignments,
-    receiveConfirmations, dutyChats, managerAssignments, ramadanTables, ramadanBookings,
-    ramadanConfigs, ramadanSlots, ramadanMenus, ramadanPayments,
-  };
-  const hasHistory = Object.values(dependencies).some((n) => n > 0);
-
-  if (!hasHistory) {
-    await prisma.branch.delete({ where: { id: branchId } });
-    // A deleted branch takes its (zero) products with it — refresh regardless so
-    // no catalogue surface keeps a payload that mentions it.
-    revalidateCatalog({ branchId });
-    return { action: "deleted" as const, dependencies };
-  }
-
-  const updated = await prisma.branch.update({
-    where: { id: branchId },
-    data: { isArchived: true, archivedAt: new Date(), archivedById: actorId, isActive: false },
-  });
-  // Archiving removes every one of the branch's products from customer surfaces.
-  revalidateCatalog({ branchId });
-  return { action: "archived" as const, dependencies, branch: updated };
-}

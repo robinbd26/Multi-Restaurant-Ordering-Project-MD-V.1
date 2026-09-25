@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { BranchRowDelete } from "@/components/branches/branch-row-delete";
+import { BranchArchiveButton, BranchPermanentDelete } from "@/components/branches/branch-removal-actions";
 import { SummaryCard, SummaryCardGrid } from "@/components/dashboard/summary-card";
 import { Icon } from "@/components/layout/icons";
 import { PageHeader } from "@/components/layout/page-header";
@@ -55,7 +55,10 @@ export default async function BranchListPage({
   const state = enumParam(sp, "state", STATES);
 
   // Super admin scope is every branch; the state filter only narrows it.
+  // ARCHIVED branches are out of the default list: they are kept for their
+  // history, not managed day to day. The Archived filter shows them.
   const where: Prisma.BranchWhereInput = {};
+  if (!state) where.isArchived = false;
   if (state === "active") { where.isActive = true; where.isArchived = false; }
   if (state === "inactive") { where.isActive = false; where.isArchived = false; }
   if (state === "archived") where.isArchived = true;
@@ -137,7 +140,7 @@ export default async function BranchListPage({
             basePath={BASE} searchParams={sp} name="state" label={t("list.filterStatus")}
             value={state} applyLabel={t("list.apply")}
             options={[
-              { value: "", label: t("list.filterAll") },
+              { value: "", label: t("branchRemoval.filterCurrent") },
               { value: "active", label: t("common.active") },
               { value: "inactive", label: t("common.inactive") },
               { value: "archived", label: t("branches.archivedBadge") },
@@ -201,8 +204,28 @@ export default async function BranchListPage({
                   <span className="flex items-center justify-end gap-3 text-sm font-medium">
                     <Link href={`/admin/branches/${branch.id}`} className="text-fg-muted hover:underline">{t("common.view")}</Link>
                     <Link href={`/admin/branches/${branch.id}/edit`} className="text-brand-600 hover:underline">{t("common.edit")}</Link>
-                    {/* req #1 — row-level delete; the server decides delete vs archive. */}
-                    <BranchRowDelete branchId={branch.id} branchName={branch.name} />
+                    {/* Archive keeps everything; a permanent delete is only for a
+                        branch with no history (the dialog checks first). */}
+                    {branch.is_archived ? null : (
+                      <BranchArchiveButton
+                        branchId={branch.id}
+                        branchName={branch.name}
+                        trigger={
+                          <button type="button" className="text-fg-muted hover:underline" data-testid={`branch-row-archive-${branch.id}`}>
+                            {t("branchRemoval.archive")}
+                          </button>
+                        }
+                      />
+                    )}
+                    <BranchPermanentDelete
+                      branchId={branch.id}
+                      branchName={branch.name}
+                      trigger={
+                        <button type="button" className="text-red-600 hover:underline" data-testid={`branch-row-delete-${branch.id}`}>
+                          {t("branchRemoval.deletePermanently")}
+                        </button>
+                      }
+                    />
                   </span>
                 </Td>
               </tr>

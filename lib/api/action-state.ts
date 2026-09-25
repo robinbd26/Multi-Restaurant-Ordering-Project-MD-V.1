@@ -26,17 +26,6 @@ export interface ActionState {
 export const initialActionState: ActionState = { error: null, fieldErrors: {} };
 
 /**
- * req #5 — what the server ACTUALLY did to a branch. A branch carrying any
- * operational history is archived (everything preserved, no new orders); a
- * genuinely unused one is removed. The client never assumes which happened.
- */
-export type BranchDeleteResult = "deleted" | "archived";
-
-export interface BranchDeleteState extends ActionState {
-  result?: BranchDeleteResult;
-}
-
-/**
  * PHASE H — reward earning-rule payload shared by the create/edit actions and
  * the admin form. Lives here because a "use server" module may only export
  * async functions. Empty date bounds are sent as null ("no bound").

@@ -60,7 +60,12 @@ export default async function BranchDetailPage({ params }: { params: Promise<{ i
             <ButtonLink href={`/admin/branches/${branch.id}/edit`} variant="outline">
               {t("common.edit")}
             </ButtonLink>
-            <BranchActions branchId={branch.id} branchName={branch.name} isActive={branch.is_active ?? true} />
+            <BranchActions
+              branchId={branch.id}
+              branchName={branch.name}
+              isActive={branch.is_active ?? true}
+              isArchived={branch.is_archived ?? false}
+            />
           </span>
         }
       />

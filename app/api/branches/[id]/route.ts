@@ -10,7 +10,8 @@ import { prisma } from "@/lib/db";
 import { serializeBranch } from "@/lib/serializers";
 import { isBrandType, isBranchBusinessType } from "@/lib/constants/enums";
 import { isValidLatLng } from "@/lib/services/geo";
-import { archiveOrDeleteBranch, parseBranchDeliveryFee } from "@/lib/services/branches";
+import { legacyArchiveOrDeleteBranch } from "@/lib/services/branch-removal";
+import { parseBranchDeliveryFee } from "@/lib/services/branches";
 import { validatePhone } from "@/lib/validation/server";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -120,6 +121,10 @@ export const DELETE = handle(async (_req: Request, ctx: Ctx) => {
   const me = await requireApproved();
   if (me.role !== "super_admin") throw forbidden(sk("errors.catalog.onlySuperAdminCanDeleteBranch"));
   const { id } = await ctx.params;
-  const result = await archiveOrDeleteBranch(me.id, Number(id));
-  return json({ action: result.action, dependencies: result.dependencies });
+  // Long-standing API behaviour (anything at all → archive, else delete), kept
+  // for API callers. The admin UI uses the explicit /archive and
+  // /permanent-delete endpoints instead. Both paths are logged.
+  const result = await legacyArchiveOrDeleteBranch(me, Number(id));
+  const { history, setup } = result.check;
+  return json({ action: result.action, dependencies: { ...history, ...setup, areas: setup.deliveryAreas } });
 });

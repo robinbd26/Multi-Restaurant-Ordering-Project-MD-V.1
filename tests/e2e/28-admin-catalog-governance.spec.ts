@@ -102,7 +102,7 @@ test.describe("#1 super admin branch delete/archive", () => {
     expect((await admin.req.get(`${API_BASE}/api/branches/${branch.id}/`)).status()).toBe(200);
   });
 
-  test("confirmation dialog names the branch and warns about archiving", async ({ browser }) => {
+  test("permanent-delete dialog names the branch and needs the name typed", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
     const branch = await createBareBranch(admin.req);
     await admin.page.goto(`/admin/branches/${branch.id}`);
@@ -111,10 +111,12 @@ test.describe("#1 super admin branch delete/archive", () => {
     const dialog = admin.page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await expect(dialog, "dialog shows the exact branch name").toContainText(branch.name);
-    await expect(dialog, "dialog warns it may archive").toContainText(/archiv/i);
+    const confirm = dialog.getByRole("button", { name: /delete forever/i });
+    await expect(confirm, "disabled until the name is typed").toBeDisabled();
+    await dialog.getByTestId("branch-delete-confirm-name").fill(branch.name);
 
     // Confirm → the list reports the REAL outcome (deleted, since it is unused).
-    await dialog.getByRole("button", { name: /delete/i }).click();
+    await confirm.click();
     await admin.page.waitForURL("**/admin/branches**", { timeout: 20_000 });
     await expect(admin.page).toHaveURL(/result=deleted/);
   });

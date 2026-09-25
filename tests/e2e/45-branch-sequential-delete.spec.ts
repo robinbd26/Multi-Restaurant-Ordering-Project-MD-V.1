@@ -35,10 +35,10 @@ async function createBareBranch(req: APIRequestContext, prefix = "SeqBranch") {
   return res.json() as Promise<{ id: number; name: string }>;
 }
 
-/** A branch carrying history — the server must ARCHIVE it, not delete it. */
+/** A branch with setup data (a delivery area), archived explicitly below. */
 async function createBranchWithHistory(req: APIRequestContext) {
   const branch = await createBareBranch(req, "SeqArchiveBranch");
-  // A delivery area is enough history to force the archive path.
+  // A delivery area is setup data; the branch is archived via its own button.
   const area = await req.post(`${API_BASE}/api/delivery-areas/`, {
     data: {
       branch_id: branch.id,
@@ -65,11 +65,23 @@ test.describe("branch delete/archive works repeatedly without a refresh", () => 
     await page.goto("/admin/branches");
     await expect(page.getByTestId(`branch-row-delete-${willArchive.id}`)).toBeVisible();
 
-    async function deleteRow(id: number, expected: "archived" | "deleted") {
-      await page.getByTestId(`branch-row-delete-${id}`).click();
+    /**
+     * "archived" uses the row's Archive button; "deleted" uses Delete
+     * permanently, which waits for the server's check and then needs the
+     * branch's exact name typed before its button enables.
+     */
+    async function deleteRow(id: number, expected: "archived" | "deleted", name = "") {
+      await page.getByTestId(expected === "archived" ? `branch-row-archive-${id}` : `branch-row-delete-${id}`).click();
       const dialog = page.getByRole("dialog");
       await expect(dialog, "dialog opens for this row").toBeVisible();
-      await dialog.getByRole("button", { name: /delete/i }).click();
+      if (expected === "archived") {
+        await dialog.getByRole("button", { name: /archive branch/i }).click();
+      } else {
+        const confirm = dialog.getByRole("button", { name: /delete forever/i });
+        await expect(confirm, "disabled until the name is typed").toBeDisabled();
+        await dialog.getByTestId("branch-delete-confirm-name").fill(name);
+        await confirm.click();
+      }
       // The dialog must disappear on its own — this is exactly what used to
       // fail, leaving an invisible overlay across the page.
       await expect(dialog, "dialog closes after the action").toBeHidden({ timeout: 20_000 });
@@ -80,13 +92,17 @@ test.describe("branch delete/archive works repeatedly without a refresh", () => 
 
     // 1st — archives. This is the operation after which everything used to break.
     await deleteRow(willArchive.id, "archived");
-    // The archived branch is still listed (history preserved) and now labelled.
-    await expect(page.getByText(willArchive.name)).toBeVisible();
+    // An archived branch leaves the default list (kept, not managed day to day).
+    await expect(page.getByText(willArchive.name)).toHaveCount(0);
 
     // 2nd — with NO page reload in between.
-    await deleteRow(willDelete1.id, "deleted");
+    await deleteRow(willDelete1.id, "deleted", willDelete1.name);
     // 3rd — still no reload.
-    await deleteRow(willDelete2.id, "deleted");
+    await deleteRow(willDelete2.id, "deleted", willDelete2.name);
+
+    // The Archived filter is where it went.
+    await page.goto("/admin/branches?state=archived");
+    await expect(page.getByText(willArchive.name)).toBeVisible();
 
     // The two unused branches are gone; the archived one is preserved.
     expect((await admin.req.get(`${API_BASE}/api/branches/${willDelete1.id}/`)).status()).toBe(404);
@@ -128,10 +144,67 @@ test.describe("branch delete/archive works repeatedly without a refresh", () => 
     await page.getByTestId(`branch-row-delete-${first.id}`).click();
     const third = page.getByRole("dialog");
     await expect(third).toBeVisible();
-    await third.getByRole("button", { name: /delete/i }).click();
+    await third.getByTestId("branch-delete-confirm-name").fill(first.name);
+    await third.getByRole("button", { name: /delete forever/i }).click();
     await expect(third).toBeHidden({ timeout: 20_000 });
     expect((await admin.req.get(`${API_BASE}/api/branches/${first.id}/`)).status()).toBe(404);
 
     await admin.context.close();
+  });
+});
+
+test.describe("permanent delete follows the history rule", () => {
+  test("a branch with orders can only be archived: the check and the delete both refuse", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const branches = (await (await admin.req.get(`${API_BASE}/api/branches/?page_size=100`)).json()).results as {
+      id: number;
+      name: string;
+    }[];
+    const main = branches.find((b) => b.name === "Main Branch")!;
+    const check = await (await admin.req.get(`${API_BASE}/api/branches/${main.id}/removal-check`)).json();
+    expect(check.deletable, "a branch with orders is not deletable").toBe(false);
+    expect(check.history.orders).toBeGreaterThan(0);
+    const refused = await admin.req.post(`${API_BASE}/api/branches/${main.id}/permanent-delete`, {
+      data: { confirm_name: main.name },
+    });
+    expect(refused.status(), "history → 409, even with the right name").toBe(409);
+    expect((await admin.req.get(`${API_BASE}/api/branches/${main.id}/`)).status()).toBe(200);
+
+    // The dialog explains instead of offering a delete.
+    await admin.page.goto(`/admin/branches/${main.id}`);
+    await admin.page.getByTestId("branch-delete").click();
+    await expect(admin.page.getByTestId("branch-delete-blocked")).toBeVisible();
+    await expect(admin.page.getByRole("button", { name: /delete forever/i })).toBeDisabled();
+    await admin.context.close();
+  });
+
+  test("a zero-order branch goes with its setup data, only with the exact name, and is logged", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const branch = await createBranchWithHistory(admin.req);
+    const check = await (await admin.req.get(`${API_BASE}/api/branches/${branch.id}/removal-check`)).json();
+    expect(check.deletable).toBe(true);
+    expect(check.setup.deliveryAreas).toBe(1);
+
+    const wrongName = await admin.req.post(`${API_BASE}/api/branches/${branch.id}/permanent-delete`, {
+      data: { confirm_name: "not the name" },
+    });
+    expect(wrongName.status(), "wrong name → 400").toBe(400);
+    const bm = await newSession(browser, "branch_manager");
+    const denied = await bm.req.post(`${API_BASE}/api/branches/${branch.id}/permanent-delete`, {
+      data: { confirm_name: branch.name },
+    });
+    expect(denied.status(), "super admin only").toBe(403);
+
+    const ok = await admin.req.post(`${API_BASE}/api/branches/${branch.id}/permanent-delete`, {
+      data: { confirm_name: branch.name },
+    });
+    expect(ok.status()).toBe(200);
+    expect((await admin.req.get(`${API_BASE}/api/branches/${branch.id}/`)).status()).toBe(404);
+
+    const logs = await (await admin.req.get(`${API_BASE}/api/activity-logs/?activity_type=delete&page_size=20`)).json();
+    const rows = (logs.results ?? logs) as { description: string }[];
+    expect(rows.some((r) => r.description.includes(branch.name) && r.description.includes("1 delivery areas"))).toBe(true);
+    await admin.context.close();
+    await bm.context.close();
   });
 });
