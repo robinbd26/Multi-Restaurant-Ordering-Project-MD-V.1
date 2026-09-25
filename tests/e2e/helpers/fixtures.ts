@@ -71,3 +71,17 @@ export function isDhakaFullClosureWindow(now: Date = new Date()): boolean {
 
 export const FULL_CLOSURE_REASON = "04:00–11:00 Dhaka: the whole platform is closed (by design)";
 export const NOT_CLOSED_REASON = "outside 04:00–11:00 Dhaka: the full-closure window is not active";
+
+/**
+ * An ACTIVE delivery zone's id. Creating a branch requires a zone (ITEM 7:
+ * Branch.zone is a required relation), so every spec that creates branches
+ * must pass one. Super admin session required.
+ */
+export async function activeZoneId(req: APIRequestContext): Promise<number> {
+  const res = await req.get(`${API_BASE}/api/area-zones`);
+  if (!res.ok()) throw new Error(`area-zones → ${res.status()}`);
+  const zones = (await res.json()).results as { id: number; isActive: boolean }[];
+  const zone = zones.find((z) => z.isActive);
+  if (!zone) throw new Error("no active delivery zone in this database");
+  return zone.id;
+}

@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, API_BASE } from "./helpers";
+import { newSession, API_BASE, activeZoneId } from "./helpers";
 
 /**
  * REGRESSION — sequential branch delete/archive on the Super Admin list.
@@ -29,6 +29,7 @@ async function createBareBranch(req: APIRequestContext, prefix = "SeqBranch") {
       address: "Nowhere Rd, Dhaka",
       phone: `014${Math.floor(10000000 + Math.random() * 89999999)}`,
       brand_type: "cheez",
+      zone_id: String(await activeZoneId(req)),
     },
   });
   expect(res.status(), "branch created").toBe(201);

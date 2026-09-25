@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, API_BASE } from "./helpers";
+import { newSession, apiLogin, API_BASE, activeZoneId } from "./helpers";
 
 /**
  * REQ #1 Super Admin branch delete/archive · REQ #2 category delete/deactivate
@@ -29,6 +29,8 @@ async function createBareBranch(req: APIRequestContext) {
       address: "Nowhere Rd, Dhaka",
       phone: `014${Math.floor(10000000 + Math.random() * 89999999)}`,
       brand_type: "cheez",
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(req)),
     },
   });
   expect(res.status(), "branch created").toBe(201);
