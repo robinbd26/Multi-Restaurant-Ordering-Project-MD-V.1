@@ -3954,7 +3954,12 @@
     "pinMoved": "Pin moved — save it to update your live location.",
     "riderTracking": "GPS tracking on",
     "riderDenied": "Location permission denied",
-    "riderUnavailable": "Location unavailable"
+    "riderUnavailable": "Location unavailable",
+    "approximateAccuracy": "Approximate (±{km} km)",
+    "approximateNote": "Your device only gave an approximate location (±{km} km), so we have not used it to choose your branch or check delivery. Move the pin on the map below to where you are, or confirm it if it is right.",
+    "confirmApproximate": "Yes, this is where I am",
+    "approximateElsewhere": "Your device only gave an approximate location (±{km} km), so it was not used to pick a branch. Confirm it or move the pin first.",
+    "fixApproximate": "Confirm or move the pin"
   },
   "checkout": {
     "deliveryArea": "Delivery area",
@@ -4240,7 +4245,8 @@
     "branchHint": "The delivery radius is measured from this point.",
     "zoneTitle": "Zone centre",
     "zoneHint": "Coverage and the zone fee are measured from this point.",
-    "searchUnavailable": "Address search is not available right now. Tap the map or drag the pin to set the location, then type the address."
+    "searchUnavailable": "Address search is not available right now. Tap the map or drag the pin to set the location, then type the address.",
+    "approximateGps": "Your device only gave an approximate location (±{km} km). Drag the pin to where you actually are before you continue."
   },
   "list": {
     "searchLabel": "Search",

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { Field, Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { accuracyKm, isApproximateFix } from "@/lib/constants/location";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
 
@@ -159,6 +160,13 @@ export function MapPicker({
   const [searchAvailable, setSearchAvailable] = useState(true);
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
+  /**
+   * ±km of the last device fix when it was only a network guess (see
+   * APPROXIMATE_FIX_M). The pin still lands there so there is something to
+   * drag, but the customer is told plainly it needs moving. Cleared by any pin
+   * they place themselves.
+   */
+  const [approximateKm, setApproximateKm] = useState<number | null>(null);
   // Manual decimal entry is the DEGRADED path: shown by default only when there
   // is no usable map, otherwise tucked behind a toggle for power users.
   const [manual, setManual] = useState(false);
@@ -237,6 +245,7 @@ export function MapPicker({
   /** A pin the customer placed by hand — committed first, named afterwards. */
   const setPin = useCallback(
     (pLat: number, pLng: number, source: PickerSource, accuracy: number | null = null) => {
+      setApproximateKm(source === "device_gps" && isApproximateFix(accuracy) ? accuracyKm(accuracy!) : null);
       commit(pLat, pLng, source, "", "", "", "", "", "", accuracy);
       markerRef.current?.setLatLng([pLat, pLng]);
       mapRef.current?.panTo([pLat, pLng]);
@@ -357,6 +366,7 @@ export function MapPicker({
   }, [query, chosenLabel]);
 
   function chooseSuggestion(s: Suggestion) {
+    setApproximateKm(null);
     commit(s.lat, s.lng, "map_pin", s.address, s.area, s.city, s.postalCode, s.country, s.placeId);
     markerRef.current?.setLatLng([s.lat, s.lng]);
     // Never zoom OUT from where the customer already zoomed in to.
@@ -541,6 +551,15 @@ export function MapPicker({
             ) : null}
           </div>
           <FieldError id={`${testId}-geo-error`} message={geoError} />
+          {approximateKm != null ? (
+            <p
+              className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+              role="status"
+              data-testid={`${testId}-approximate`}
+            >
+              {t("mapPicker.approximateGps", { km: approximateKm })}
+            </p>
+          ) : null}
 
           {/* The map itself — hidden only if Leaflet could not be loaded. */}
           {!mapFailed ? (

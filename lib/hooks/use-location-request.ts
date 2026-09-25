@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useTranslation } from "@/lib/i18n/use-translation";
+import { isApproximateFix } from "@/lib/constants/location";
 import { parseFieldErrors } from "@/lib/validation/contract";
 
 /**
@@ -26,6 +27,8 @@ export type LocationPhase =
   | "saving"
   | "saved"
   | "lowaccuracy"
+  /** Saved, but so coarse (see APPROXIMATE_FIX_M) the server will not use it until confirmed. */
+  | "approximate"
   | "denied"
   | "unavailable"
   | "timeout"
@@ -120,7 +123,13 @@ export function useLocationRequest(opts?: {
       }
       setFix(saved);
       optsRef.current?.onSaved?.(saved);
-      setPhase(saved.accuracy != null && saved.accuracy > LOW_ACCURACY_M ? "lowaccuracy" : "saved");
+      setPhase(
+        isApproximateFix(saved.accuracy)
+          ? "approximate"
+          : saved.accuracy != null && saved.accuracy > LOW_ACCURACY_M
+            ? "lowaccuracy"
+            : "saved",
+      );
       if (optsRef.current?.refresh !== false) router.refresh();
     } catch {
       setSaveError(t("location.errSave"));
