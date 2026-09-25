@@ -106,7 +106,7 @@ export function EmployeesPanel() {
     const data = await res.json();
     setRows(data.results ?? []);
   }
-  // Client data hydration from the API (external system) — see use-cart.tsx.
+  // Client data hydration from the API (external system) — see components/home/home-cart-context.tsx.
   // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [roleFilter, teamFilter, statusFilter]);
 

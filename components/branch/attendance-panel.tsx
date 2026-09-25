@@ -57,7 +57,7 @@ export function AttendancePanel() {
     setSummary(att.summary);
   }, [date, roleFilter, statusFilter]);
 
-  // Client data hydration from the API (external system) — see use-cart.tsx.
+  // Client data hydration from the API (external system) — see components/home/home-cart-context.tsx.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 

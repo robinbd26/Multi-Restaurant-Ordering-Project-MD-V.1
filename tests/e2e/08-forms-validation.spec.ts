@@ -72,10 +72,12 @@ test.describe("Forms & JS validation (English locale)", () => {
     await expect(page.locator('[role="alert"].text-red-600').first()).toBeVisible();
   });
 
-  test("checkout page renders (cart or empty state, no crash)", async ({ page }) => {
+  test("retired checkout page lands on the cart (cart or empty state, no crash)", async ({ page }) => {
     await login(page, "customer");
+    // Checkout is the cart drawer's flow now; the old page redirects.
     const res = await page.goto("/customer/checkout");
     expect(res!.status()).toBeLessThan(400);
+    await expect(page).toHaveURL(/\/customer\/cart$/);
     await expect(page.locator("h1")).toBeVisible();
   });
 

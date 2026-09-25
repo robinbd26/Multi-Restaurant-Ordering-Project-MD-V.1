@@ -5,12 +5,15 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { ScrollToTop } from "@/components/layout/scroll-to-top";
 import { RiderAssignmentGate } from "@/components/rider/assignment-gate";
 import { RiderLocationTracker } from "@/components/rider/location-tracker";
-import { CartProvider } from "@/lib/hooks/use-cart";
+import { BranchSwitchDialog } from "@/components/home/BranchSwitchDialog";
+import { CartDrawer } from "@/components/home/CartDrawer";
+import { HomeCartProvider } from "@/components/home/home-cart-context";
 import { requireUser } from "@/lib/auth/session";
 import { getManagedBranch } from "@/lib/services/branches";
 import { getCompanyLogoUrl } from "@/lib/services/settings";
 import { activeDutySession } from "@/lib/services/rider-duty";
 import { getLocale } from "@/lib/i18n/server";
+import { isFullClosureWindow } from "@/lib/services/coverage-window";
 
 /**
  * PHASE B — nothing behind the login is indexable. Declaring it on the shared
@@ -37,8 +40,14 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   // req #6/#12 — rider blocking assignment popup + GPS tracking (rider only).
   const riderOnDuty = user.role === "rider" ? Boolean(await activeDutySession(user.id)) : false;
 
+  // ONE cart and ONE checkout: the same provider the homepage uses (same
+  // storage key), and for a customer the same drawer, so the Cart page's
+  // Checkout opens the flow that knows about pins, one-time addresses and
+  // coverage. The old dashboard cart and /customer/checkout page are gone.
+  const isCustomer = user.role === "customer";
+
   return (
-    <CartProvider>
+    <HomeCartProvider>
       {/* `useSearchParams` needs a Suspense boundary; this renders nothing, so
           the boundary never shows a fallback. */}
       <Suspense fallback={null}>
@@ -56,12 +65,23 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       >
         {children}
       </DashboardShell>
+      {isCustomer ? (
+        <>
+          <CartDrawer
+            signedIn
+            customerName={user.full_name ?? null}
+            customerPhone={user.phone ?? null}
+            platformClosed={isFullClosureWindow()}
+          />
+          <BranchSwitchDialog />
+        </>
+      ) : null}
       {user.role === "rider" ? (
         <>
           <RiderAssignmentGate />
           <RiderLocationTracker onDuty={riderOnDuty} />
         </>
       ) : null}
-    </CartProvider>
+    </HomeCartProvider>
   );
 }

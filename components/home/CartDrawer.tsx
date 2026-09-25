@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useHomeCart } from "@/components/home/home-cart-context";
@@ -390,8 +391,9 @@ export function CartDrawer({
     coverage[id] ?? { status: "checking", pickupEnabled: false };
 
   /* ══════════════ Task 3 — same-screen checkout (NO navigation) ══════════════
-     Every step below renders inside this drawer. The /customer/checkout route
-     still exists for deep links, but this flow never routes to it. */
+     Every step below renders inside this drawer. It is the ONLY checkout: the
+     dashboard layout mounts this same drawer for the Cart page, and the old
+     /customer/checkout route just redirects there. */
 
   /** Closes the drawer and rewinds to the cart view; checkout state is transient. */
   function handleClose() {
@@ -1115,9 +1117,11 @@ export function CartDrawer({
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-[#606070]">
               <span className="text-4xl">🛒</span>
               <p>{t("home.cart.empty")}</p>
-              <a href="#menu-section" onClick={closeCart} className="text-sm font-semibold text-brand-400 hover:underline">
+              {/* "/#…", not "#…": the drawer is also mounted on dashboard pages,
+                  where the storefront menu is a different page. */}
+              <Link href="/#menu-section" onClick={closeCart} className="text-sm font-semibold text-brand-400 hover:underline">
                 {t("home.cart.browseMenu")}
-              </a>
+              </Link>
             </div>
           ) : view === "pickup-confirm" ? (
             /* Self Pickup — there is never a location LIST (a cart's items

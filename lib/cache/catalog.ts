@@ -46,7 +46,6 @@ const CUSTOMER_SURFACES = [
   "/", // homepage: menu sections, product cards, nav search index
   "/customer/branches", // branch list (eligibility depends on the catalogue)
   "/customer/cart",
-  "/customer/checkout",
 ];
 
 /** Staff surfaces that list or price products. */

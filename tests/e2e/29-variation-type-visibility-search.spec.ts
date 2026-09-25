@@ -160,26 +160,23 @@ test.describe("#4 product variation type", () => {
     // Add without choosing → blocked with a translated error, cart untouched.
     await card.getByTestId("menu-add").click();
     await expect(card.getByTestId("crust-error")).toBeVisible();
-    const emptyCart = await customer.page.evaluate(() => localStorage.getItem("mad-delivery-cart"));
-    expect(emptyCart == null || JSON.parse(emptyCart).items.length === 0).toBe(true);
+    // The one shared cart (see home-cart-context): an array of lines.
+    const readLines = async (): Promise<{ variationType?: string }[]> => {
+      const raw = await customer.page.evaluate(() => localStorage.getItem("mad-delivery-cart-v2"));
+      return raw ? JSON.parse(raw) : [];
+    };
+    expect(await readLines()).toHaveLength(0);
 
     // Choose Thin → add succeeds and the crust is part of the cart line.
     await card.getByTestId("crust-THIN").click();
     await card.getByTestId("menu-add").click();
-    await expect.poll(async () => {
-      const raw = await customer.page.evaluate(() => localStorage.getItem("mad-delivery-cart"));
-      return raw ? JSON.parse(raw).items.length : 0;
-    }).toBe(1);
-    const cart = JSON.parse((await customer.page.evaluate(() => localStorage.getItem("mad-delivery-cart")))!);
-    expect(cart.items[0].variationType).toBe("THIN");
+    await expect.poll(async () => (await readLines()).length).toBe(1);
+    expect((await readLines())[0].variationType).toBe("THIN");
 
     // Thick of the SAME product is a SEPARATE cart line (crust is part of identity).
     await card.getByTestId("crust-THICK").click();
     await card.getByTestId("menu-add").click();
-    await expect.poll(async () => {
-      const raw = await customer.page.evaluate(() => localStorage.getItem("mad-delivery-cart"));
-      return raw ? JSON.parse(raw).items.length : 0;
-    }).toBe(2);
+    await expect.poll(async () => (await readLines()).length).toBe(2);
   });
 });
 

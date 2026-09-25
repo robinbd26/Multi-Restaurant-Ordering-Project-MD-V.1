@@ -14,11 +14,12 @@ import type { Brand } from "@/lib/home/types";
 
 /**
  * localStorage key for THE cart (cart preservation, req #13). v2 = lines that
- * carry size / crust / note. The key it replaces is simply dropped on load:
- * its lines were keyed differently and could never merge with new ones.
+ * carry size / crust / note. The keys it replaces (the homepage cart's and the
+ * retired dashboard cart's) are simply dropped on load: their lines were keyed
+ * differently and could never merge with new ones.
  */
 const HOME_CART_STORAGE_KEY = "mad-delivery-cart-v2";
-const RETIRED_CART_KEYS = ["mad-delivery-home-cart"];
+const RETIRED_CART_KEYS = ["mad-delivery-home-cart", "mad-delivery-cart"];
 
 /** Normalised payload sent to the cart when a product (or a configured size) is added. */
 export interface CartAddInput {
@@ -26,7 +27,8 @@ export interface CartAddInput {
   id: string;
   name: string;
   unitPrice: number;
-  brand: Brand;
+  /** Storefront brand tab the item came from; the dashboard menu has none. */
+  brand?: Brand;
   /** Owning branch — one order belongs to exactly one branch. */
   branchId?: number;
   branchName?: string;
@@ -52,7 +54,7 @@ export interface HomeCartLine {
   itemId: string;
   name: string;
   unitPrice: number;
-  brand: Brand;
+  brand?: Brand;
   branchId?: number;
   branchName?: string;
   variant?: string;
@@ -132,10 +134,14 @@ function lineKey(input: CartAddInput): string {
 }
 
 /**
- * Client-side cart for the public homepage. Purely local state — the reference
- * site is a showcase menu, so ordering funnels to the phone line / login.
- * Lines are keyed by item + variant so sized items (pizzas, wings) stay distinct.
- * Also owns the active brand tab so the navbar search can switch the menu.
+ * THE cart, and the one checkout it feeds (CartDrawer). Mounted by the public
+ * homepage AND the dashboard layout, both reading the same localStorage key,
+ * so the homepage drawer and the dashboard Cart page always show the same
+ * lines. There used to be a second cart (lib/hooks/use-cart, its own key and
+ * its own checkout page), so the two screens disagreed about what was in the
+ * cart. Lines are keyed by item + size + crust + variant so sized items stay
+ * distinct. On the homepage it also owns the active brand tab so the navbar
+ * search can switch the menu; the dashboard does not use that part.
  */
 export function HomeCartProvider({
   children,
