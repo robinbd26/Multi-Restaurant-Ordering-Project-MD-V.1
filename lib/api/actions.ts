@@ -468,11 +468,13 @@ export interface CheckoutPayload {
 
 export async function placeOrderAction(
   payload: CheckoutPayload,
-): Promise<ActionState & { orderId?: number }> {
+): Promise<ActionState & { orderId?: number; totalAmount?: number }> {
   try {
     const order = await sendJSON<Order>("/orders/", "POST", payload);
     revalidatePath("/customer/orders");
-    return { error: null, orderId: order.id };
+    // The amount the server actually charged, after any coupon or coin
+    // voucher, so a receipt never repeats the pre-discount quote.
+    return { error: null, orderId: order.id, totalAmount: Number(order.total_amount) };
   } catch (err) {
     // The drawer has no per-field inputs, so a field-keyed rejection (pickup
     // time too soon, branch closed, …) must reach it as the form-level message

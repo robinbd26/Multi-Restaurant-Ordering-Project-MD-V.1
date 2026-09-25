@@ -675,7 +675,10 @@
       "useOneTimeAddress": "একবারের জন্য ঠিকানা ব্যবহার করুন",
       "oneTimeAddressLabel": "একবারের ঠিকানা",
       "oneTimeAddressNotice": "শুধু এই অর্ডারের জন্য ব্যবহৃত হবে — আপনার সংরক্ষিত ঠিকানায় যোগ হবে না।",
-      "useOneTimeAddressConfirm": "এই অর্ডারের জন্য ব্যবহার করুন"
+      "useOneTimeAddressConfirm": "এই অর্ডারের জন্য ব্যবহার করুন",
+      "discount": "ছাড়",
+      "couponOnConfirm": "অর্ডার নিশ্চিত করার সময় কুপন {code} যাচাই করে প্রয়োগ করা হবে।",
+      "orderNoteLabel": "রেস্টুরেন্টের জন্য নোট (ঐচ্ছিক)"
     }
   },
   "superAdmin": {

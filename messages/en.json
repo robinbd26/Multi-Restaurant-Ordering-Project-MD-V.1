@@ -675,7 +675,10 @@
       "useOneTimeAddress": "Use a one-time address",
       "oneTimeAddressLabel": "One-time address",
       "oneTimeAddressNotice": "Used for this order only — not added to your saved addresses.",
-      "useOneTimeAddressConfirm": "Use for this order"
+      "useOneTimeAddressConfirm": "Use for this order",
+      "discount": "Discount",
+      "couponOnConfirm": "Coupon {code} is checked and applied when you confirm the order.",
+      "orderNoteLabel": "Note for the restaurant (optional)"
     }
   },
   "superAdmin": {

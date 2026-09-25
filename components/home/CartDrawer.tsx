@@ -76,6 +76,13 @@ interface DrawerQuote {
   total: number;
 }
 
+/** WS-7.1 — a reward voucher the customer minted by burning coins. */
+interface DrawerRewardVoucher {
+  id: number;
+  code: string;
+  tk_value: string;
+}
+
 /** The placed-order receipt rendered by the in-drawer success panel. */
 interface DrawerOrderResult {
   orderId: number;
@@ -87,6 +94,8 @@ interface DrawerOrderResult {
   subtotal: number;
   deliveryFee: number;
   platformFee: number;
+  /** Coupon + coin discount the server applied (0 when none). */
+  discount: number;
   grandTotal: number;
   fulfillmentType: "delivery" | "pickup";
   pickupTimeLabel?: string;
@@ -202,6 +211,13 @@ export function CartDrawer({
   const [quoting, setQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [payment, setPayment] = useState<PaymentMethod>("cash");
+  // Moved here from the retired /customer/checkout page, so retiring it lost
+  // nothing: a coupon code, a reward voucher bought with coins, and a note for
+  // the whole order. Only CODES are sent; the server re-reads every value.
+  const [coupon, setCoupon] = useState("");
+  const [rewardCode, setRewardCode] = useState("");
+  const [vouchers, setVouchers] = useState<DrawerRewardVoucher[]>([]);
+  const [orderNote, setOrderNote] = useState("");
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [orderResult, setOrderResult] = useState<DrawerOrderResult | null>(null);
@@ -251,6 +267,31 @@ export function CartDrawer({
   // never strand the customer on a dead checkout step.
   const view: CheckoutStep =
     step === "success" && orderResult ? "success" : lines.length === 0 ? "cart" : step;
+
+  // WS-7.1 — the customer's spendable reward vouchers, read when the payment
+  // step opens. ?vouchers=1 is the light read (no ledger, no daily-login award).
+  useEffect(() => {
+    if (view !== "payment" || !signedIn) return;
+    let alive = true;
+    fetch("/api/customer/rewards?vouchers=1", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : { redemptions: [] }))
+      .then((d: { redemptions?: DrawerRewardVoucher[] }) => {
+        if (alive) setVouchers(d.redemptions ?? []);
+      })
+      .catch(() => {
+        if (alive) setVouchers([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [view, signedIn]);
+
+  // Display only — mirrors the server's rule (coins pay for food only, capped
+  // at the subtotal). The coupon's effect is decided when the order is placed.
+  const selectedVoucher = vouchers.find((v) => v.code === rewardCode) ?? null;
+  const coinDiscount = selectedVoucher
+    ? Math.min(Number(selectedVoucher.tk_value) || 0, quote?.subtotal ?? total)
+    : 0;
 
   const chosenAddress = useMemo(
     () => addresses.find((a) => String(a.id) === addressId) ?? null,
@@ -815,6 +856,12 @@ export function CartDrawer({
     setPlacing(true);
     setPlaceError(null);
     const pickupAt = fulfillmentType === "pickup" ? resolvePickupAt() : null;
+    // Codes only — the server re-reads the coupon and the voucher's value.
+    const extrasPayload = {
+      food_notes: orderNote.trim(),
+      ...(coupon.trim() ? { coupon_code: coupon.trim() } : {}),
+      ...(rewardCode ? { reward_code: rewardCode } : {}),
+    };
     try {
       const payload =
         fulfillmentType === "pickup"
@@ -823,7 +870,7 @@ export function CartDrawer({
               idempotency_key: attemptKeyRef.current,
               payment_method: payment,
               delivery_address: pickupBranch!.pickupAddress || pickupBranch!.name,
-              food_notes: "",
+              ...extrasPayload,
               fulfillment_type: "pickup" as const,
               pickup_time: pickupAt!.toISOString(),
               items: orderItems(),
@@ -836,7 +883,7 @@ export function CartDrawer({
                 idempotency_key: attemptKeyRef.current,
                 payment_method: payment,
                 delivery_address: oneTimeAddress.address,
-                food_notes: "",
+                ...extrasPayload,
                 fulfillment_type: "delivery" as const,
                 lat: Number(oneTimeAddress.lat),
                 lng: Number(oneTimeAddress.lng),
@@ -852,7 +899,7 @@ export function CartDrawer({
                   idempotency_key: attemptKeyRef.current,
                   payment_method: payment,
                   delivery_address: chosenAddress!.address,
-                  food_notes: "",
+                  ...extrasPayload,
                   fulfillment_type: "delivery" as const,
                   ...(hasCoords ? { lat, lng } : {}),
                   customer_address_id: chosenAddress!.id,
@@ -880,7 +927,10 @@ export function CartDrawer({
         subtotal: quote.subtotal,
         deliveryFee: quote.delivery_charge,
         platformFee: quote.platform_fee ?? 0,
-        grandTotal: quote.total,
+        // What the server charged after any coupon / coin voucher; the quote
+        // total only when an older server does not report it.
+        discount: Math.max(0, quote.total - (result.totalAmount ?? quote.total)),
+        grandTotal: result.totalAmount ?? quote.total,
         fulfillmentType,
         pickupTimeLabel:
           fulfillmentType === "pickup"
@@ -892,6 +942,9 @@ export function CartDrawer({
             : undefined,
       });
       clear(); // ordered — the drawer cart empties (orderResult holds the receipt)
+      setCoupon("");
+      setRewardCode("");
+      setOrderNote("");
       // ITEM 8 — a one-time address is exactly that: it does not carry over to
       // the customer's NEXT order the way a saved-address choice deliberately does.
       setOneTimeAddress(null);
@@ -1023,6 +1076,12 @@ export function CartDrawer({
                     <div className="flex items-center justify-between" data-testid="drawer-receipt-platform-fee">
                       <span className="text-[#a0a0b0]">{t("home.order.platformFee")}</span>
                       <span className="text-white">{fmt.money(orderResult.platformFee)}</span>
+                    </div>
+                  ) : null}
+                  {orderResult.discount > 0 ? (
+                    <div className="flex items-center justify-between" data-testid="drawer-receipt-discount">
+                      <span className="text-[#a0a0b0]">{t("home.order.discount")}</span>
+                      <span className="text-emerald-400">−{fmt.money(orderResult.discount)}</span>
                     </div>
                   ) : null}
                   <div className="flex items-center justify-between border-t border-white/8 pt-1.5">
@@ -1703,6 +1762,64 @@ export function CartDrawer({
                   );
                 })}
               </div>
+              {/* Coupon, reward voucher and order note (moved from the retired
+                  /customer/checkout page). The voucher value shown is a
+                  preview; the server recomputes it and caps it at the food
+                  subtotal. */}
+              <div className="space-y-2.5 rounded-lg border border-white/10 bg-[#23232e] p-3">
+                <div className="space-y-1">
+                  <label htmlFor="drawer-coupon" className="block text-[0.78rem] font-bold text-white">
+                    {t("orders.couponCode")}
+                  </label>
+                  <input
+                    id="drawer-coupon"
+                    value={coupon}
+                    onChange={(e) => setCoupon(e.target.value.toUpperCase())}
+                    placeholder={t("orders.couponPlaceholder")}
+                    maxLength={LIMITS.shortTextMax}
+                    autoComplete="off"
+                    className="h-9 w-full rounded-lg border border-white/10 bg-[#17171d] px-2 text-[0.78rem] uppercase text-white placeholder:normal-case placeholder:text-white/35"
+                    data-testid="drawer-coupon"
+                  />
+                </div>
+                {vouchers.length > 0 ? (
+                  <div className="space-y-1">
+                    <label htmlFor="drawer-reward-voucher" className="block text-[0.78rem] font-bold text-white">
+                      {t("checkout.rewardVoucher")}
+                    </label>
+                    <select
+                      id="drawer-reward-voucher"
+                      value={rewardCode}
+                      onChange={(e) => setRewardCode(e.target.value)}
+                      className="h-9 w-full rounded-lg border border-white/10 bg-[#17171d] px-2 text-[0.78rem] text-white"
+                      data-testid="reward-voucher-select"
+                    >
+                      <option value="">{t("checkout.noRewardVoucher")}</option>
+                      {vouchers.map((v) => (
+                        <option key={v.id} value={v.code}>
+                          {`${v.code} · ${fmt.money(Number(v.tk_value))}`}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[0.68rem] text-[#a0a0b0]">{t("checkout.rewardVoucherHint")}</p>
+                  </div>
+                ) : null}
+                <div className="space-y-1">
+                  <label htmlFor="drawer-order-note" className="block text-[0.78rem] font-bold text-white">
+                    {t("home.order.orderNoteLabel")}
+                  </label>
+                  <textarea
+                    id="drawer-order-note"
+                    value={orderNote}
+                    onChange={(e) => setOrderNote(e.target.value)}
+                    placeholder={t("orders.orderNotePlaceholder")}
+                    maxLength={LIMITS.longTextMax}
+                    rows={2}
+                    className="w-full rounded-lg border border-white/10 bg-[#17171d] px-2 py-1.5 text-[0.78rem] text-white placeholder:text-white/35"
+                    data-testid="drawer-order-note"
+                  />
+                </div>
+              </div>
               {fulfillmentType === "pickup" ? (
                 <div className="space-y-1.5 rounded-lg border border-white/10 bg-[#23232e] p-3">
                   <label htmlFor="drawer-pickup-time" className="block text-[0.78rem] font-bold text-white">
@@ -1861,15 +1978,30 @@ export function CartDrawer({
                       <dd className="text-[0.8rem] text-white">{fmt.money(quote.platform_fee ?? 0)}</dd>
                     </div>
                   ) : null}
+                  {coinDiscount > 0 ? (
+                    <div className="flex items-center justify-between" data-testid="summary-coin-discount">
+                      <dt className="text-[0.85rem] text-[#a0a0b0]">{t("checkout.summaryCoinDiscount")}</dt>
+                      <dd className="text-[0.8rem] text-emerald-400">−{fmt.money(coinDiscount)}</dd>
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between border-t border-white/8 pt-2">
                     <dt className="text-[0.95rem] font-bold text-white">{t("home.order.grandTotal")}</dt>
                     <dd
                       className="font-display text-[1.4rem] font-extrabold text-brand-500"
                       data-testid="drawer-quote-grand-total"
                     >
-                      {quote ? fmt.money(quote.total) : quoting ? "…" : fmt.money(total)}
+                      {quote
+                        ? fmt.money(Math.max(0, quote.total - coinDiscount))
+                        : quoting
+                          ? "…"
+                          : fmt.money(Math.max(0, total - coinDiscount))}
                     </dd>
                   </div>
+                  {coupon.trim() ? (
+                    <p className="text-[0.7rem] text-[#a0a0b0]" data-testid="drawer-coupon-note">
+                      {t("home.order.couponOnConfirm", { code: coupon.trim() })}
+                    </p>
+                  ) : null}
                 </dl>
                 {quoteError ? (
                   <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg bg-red-500/10 px-3 py-2">
