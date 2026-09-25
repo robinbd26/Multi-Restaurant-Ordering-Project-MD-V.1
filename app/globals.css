@@ -177,6 +177,15 @@ body {
   scrollbar-color: rgb(148 163 184 / 0.5) transparent;
 }
 
+/* A scroller that still scrolls (swipe, wheel, keyboard) but draws no bar,
+   for short tab strips where a bar is only noise. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* Map fullscreen button (components/maps/leaflet-core.tsx). The native
    Fullscreen API sizes the element itself; the pseudo class is the fallback
    where that API is missing, pinned over the whole viewport. */
