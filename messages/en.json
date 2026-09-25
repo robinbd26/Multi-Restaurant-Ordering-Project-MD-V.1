@@ -2106,7 +2106,8 @@
       "invalidNameLength": "Use between {min} and {max} characters.",
       "duplicate": "That name is already on the list.",
       "notFound": "That zone or area no longer exists.",
-      "invalidActive": "Choose a valid status."
+      "invalidActive": "Choose a valid status.",
+      "inUse": "\"{name}\" is used by {count} branch(es): {branches}. Move them to another zone first (edit each branch), then delete it. Or deactivate it instead."
     },
     "branchPause": {
       "invalidMode": "Choose how long to pause delivery ({modes})."
@@ -4345,7 +4346,12 @@
     "branchesUsing": "Branches",
     "confirmDeactivateZone": "Deactivate “{name}”?",
     "deactivateZoneDescription": "It stops being offered when creating or editing a branch. Nothing about delivery changes.",
-    "deactivateZoneInUse": "{count} branch(es) are tagged with this zone. They keep their tag; the zone just stops being offered for new branches."
+    "deactivateZoneInUse": "{count} branch(es) are tagged with this zone. They keep their tag; the zone just stops being offered for new branches.",
+    "deleteZone": "Delete",
+    "confirmDeleteZone": "Delete zone \"{name}\"?",
+    "deleteZoneDescription": "No branch uses this zone, so it can be removed for good. Orders and addresses keep their own copy of area names, so nothing else changes.",
+    "deleteZoneInUse": "{count} branch(es) use this zone. Move them to another zone first (edit each branch):",
+    "deleteZoneConfirm": "Delete zone"
   },
   "platformFee": {
     "title": "Platform Fee",
