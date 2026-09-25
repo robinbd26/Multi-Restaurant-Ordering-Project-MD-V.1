@@ -2153,7 +2153,9 @@
   "activityType": {
     "login": "Login",
     "logout": "Logout",
-    "action": "Action"
+    "action": "Action",
+    "archive": "Archive",
+    "delete": "Delete"
   },
   "complaintStatus": {
     "pending": "Pending",

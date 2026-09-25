@@ -2153,7 +2153,9 @@
   "activityType": {
     "login": "লগইন",
     "logout": "লগআউট",
-    "action": "কার্যক্রম"
+    "action": "কার্যক্রম",
+    "archive": "আর্কাইভ",
+    "delete": "মুছে ফেলা"
   },
   "complaintStatus": {
     "pending": "অপেক্ষমাণ",
