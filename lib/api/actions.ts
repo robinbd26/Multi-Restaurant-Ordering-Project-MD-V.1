@@ -840,9 +840,12 @@ export async function saveCampaignAction(
 
 export async function deleteCampaignAction(campaignId: number): Promise<ActionState> {
   try {
-    await sendJSON(`/marketing/campaigns/${campaignId}/`, "DELETE");
+    const res = await sendJSON<{ action?: string }>(`/marketing/campaigns/${campaignId}/`, "DELETE");
     revalidatePath("/marketing/campaigns");
-    return { error: null, success: await tr("marketingX.campaignDeleted") };
+    return {
+      error: null,
+      success: await tr(res?.action === "archived" ? "marketingX.campaignArchivedResult" : "marketingX.campaignDeleted"),
+    };
   } catch (err) {
     return await errorState(err);
   }

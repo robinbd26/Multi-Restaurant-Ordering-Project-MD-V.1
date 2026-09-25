@@ -3122,7 +3122,7 @@
     "errStart": "Enter a start date",
     "errEnd": "End date must be after start",
     "deleteCampaignTitle": "Delete campaign?",
-    "deleteCampaignDesc": "This campaign will be removed.",
+    "deleteCampaignDesc": "A campaign that has already been sent is archived (its history is kept); one that was never sent is deleted.",
     "couponsSub": "Create and manage discount coupons",
     "newCoupon": "New Coupon",
     "editCoupon": "Edit Coupon",
@@ -3210,7 +3210,8 @@
     "perCustomerShort": "{count} per customer",
     "perCustomerUnlimited": "No per-customer limit",
     "branchCouponsSub": "Coupons that apply to your branch only",
-    "noCouponsReadOnlyDesc": "No coupons currently apply to your branch."
+    "noCouponsReadOnlyDesc": "No coupons currently apply to your branch.",
+    "campaignArchivedResult": "The campaign was archived because it has already been sent. Its history is kept."
   },
   "mgmtReports": {
     "hubSub": "Every business report in one place",
