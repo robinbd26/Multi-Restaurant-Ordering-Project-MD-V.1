@@ -80,6 +80,9 @@ export interface BranchRemovalCheck {
 }
 
 export async function branchRemovalCheck(branchId: number): Promise<BranchRemovalCheck> {
+  // A malformed id ("undefined", "abc") is simply not a branch: 404, not a
+  // Prisma validation 500.
+  if (!Number.isSafeInteger(branchId) || branchId <= 0) throw notFound(sk("errors.catalog.branchNotFound"));
   const branch = await prisma.branch.findUnique({
     where: { id: branchId },
     select: { id: true, name: true, isArchived: true },
@@ -173,6 +176,7 @@ async function deleteBranchRows(tx: Prisma.TransactionClient, branchId: number):
 
 /** Archive: hidden from customers and the default admin list, all kept. Logged. */
 export async function archiveBranch(actor: User, branchId: number) {
+  if (!Number.isSafeInteger(branchId) || branchId <= 0) throw notFound(sk("errors.catalog.branchNotFound"));
   const branch = await prisma.branch.findUnique({ where: { id: branchId } });
   if (!branch) throw notFound(sk("errors.catalog.branchNotFound"));
   if (branch.isArchived) return branch;
