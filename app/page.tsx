@@ -229,7 +229,7 @@ export default async function HomePage() {
       >
         <Header user={user} logoUrl={logoUrl} searchIndex={menu.search} />
         <main>
-          <HeroSection />
+          <HeroSection signedIn={Boolean(user)} />
           {/* One slim band, in the storefront's own palette — branch context for
               a signed-in customer without a new dashboard section. */}
           {branchBar ? (
@@ -245,7 +245,7 @@ export default async function HomePage() {
           <OperatingHours branches={branches} />
           <BranchesCoverage branches={branches} />
         </main>
-        <Footer />
+        <Footer signedIn={Boolean(user)} />
         <FloatingActions />
         <CartDrawer
           signedIn={Boolean(user)}
