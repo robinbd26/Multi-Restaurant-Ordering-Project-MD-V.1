@@ -1817,7 +1817,6 @@
       "branchNotFound": "Branch not found.",
       "onlySuperAdminCanModifyBranch": "Only a super admin can modify a branch.",
       "nothingToChange": "There is nothing to change.",
-      "onlySuperAdminCanDeleteBranch": "Only a super admin can delete a branch.",
       "onlySuperAdminCanAssignManager": "Only a super admin can assign a manager.",
       "selectedManagerNotFoundOrNotApproved": "The selected manager was not found or is not approved.",
       "selectBrand": "Please select a brand.",

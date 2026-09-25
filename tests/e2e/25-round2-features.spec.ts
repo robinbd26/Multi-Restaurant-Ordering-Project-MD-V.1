@@ -120,9 +120,9 @@ test.describe("#5 branch archive/delete", () => {
     await admin.req.post("/api/delivery-areas/", { data: { branch_id: withDep.id, name: uniq("DepArea") } });
 
     const bm = await newSession(browser, "branch_manager");
-    expect((await bm.req.delete(`/api/branches/${withDep.id}/`)).status()).toBe(403); // non-SA forbidden
+    expect((await bm.req.post(`/api/branches/${withDep.id}/archive`)).status()).toBe(403); // non-SA forbidden
 
-    const del = await admin.req.delete(`/api/branches/${withDep.id}/`);
+    const del = await admin.req.post(`/api/branches/${withDep.id}/archive`);
     expect(del.status()).toBe(200);
     expect((await del.json()).action).toBe("archived");
 
@@ -142,7 +142,7 @@ test.describe("#5 branch archive/delete", () => {
         brand_type: "combined",
       },
     })).json();
-    const del2 = await admin.req.delete(`/api/branches/${fresh.id}/`);
+    const del2 = await admin.req.post(`/api/branches/${fresh.id}/permanent-delete`, { data: { confirm_name: fresh.name } });
     expect((await del2.json()).action).toBe("deleted");
 
     await admin.context.close(); await bm.context.close(); await cust.context.close();

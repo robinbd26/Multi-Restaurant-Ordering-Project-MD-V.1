@@ -165,9 +165,8 @@ function describeCounts(counts: Record<string, number>): string {
 }
 
 /**
- * The delete itself, shared by the explicit permanent delete and the legacy
- * archive-or-delete endpoint. Branch reward rules first (see the file note),
- * then the branch, whose cascades take the rest of its setup.
+ * The delete itself. Branch reward rules first (see the file note), then the
+ * branch, whose cascades take the rest of its setup.
  */
 async function deleteBranchRows(tx: Prisma.TransactionClient, branchId: number): Promise<void> {
   await tx.rewardEarningRule.deleteMany({ where: { branchId } });
@@ -225,27 +224,4 @@ export async function permanentlyDeleteBranch(actor: User, branchId: number, con
   });
   revalidateCatalog({ branchId });
   return check;
-}
-
-/**
- * The long-standing DELETE /api/branches/[id] behaviour, kept for API callers:
- * a branch with no rows of any kind is deleted, anything else is archived. It
- * now shares the delete (reward-rule safe) and the logging with the above.
- */
-export async function legacyArchiveOrDeleteBranch(actor: User, branchId: number) {
-  const check = await branchRemovalCheck(branchId);
-  const anything =
-    !check.deletable ||
-    Object.values(check.setup).some((n) => n > 0) ||
-    (await prisma.managerActivityLog.count({ where: { branchId } })) > 0;
-  if (!anything) {
-    await prisma.$transaction(async (tx) => {
-      await deleteBranchRows(tx, branchId);
-      await logAdminAction(actor.id, "delete", `Permanently deleted branch "${check.branch.name}" (#${check.branch.id}); it had no data at all`, { tx });
-    });
-    revalidateCatalog({ branchId });
-    return { action: "deleted" as const, check };
-  }
-  const branch = await archiveBranch(actor, branchId);
-  return { action: "archived" as const, check, branch };
 }

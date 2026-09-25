@@ -167,7 +167,7 @@ async function buildWorld(admin: { req: APIRequestContext }) {
   ).toBe(200);
 
   const archivedBranchProduct = await makeProduct(admin.req, archived.id, global.id);
-  expect((await admin.req.delete(`/api/branches/${archived.id}/`)).status()).toBe(200);
+  expect((await admin.req.post(`/api/branches/${archived.id}/archive`)).status()).toBe(200);
 
   return {
     pointA,
@@ -774,7 +774,7 @@ test.describe("The homepage follows the customer's deliver-to selection", () => 
     const admin = await newSession(browser, "super_admin");
     const world = await buildWorld(admin);
     const doomed = await makeBranch(admin.req);
-    expect((await admin.req.delete(`/api/branches/${doomed.id}/`)).status()).toBe(200);
+    expect((await admin.req.post(`/api/branches/${doomed.id}/archive`)).status()).toBe(200);
 
     const customer = await newSession(browser, "customer");
     await setLocation(customer.req, world.pointA);

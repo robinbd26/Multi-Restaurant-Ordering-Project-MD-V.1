@@ -10,7 +10,6 @@ import { prisma } from "@/lib/db";
 import { serializeBranch } from "@/lib/serializers";
 import { isBrandType, isBranchBusinessType } from "@/lib/constants/enums";
 import { isValidLatLng } from "@/lib/services/geo";
-import { legacyArchiveOrDeleteBranch } from "@/lib/services/branch-removal";
 import { parseBranchDeliveryFee } from "@/lib/services/branches";
 import { validatePhone } from "@/lib/validation/server";
 
@@ -112,19 +111,7 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   return json(serializeBranch(branch));
 });
 
-// DELETE /api/branches/[id] — Super Admin only.
-// DELETE /api/branches/[id] — SUPER ADMIN ONLY (req #5). Dependency-aware:
-// a branch with history is ARCHIVED (all records preserved, no new orders); a
-// genuinely unused branch is hard-deleted. Returns { action, dependencies } so
-// the UI can say accurately whether it deleted or archived.
-export const DELETE = handle(async (_req: Request, ctx: Ctx) => {
-  const me = await requireApproved();
-  if (me.role !== "super_admin") throw forbidden(sk("errors.catalog.onlySuperAdminCanDeleteBranch"));
-  const { id } = await ctx.params;
-  // Long-standing API behaviour (anything at all → archive, else delete), kept
-  // for API callers. The admin UI uses the explicit /archive and
-  // /permanent-delete endpoints instead. Both paths are logged.
-  const result = await legacyArchiveOrDeleteBranch(me, Number(id));
-  const { history, setup } = result.check;
-  return json({ action: result.action, dependencies: { ...history, ...setup, areas: setup.deliveryAreas } });
-});
+// No DELETE: removing a branch is explicit. POST ./archive keeps every
+// record; POST ./permanent-delete removes a branch with no history (typed
+// name required). The old "archive or delete, you decide" DELETE is retired;
+// an unsupported method answers 405.

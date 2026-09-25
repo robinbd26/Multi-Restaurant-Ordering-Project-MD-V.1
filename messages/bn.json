@@ -1817,7 +1817,6 @@
       "branchNotFound": "শাখা পাওয়া যায়নি।",
       "onlySuperAdminCanModifyBranch": "শুধুমাত্র সুপার অ্যাডমিন শাখা পরিবর্তন করতে পারেন।",
       "nothingToChange": "পরিবর্তনের কিছু নেই।",
-      "onlySuperAdminCanDeleteBranch": "শুধুমাত্র সুপার অ্যাডমিন শাখা মুছতে পারেন।",
       "onlySuperAdminCanAssignManager": "শুধুমাত্র সুপার অ্যাডমিন ম্যানেজার নিয়োগ করতে পারেন।",
       "selectedManagerNotFoundOrNotApproved": "নির্বাচিত ম্যানেজার পাওয়া যায়নি বা অনুমোদিত নন।",
       "selectBrand": "একটি ব্র্যান্ড নির্বাচন করুন।",
