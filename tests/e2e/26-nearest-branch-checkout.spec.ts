@@ -357,6 +357,19 @@ async function readCart(page: import("@playwright/test").Page): Promise<{ qty: n
 }
 
 test.describe("customer checkout journey (UI)", () => {
+  /**
+   * The first product with no crust to choose. test.db keeps the Thick/Thin
+   * pizzas other specs create, and those (correctly) refuse to be added
+   * until a crust is picked, so a bare .first() is not a simple add.
+   */
+  function plainAddButton(page: import("@playwright/test").Page) {
+    return page
+      .locator('[data-testid^="product-card-"]')
+      .filter({ hasNot: page.getByTestId("crust-choice") })
+      .first()
+      .getByTestId("menu-add");
+  }
+
   async function seedLocationAndOpenMenu(session: Awaited<ReturnType<typeof newSession>>, branchId: number) {
     await session.req.post(`${API_BASE}/api/customer/location`, { data: { lat: INSIDE.lat, lng: INSIDE.lng } });
     await session.page.goto(`/customer/branches/${branchId}/menu`);
@@ -376,7 +389,7 @@ test.describe("customer checkout journey (UI)", () => {
     await expect(customer.page.getByTestId("branch-nearest-badge")).toHaveCount(1);
 
     await seedLocationAndOpenMenu(customer, main);
-    await customer.page.getByTestId("menu-add").first().click();
+    await plainAddButton(customer.page).click();
     await expect.poll(async () => (await readCart(customer.page)).length).toBe(1);
 
     // The dashboard Cart page reads the SAME cart.
@@ -412,8 +425,8 @@ test.describe("customer checkout journey (UI)", () => {
 
     await seedLocationAndOpenMenu(customer, main);
     // Add the SAME product twice → the cart must dedupe to a single line, qty 2.
-    await customer.page.getByTestId("menu-add").first().click();
-    await customer.page.getByTestId("menu-add").first().click();
+    await plainAddButton(customer.page).click();
+    await plainAddButton(customer.page).click();
     await expect.poll(async () => (await readCart(customer.page)).map((l) => l.qty)).toEqual([2]);
 
     // The storefront's cart button counts the very same lines.

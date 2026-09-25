@@ -194,7 +194,13 @@ test.describe("#4 product variation type", () => {
     const customer = await newSession(browser, "customer");
     await seedCustomerLocation(customer.req);
     const main = (await branchMap(admin.req))["Main Branch"];
-    const both = await (await makeProduct(admin.req, main, "BOTH", { name: uniq("HomeBoth") })).json();
+    // The storefront lists products under their category, so this one needs one.
+    const cat = await (
+      await admin.req.post(`${API_BASE}/api/categories/`, { data: { name: uniq("HomeCrustCat"), branch_id: main } })
+    ).json();
+    const both = await (
+      await makeProduct(admin.req, main, "BOTH", { name: uniq("HomeBoth"), category: String(cat.id) })
+    ).json();
 
     const readLines = async (): Promise<{ variationType?: string }[]> => {
       const raw = await customer.page.evaluate(() => localStorage.getItem("mad-delivery-cart-v2"));
@@ -202,6 +208,11 @@ test.describe("#4 product variation type", () => {
     };
 
     await customer.page.goto("/", { waitUntil: "domcontentloaded" });
+    // Browse Main Branch explicitly: in a long-lived test.db another branch
+    // may sit at the customer's point and be the one resolved as nearest.
+    await customer.page.getByTestId("home-browse-branch").click();
+    await customer.page.getByTestId(`browse-branch-${main}`).click();
+    await expect(customer.page.getByTestId("home-branch-name")).toHaveText("Main Branch");
     const card = customer.page.locator("article", { hasText: both.name }).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     // A BOTH product opens the modal instead of adding straight away.
