@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -208,27 +209,41 @@ export function HomeCartProvider({
   // used to live only in component state, so navigating to /login to sign in
   // (the exact moment the ordering flow demands it) threw the whole selection
   // away. Hydrate once on mount, then mirror every change back to storage.
-  const [hydrated, setHydrated] = useState(false);
+  //
+  // NO state update on mount unless there is a stored cart to restore. This
+  // provider wraps the whole dashboard, and a state update here while a page
+  // below is still streaming in makes React client-render that page next to
+  // the streamed copy (two of every form for a moment, which broke strict e2e
+  // locators). An always-on setHydrated(true) did exactly that on every
+  // dashboard page. So readiness is a ref, and lines are set only when there
+  // are lines.
+  const persistReady = useRef(false);
   useEffect(() => {
     try {
       for (const key of RETIRED_CART_KEYS) window.localStorage.removeItem(key);
       const raw = window.localStorage.getItem(HOME_CART_STORAGE_KEY);
       const parsed: unknown = raw ? JSON.parse(raw) : null;
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (Array.isArray(parsed)) setLines(parsed as HomeCartLine[]);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setLines(parsed as HomeCartLine[]);
+      }
     } catch {
       /* corrupted storage — start fresh */
     }
-    setHydrated(true);
   }, []);
   useEffect(() => {
-    if (!hydrated) return;
+    // The first run is the empty initial state, before the restore above has
+    // re-rendered; writing it would wipe the stored cart.
+    if (!persistReady.current) {
+      persistReady.current = true;
+      return;
+    }
     try {
       window.localStorage.setItem(HOME_CART_STORAGE_KEY, JSON.stringify(lines));
     } catch {
       /* storage full/blocked — the in-memory cart still works */
     }
-  }, [lines, hydrated]);
+  }, [lines]);
 
   // One order belongs to exactly one branch, so the FIRST item locks the cart to
   // its branch. Derived from the lines rather than stored separately, so it can
@@ -311,7 +326,8 @@ export function HomeCartProvider({
    * silently drift. Guarded so it never clobbers a pending "add" conflict.
    */
   useEffect(() => {
-    if (!hydrated) return;
+    // Before the stored cart is restored the cart is empty, so cartBranchId is
+    // null and this waits for the restore on its own.
     if (activeBranchId == null || cartBranchId == null) return;
     if (activeBranchId === cartBranchId) return;
     // Reconciling against an EXTERNAL signal (the server-resolved branch, which
@@ -327,7 +343,7 @@ export function HomeCartProvider({
         nextBranchName: activeBranchName ?? "",
       },
     );
-  }, [hydrated, activeBranchId, activeBranchName, cartBranchId, cartBranchName]);
+  }, [activeBranchId, activeBranchName, cartBranchId, cartBranchName]);
 
   const confirmBranchSwitch = useCallback(() => {
     setPendingBranchSwitch((pending) => {
