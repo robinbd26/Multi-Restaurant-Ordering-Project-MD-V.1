@@ -124,7 +124,9 @@ test.describe("marketing campaigns", () => {
 
 test.describe("products", () => {
   async function mainBranchId(req: APIRequestContext): Promise<number> {
-    const { results } = await (await req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
+    // Searched by name: the list is newest first, so a busy test.db can push
+    // Main Branch past any fixed page.
+    const { results } = await (await req.get(`${API_BASE}/api/branches/?search=Main%20Branch&page_size=100`)).json();
     return (results as { id: number; name: string }[]).find((b) => b.name === "Main Branch")!.id;
   }
   async function makeProduct(req: APIRequestContext, branchId: number) {

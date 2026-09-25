@@ -37,8 +37,8 @@ async function createBareBranch(req: APIRequestContext, prefix = "SeqBranch") {
 }
 
 /** A branch with setup data (a delivery area), archived explicitly below. */
-async function createBranchWithHistory(req: APIRequestContext) {
-  const branch = await createBareBranch(req, "SeqArchiveBranch");
+async function createBranchWithHistory(req: APIRequestContext, prefix = "SeqArchiveBranch") {
+  const branch = await createBareBranch(req, prefix);
   // A delivery area is setup data; the branch is archived via its own button.
   const area = await req.post(`${API_BASE}/api/delivery-areas/`, {
     data: {
@@ -59,11 +59,15 @@ test.describe("branch delete/archive works repeatedly without a refresh", () => 
 
     // One branch that MUST archive (it has a dependency) and two that must be
     // hard-deleted — this is the mix the report described.
-    const willArchive = await createBranchWithHistory(admin.req);
-    const willDelete1 = await createBareBranch(admin.req);
-    const willDelete2 = await createBareBranch(admin.req);
+    // One tag for this test's branches: the admin list is sorted by name and
+    // paginated, so in a busy test.db they would sit past page 1. The list is
+    // opened filtered to exactly them.
+    const tag = uniq("SeqRun");
+    const willArchive = await createBranchWithHistory(admin.req, `${tag}-A`);
+    const willDelete1 = await createBareBranch(admin.req, `${tag}-B`);
+    const willDelete2 = await createBareBranch(admin.req, `${tag}-C`);
 
-    await page.goto("/admin/branches");
+    await page.goto(`/admin/branches?search=${encodeURIComponent(tag)}`);
     await expect(page.getByTestId(`branch-row-delete-${willArchive.id}`)).toBeVisible();
 
     /**
@@ -102,7 +106,7 @@ test.describe("branch delete/archive works repeatedly without a refresh", () => 
     await deleteRow(willDelete2.id, "deleted", willDelete2.name);
 
     // The Archived filter is where it went.
-    await page.goto("/admin/branches?state=archived");
+    await page.goto(`/admin/branches?state=archived&search=${encodeURIComponent(tag)}`);
     await expect(page.getByText(willArchive.name)).toBeVisible();
 
     // The two unused branches are gone; the archived one is preserved.
@@ -118,10 +122,11 @@ test.describe("branch delete/archive works repeatedly without a refresh", () => 
   test("cancelling one dialog leaves every other row's Delete working", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
     const { page } = admin;
-    const first = await createBareBranch(admin.req);
-    const second = await createBareBranch(admin.req);
+    const tag = uniq("SeqCancel");
+    const first = await createBareBranch(admin.req, `${tag}-A`);
+    const second = await createBareBranch(admin.req, `${tag}-B`);
 
-    await page.goto("/admin/branches");
+    await page.goto(`/admin/branches?search=${encodeURIComponent(tag)}`);
 
     // Open the first row's dialog and cancel it.
     await page.getByTestId(`branch-row-delete-${first.id}`).click();
@@ -157,7 +162,9 @@ test.describe("branch delete/archive works repeatedly without a refresh", () => 
 test.describe("permanent delete follows the history rule", () => {
   test("a branch with orders can only be archived: the check and the delete both refuse", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
-    const branches = (await (await admin.req.get(`${API_BASE}/api/branches/?page_size=100`)).json()).results as {
+    // Searched by name: the list is newest first, so a busy test.db can push
+    // Main Branch past any fixed page.
+    const branches = (await (await admin.req.get(`${API_BASE}/api/branches/?search=Main%20Branch&page_size=100`)).json()).results as {
       id: number;
       name: string;
     }[];
