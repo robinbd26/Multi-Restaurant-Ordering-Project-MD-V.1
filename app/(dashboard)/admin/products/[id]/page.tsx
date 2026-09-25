@@ -32,6 +32,8 @@ export default async function AdminProductViewPage({
       backLabel={t("adminExtras.productsTitle")}
       canHold
       canDelete
+      canRestore
+      canPermanentDelete
     />
   );
 }

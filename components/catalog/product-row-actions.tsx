@@ -10,14 +10,26 @@ import { Icon } from "@/components/layout/icons";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import {
   deleteProductAction,
+  permanentlyDeleteProductAction,
+  restoreProductAction,
   setProductHoldAction,
   toggleProductAction,
 } from "@/lib/api/actions";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
 
-/** Which confirmation is currently open. `null` = none. */
-type Dialog = "hold" | "availability" | "delete" | null;
+/**
+ * Which confirmation is currently open. `null` = none. "delete" is the soft
+ * delete, shown as Archive; "purge" is the permanent delete.
+ */
+type Dialog = "hold" | "availability" | "delete" | "restore" | "purge" | null;
+
+/** /api/products/[id]/removal-check, for the permanent-delete dialog. */
+interface PurgeCheck {
+  order_lines: number;
+  reviews: number;
+  deletable: boolean;
+}
 
 export interface ProductRowActionsProps {
   productId: number;
@@ -30,6 +42,15 @@ export interface ProductRowActionsProps {
   /** Hold/resume is super-admin-only; soft delete is SA + own-branch manager. */
   canHold?: boolean;
   canDelete?: boolean;
+  /**
+   * The row is ARCHIVED (soft-deleted). It then offers only View, Restore and
+   * Delete permanently; editing, availability and hold wait for a restore.
+   */
+  isArchived?: boolean;
+  /** Restore an archived product (super admin). */
+  canRestore?: boolean;
+  /** Delete a never-ordered, never-reviewed product for good (super admin). */
+  canPermanentDelete?: boolean;
   /**
    * `"menu"` (default) keeps the compact pop-up used by the long Super Admin
    * product table. `"inline"` renders the same actions as always-visible
@@ -63,9 +84,26 @@ export function ProductRowActions({
   basePath,
   canHold = false,
   canDelete = false,
+  isArchived = false,
+  canRestore = false,
+  canPermanentDelete = false,
   layout = "menu",
 }: ProductRowActionsProps) {
-  const { t } = useTranslation();
+  const { t, fmt } = useTranslation();
+  const [purgeCheck, setPurgeCheck] = useState<PurgeCheck | null>(null);
+  const [purgeCheckFailed, setPurgeCheckFailed] = useState(false);
+
+  /** Ask the server whether this product was ever ordered or reviewed. */
+  function loadPurgeCheck() {
+    setPurgeCheck(null);
+    setPurgeCheckFailed(false);
+    fetch(`/api/products/${productId}/removal-check`, { credentials: "include" })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        setPurgeCheck((await res.json()) as PurgeCheck);
+      })
+      .catch(() => setPurgeCheckFailed(true));
+  }
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -106,12 +144,14 @@ export function ProductRowActions({
 
   const choose = (next: Dialog) => {
     setMenuOpen(false);
+    if (next === "purge") loadPurgeCheck();
     setDialog(next);
   };
 
   /** Inline layout: remember the pressed button, then open its confirmation. */
   const openFrom = (event: ReactMouseEvent<HTMLButtonElement>, next: Dialog) => {
     triggerRef.current = event.currentTarget;
+    if (next === "purge") loadPurgeCheck();
     setDialog(next);
   };
 
@@ -150,24 +190,28 @@ export function ProductRowActions({
           >
             <Icon name="eye" className="size-4" />
           </Link>
-          <Link
-            href={`${basePath}/${productId}/edit`}
-            className={inlineNeutral}
-            data-testid={`product-edit-${productId}`}
-          >
-            <Icon name="edit" className="size-3.5" />
-            {t("common.edit")}
-          </Link>
-          <button
-            type="button"
-            className={isAvailable ? inlineDanger : inlineNeutral}
-            data-testid={`product-availability-${productId}`}
-            onClick={(event) => openFrom(event, "availability")}
-          >
-            <Icon name={isAvailable ? "x" : "check"} className="size-3.5" />
-            {isAvailable ? t("catalog.deactivate") : t("catalog.activate")}
-          </button>
-          {canHold ? (
+          {isArchived ? null : (
+            <>
+              <Link
+                href={`${basePath}/${productId}/edit`}
+                className={inlineNeutral}
+                data-testid={`product-edit-${productId}`}
+              >
+                <Icon name="edit" className="size-3.5" />
+                {t("common.edit")}
+              </Link>
+              <button
+                type="button"
+                className={isAvailable ? inlineDanger : inlineNeutral}
+                data-testid={`product-availability-${productId}`}
+                onClick={(event) => openFrom(event, "availability")}
+              >
+                <Icon name={isAvailable ? "x" : "check"} className="size-3.5" />
+                {isAvailable ? t("catalog.deactivate") : t("catalog.activate")}
+              </button>
+            </>
+          )}
+          {canHold && !isArchived ? (
             <button
               type="button"
               className={heldByAdmin ? inlineNeutral : inlineDanger}
@@ -178,7 +222,7 @@ export function ProductRowActions({
               {heldByAdmin ? t("adminExtras.releaseHold") : t("adminExtras.hold")}
             </button>
           ) : null}
-          {canDelete ? (
+          {canDelete && !isArchived ? (
             <button
               type="button"
               className={inlineDanger}
@@ -186,7 +230,29 @@ export function ProductRowActions({
               onClick={(event) => openFrom(event, "delete")}
             >
               <Icon name="trash" className="size-3.5" />
-              {t("common.delete")}
+              {t("productRemoval.archive")}
+            </button>
+          ) : null}
+          {canRestore && isArchived ? (
+            <button
+              type="button"
+              className={inlineNeutral}
+              data-testid={`product-restore-${productId}`}
+              onClick={(event) => openFrom(event, "restore")}
+            >
+              <Icon name="check" className="size-3.5" />
+              {t("productRemoval.restore")}
+            </button>
+          ) : null}
+          {canPermanentDelete ? (
+            <button
+              type="button"
+              className={inlineDanger}
+              data-testid={`product-purge-${productId}`}
+              onClick={(event) => openFrom(event, "purge")}
+            >
+              <Icon name="trash" className="size-3.5" />
+              {t("productRemoval.deletePermanently")}
             </button>
           ) : null}
         </div>
@@ -215,23 +281,27 @@ export function ProductRowActions({
               >
                 {t("common.view")}
               </Link>
-              <Link
-                href={`${basePath}/${productId}/edit`}
-                className={itemClass}
-                data-testid={`product-edit-${productId}`}
-                onClick={() => setMenuOpen(false)}
-              >
-                {t("common.edit")}
-              </Link>
-              <button
-                type="button"
-                className={isAvailable ? dangerClass : itemClass}
-                data-testid={`product-availability-${productId}`}
-                onClick={() => choose("availability")}
-              >
-                {isAvailable ? t("catalog.deactivate") : t("catalog.activate")}
-              </button>
-              {canHold ? (
+              {isArchived ? null : (
+                <>
+                  <Link
+                    href={`${basePath}/${productId}/edit`}
+                    className={itemClass}
+                    data-testid={`product-edit-${productId}`}
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    {t("common.edit")}
+                  </Link>
+                  <button
+                    type="button"
+                    className={isAvailable ? dangerClass : itemClass}
+                    data-testid={`product-availability-${productId}`}
+                    onClick={() => choose("availability")}
+                  >
+                    {isAvailable ? t("catalog.deactivate") : t("catalog.activate")}
+                  </button>
+                </>
+              )}
+              {canHold && !isArchived ? (
                 <button
                   type="button"
                   className={heldByAdmin ? itemClass : dangerClass}
@@ -241,14 +311,34 @@ export function ProductRowActions({
                   {heldByAdmin ? t("adminExtras.releaseHold") : t("adminExtras.hold")}
                 </button>
               ) : null}
-              {canDelete ? (
+              {canRestore && isArchived ? (
+                <button
+                  type="button"
+                  className={itemClass}
+                  data-testid={`product-restore-${productId}`}
+                  onClick={() => choose("restore")}
+                >
+                  {t("productRemoval.restore")}
+                </button>
+              ) : null}
+              {canDelete && !isArchived ? (
                 <button
                   type="button"
                   className={cn(dangerClass, "border-t border-border-base")}
                   data-testid={`product-delete-${productId}`}
                   onClick={() => choose("delete")}
                 >
-                  {t("common.delete")}
+                  {t("productRemoval.archive")}
+                </button>
+              ) : null}
+              {canPermanentDelete ? (
+                <button
+                  type="button"
+                  className={dangerClass}
+                  data-testid={`product-purge-${productId}`}
+                  onClick={() => choose("purge")}
+                >
+                  {t("productRemoval.deletePermanently")}
                 </button>
               ) : null}
             </div>
@@ -291,12 +381,56 @@ export function ProductRowActions({
       <ConfirmModal
         open={dialog === "delete"}
         onOpenChange={(next) => (next ? setDialog("delete") : closeDialog())}
-        title={t("catalog.deleteProductTitle")}
-        // States explicitly that this is a SOFT delete and that order history
-        // survives — the modal must describe the operation it performs.
-        description={t("catalog.deleteProductConfirm", { name: productName, branch: branchName })}
-        confirmLabel={t("catalog.confirmDelete")}
+        title={t("productRemoval.archiveTitle")}
+        // The soft delete is the product's ARCHIVE: says what happens, that
+        // orders keep it, and that it can be restored.
+        description={t("productRemoval.archiveConfirm", { name: productName, branch: branchName })}
+        confirmLabel={t("productRemoval.confirmArchive")}
         action={async () => deleteProductAction(productId)}
+        onDone={() => router.refresh()}
+      />
+
+      <ConfirmModal
+        open={dialog === "restore"}
+        onOpenChange={(next) => (next ? setDialog("restore") : closeDialog())}
+        title={t("productRemoval.restoreTitle")}
+        description={t("productRemoval.restoreConfirm", { name: productName })}
+        confirmLabel={t("productRemoval.confirmRestore")}
+        action={async () => restoreProductAction(productId)}
+        onDone={() => router.refresh()}
+      />
+
+      <ConfirmModal
+        open={dialog === "purge"}
+        onOpenChange={(next) => (next ? setDialog("purge") : closeDialog())}
+        title={t("productRemoval.deleteTitle", { name: productName })}
+        description={t("productRemoval.deleteDesc")}
+        details={
+          purgeCheckFailed ? (
+            <p className="text-sm text-red-600" role="alert">
+              {t("productRemoval.checkFailed")}
+            </p>
+          ) : !purgeCheck ? (
+            <p className="text-sm text-fg-muted">{t("productRemoval.checking")}</p>
+          ) : purgeCheck.deletable ? (
+            <p className="text-sm text-fg-base" data-testid="product-purge-ok">
+              {t("productRemoval.deletable")}
+            </p>
+          ) : (
+            <p
+              className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+              data-testid="product-purge-blocked"
+            >
+              {t("productRemoval.blocked", {
+                orders: fmt.num(purgeCheck.order_lines),
+                reviews: fmt.num(purgeCheck.reviews),
+              })}
+            </p>
+          )
+        }
+        confirmDisabled={!purgeCheck?.deletable}
+        confirmLabel={t("productRemoval.confirmDelete")}
+        action={async () => permanentlyDeleteProductAction(productId)}
         onDone={() => router.refresh()}
       />
     </div>

@@ -90,9 +90,9 @@ export async function softDeleteProduct(user: User, productId: number): Promise<
     data: { deletedAt: new Date(), deletedById: user.id, isAvailable: false },
     include: { branch: true, category: true, variations: { orderBy: { sortOrder: "asc" } } },
   });
-  // A product "delete" keeps the row (orders and reviews point at it): it is
-  // this list's archive, and is logged as one.
-  await logAdminAction(user.id, "archive", `Deleted (archived) product "${deleted.name}" (#${deleted.id}) at ${deleted.branch.name}`, {
+  // This soft delete IS the product's archive: the row stays (orders and
+  // reviews point at it) and a super admin can restore it.
+  await logAdminAction(user.id, "archive", `Archived product "${deleted.name}" (#${deleted.id}) at ${deleted.branch.name}`, {
     branchId: deleted.branchId,
   });
   // Must disappear from the storefront, menu and search immediately.

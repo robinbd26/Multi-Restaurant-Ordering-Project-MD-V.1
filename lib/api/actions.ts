@@ -350,7 +350,27 @@ export async function deleteProductAction(productId: number): Promise<ActionStat
     // Soft delete — see softDeleteProduct. Invalidation is handled server-side
     // by revalidateCatalog() so the storefront, menu and search all follow.
     await sendJSON(`/products/${productId}/`, "DELETE");
-    return { error: null, success: await tr("toast.productDeleted") };
+    return { error: null, success: await tr("productRemoval.archived") };
+  } catch (err) {
+    return await errorState(err);
+  }
+}
+
+/** Un-archive a product (super admin). It comes back unavailable. */
+export async function restoreProductAction(productId: number): Promise<ActionState> {
+  try {
+    await sendJSON(`/products/${productId}/restore/`, "POST");
+    return { error: null, success: await tr("productRemoval.restored") };
+  } catch (err) {
+    return await errorState(err);
+  }
+}
+
+/** Delete a never-ordered product for good (super admin); the server re-checks. */
+export async function permanentlyDeleteProductAction(productId: number): Promise<ActionState> {
+  try {
+    await sendJSON(`/products/${productId}/permanent-delete/`, "POST");
+    return { error: null, success: await tr("productRemoval.deleted") };
   } catch (err) {
     return await errorState(err);
   }
