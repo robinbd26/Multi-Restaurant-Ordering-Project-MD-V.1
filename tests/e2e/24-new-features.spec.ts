@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { newSession } from "./helpers";
+import { newSession, activeZoneId } from "./helpers";
 
 /**
  * NEW FEATURES (this round):
@@ -235,6 +235,8 @@ test.describe("#2 branch coordinates", () => {
     const { context, req } = await newSession(browser, "super_admin");
     const bad = await req.post("/api/branches/", {
       multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(req)),
         name: uniqName("BadBranch"),
         address: "Somewhere",
         phone: "01712345678",

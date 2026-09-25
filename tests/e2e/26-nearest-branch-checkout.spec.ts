@@ -6,8 +6,7 @@ import {
   inNightOrderBlackout,
   NIGHT_BLACKOUT_REASON,
   isDhakaFullClosureWindow,
-  FULL_CLOSURE_REASON,
-} from "./helpers";
+  FULL_CLOSURE_REASON, activeZoneId } from "./helpers";
 
 /**
  * req #20 (nearest branch enforced server-side in order creation) + req #6
@@ -85,6 +84,8 @@ async function placeDelivery(
 async function createEligibleBranch(req: APIRequestContext, pt: { lat: number; lng: number }) {
   const created = await req.post(`${API_BASE}/api/branches/`, {
     multipart: {
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(req)),
       name: uniq("EligBranch"),
       address: "Test Rd, Dhaka",
       phone: `013${Math.floor(10000000 + Math.random() * 89999999)}`,

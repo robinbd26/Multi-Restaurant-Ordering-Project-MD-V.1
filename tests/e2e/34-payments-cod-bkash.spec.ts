@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, API_BASE } from "./helpers";
+import { newSession, apiLogin, API_BASE, activeZoneId } from "./helpers";
 
 /**
  * PHASE S — Cash on Delivery + MANUAL bKash.
@@ -280,6 +280,8 @@ test.describe("Phase S — verification", () => {
     // have no coordinates and could never serve this cart).
     const branchRes = await admin.req.post(`${API_BASE}/api/branches/`, {
       multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
         name: `PayBranch-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
         address: "Pay Rd, Dhaka",
         phone: `018${Math.floor(10000000 + Math.random() * 89999999)}`,

@@ -6,8 +6,7 @@ import {
   setLocale,
   isDhakaFullClosureWindow,
   FULL_CLOSURE_REASON,
-  NOT_CLOSED_REASON,
-} from "./helpers";
+  NOT_CLOSED_REASON, activeZoneId } from "./helpers";
 
 /**
  * ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed. No branch takes a
@@ -29,6 +28,8 @@ const uniq = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 100
 async function branchWithProduct(req: APIRequestContext) {
   const branchRes = await req.post(`/api/branches/`, {
     data: {
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(req)),
       name: uniq("ClosureBr"),
       address: "Dhaka",
       phone: "01711119990",

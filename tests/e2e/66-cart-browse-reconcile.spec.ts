@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 
-import { newSession, setLocale, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
+import { newSession, setLocale, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, activeZoneId } from "./helpers";
 
 /**
  * ITEM 1 — the cart's fulfillment branch used to be deaf to "Browsing".
@@ -36,6 +36,8 @@ async function setLocation(req: APIRequestContext, point: { lat: number; lng: nu
 async function makeBranch(req: APIRequestContext) {
   const res = await req.post("/api/branches/", {
     data: {
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(req)),
       name: uniq("RB"),
       address: "Dhaka",
       phone: "01711111112",

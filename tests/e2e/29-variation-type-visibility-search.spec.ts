@@ -6,8 +6,7 @@ import {
   inNightOrderBlackout,
   NIGHT_BLACKOUT_REASON,
   isDhakaFullClosureWindow,
-  FULL_CLOSURE_REASON,
-} from "./helpers";
+  FULL_CLOSURE_REASON, activeZoneId } from "./helpers";
 
 /**
  * REQ #4  product variation type (Thick / Thin / Both)
@@ -276,6 +275,8 @@ test.describe("#9 active branch/category/product visibility", () => {
     await seedCustomerLocation(customer.req);
     const created = await (await admin.req.post(`${API_BASE}/api/branches/`, {
       multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
         name: uniq("VisBranch"), address: "Vis Rd", phone: `015${Math.floor(10000000 + Math.random() * 89999999)}`,
         brand_type: "cheez", latitude: String(INSIDE.lat), longitude: String(INSIDE.lng),
       },
@@ -367,6 +368,8 @@ test.describe("#11 customer branch search", () => {
     // An inactive branch cannot be surfaced by searching its exact name.
     const created = await (await admin.req.post(`${API_BASE}/api/branches/`, {
       multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
         name: uniq("HiddenSearch"), address: "Hidden Rd", phone: `016${Math.floor(10000000 + Math.random() * 89999999)}`,
         brand_type: "cheez",
       },
@@ -457,6 +460,8 @@ test.describe("#7/#10 nearest branch + delivery area validation", () => {
     // often hits branchUnavailable (400) and silently skipped the real assertion.
     const foreignBranch = await (await admin.req.post(`${API_BASE}/api/branches/`, {
       multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
         name: uniq("ForeignBranch"),
         address: "Foreign Rd, Dhaka",
         phone: `013${Math.floor(10000000 + Math.random() * 89999999)}`,

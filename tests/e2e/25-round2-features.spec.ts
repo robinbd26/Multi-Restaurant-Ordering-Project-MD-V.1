@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { newSession } from "./helpers";
+import { newSession, activeZoneId } from "./helpers";
 
 /**
  * ROUND 2 features (server-authoritative, asserted at the API layer):
@@ -108,7 +108,14 @@ test.describe("#5 branch archive/delete", () => {
     // A dedicated branch WITH a dependency (a delivery area) → archived. (We do
     // NOT archive Main Branch — other tests rely on it.)
     const withDep = await (await admin.req.post("/api/branches/", {
-      multipart: { name: uniq("Dep"), address: "x", phone: "01712345690", brand_type: "combined" },
+      multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
+        name: uniq("Dep"),
+        address: "x",
+        phone: "01712345690",
+        brand_type: "combined",
+      },
     })).json();
     await admin.req.post("/api/delivery-areas/", { data: { branch_id: withDep.id, name: uniq("DepArea") } });
 
@@ -126,7 +133,14 @@ test.describe("#5 branch archive/delete", () => {
 
     // an unused branch → hard delete
     const fresh = await (await admin.req.post("/api/branches/", {
-      multipart: { name: uniq("Empty"), address: "x", phone: "01712345699", brand_type: "combined" },
+      multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
+        name: uniq("Empty"),
+        address: "x",
+        phone: "01712345699",
+        brand_type: "combined",
+      },
     })).json();
     const del2 = await admin.req.delete(`/api/branches/${fresh.id}/`);
     expect((await del2.json()).action).toBe("deleted");

@@ -15,8 +15,7 @@ import {
   inNightOrderBlackout,
   NIGHT_BLACKOUT_REASON,
   isDhakaFullClosureWindow,
-  FULL_CLOSURE_REASON,
-} from "./helpers";
+  FULL_CLOSURE_REASON, activeZoneId } from "./helpers";
 
 /**
  * NEAREST-BRANCH HOMEPAGE — an authenticated customer sees, and can order, the
@@ -73,6 +72,8 @@ async function setLocation(req: APIRequestContext, point: { lat: number; lng: nu
 async function makeBranch(req: APIRequestContext, overrides: Record<string, string> = {}) {
   const res = await req.post("/api/branches/", {
     data: {
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(req)),
       name: uniq("NB"),
       address: "Dhaka",
       phone: "01711111111",

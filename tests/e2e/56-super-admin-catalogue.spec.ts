@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
-import { newSession, setLocale } from "./helpers";
+import { newSession, setLocale, activeZoneId } from "./helpers";
 
 /**
  * ROLE-AWARE HOMEPAGE CATALOGUE.
@@ -27,6 +27,8 @@ function pointForBranchId(id: number) {
 async function makeBranch(req: APIRequestContext, brandType: string) {
   const res = await req.post("/api/branches/", {
     data: {
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(req)),
       name: uniq("SAB"),
       address: "Dhaka",
       phone: "01711111111",

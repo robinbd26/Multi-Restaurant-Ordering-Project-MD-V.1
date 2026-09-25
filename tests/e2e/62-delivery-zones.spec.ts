@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { API_BASE, newSession, setLocale, isDhakaFullClosureWindow, FULL_CLOSURE_REASON } from "./helpers";
+import { API_BASE, newSession, setLocale, isDhakaFullClosureWindow, FULL_CLOSURE_REASON, activeZoneId } from "./helpers";
 
 /**
  * DELIVERY ZONES — the master list of places, and coverage by name.
@@ -69,6 +69,8 @@ async function retireZone(req: APIRequestContext, zoneId: number) {
 async function makeBranch(req: APIRequestContext) {
   const res = await req.post(`${API_BASE}/api/branches/`, {
     data: {
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(req)),
       name: uniq("ZoneBr"),
       address: "Dhaka",
       phone: "01711111111",
