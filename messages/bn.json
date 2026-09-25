@@ -906,7 +906,6 @@
     "restaurantsSubtitle": "পছন্দের শাখা বেছে নিয়ে মেনু দেখুন",
     "noOpenRestaurants": "কোনো খোলা রেস্টুরেন্ট নেই",
     "noOpenRestaurantsDesc": "একটু পরে আবার দেখুন।",
-    "deliveryRadius": "ডেলিভারি {km} কি.মি.",
     "menuTitle": "মেনু",
     "viewCart": "কার্ট দেখুন →",
     "allWithCount": "সব ({count})",
@@ -3920,7 +3919,13 @@
     "setLocation": "অবস্থান সেট করুন",
     "nearestBadge": "নিকটতম",
     "opensAt": "খুলবে {time}",
-    "finding": "আপনার কাছের রেস্তোরাঁ খোঁজা হচ্ছে…"
+    "finding": "আপনার কাছের রেস্তোরাঁ খোঁজা হচ্ছে…",
+    "nearestServingBadge": "নিকটতম ডেলিভারি শাখা",
+    "closestClosed": "আপনার সবচেয়ে কাছে, কিন্তু এখন বন্ধ",
+    "closestNotCovered": "আপনার সবচেয়ে কাছে, কিন্তু আপনার ঠিকানায় ডেলিভারি দেয় না",
+    "closestDiffers": "{closest} আপনার আরও কাছে, কিন্তু {reason}। {nearest} হলো নিকটতম শাখা যা খোলা আছে এবং আপনার ঠিকানায় ডেলিভারি দেয়।",
+    "reasonClosed": "এটি এখন বন্ধ",
+    "reasonNotCovered": "এটি আপনার ঠিকানায় ডেলিভারি দেয় না"
   },
   "location": {
     "consentTitle": "আপনার অবস্থান ব্যবহার করব?",
@@ -4407,5 +4412,10 @@
       "shift": "এই শিফটের বাকি সময়",
       "until_resumed": "আমি চালু না করা পর্যন্ত"
     }
+  },
+  "brandName": {
+    "cheez": "চিজ!",
+    "madchef": "ম্যাডশেফ",
+    "combined": "চিজ! + ম্যাডশেফ"
   }
 }

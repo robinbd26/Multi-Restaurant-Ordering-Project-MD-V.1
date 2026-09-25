@@ -906,7 +906,6 @@
     "restaurantsSubtitle": "Pick your favourite branch and browse the menu",
     "noOpenRestaurants": "No open restaurants",
     "noOpenRestaurantsDesc": "Please check back later.",
-    "deliveryRadius": "Delivery {km} km",
     "menuTitle": "Menu",
     "viewCart": "View cart →",
     "allWithCount": "All ({count})",
@@ -3920,7 +3919,13 @@
     "setLocation": "Set location",
     "nearestBadge": "Nearest",
     "opensAt": "Opens at {time}",
-    "finding": "Finding restaurants near you…"
+    "finding": "Finding restaurants near you…",
+    "nearestServingBadge": "Nearest that delivers",
+    "closestClosed": "Closest to you, but closed right now",
+    "closestNotCovered": "Closest to you, but it does not deliver to your location",
+    "closestDiffers": "{closest} is closer to you, but {reason}. {nearest} is the nearest branch that is open and delivers to you.",
+    "reasonClosed": "it is closed right now",
+    "reasonNotCovered": "it does not deliver to your location"
   },
   "location": {
     "consentTitle": "Use your location?",
@@ -4407,5 +4412,10 @@
       "shift": "Rest of this shift",
       "until_resumed": "Until I resume"
     }
+  },
+  "brandName": {
+    "cheez": "Cheez!",
+    "madchef": "Madchef",
+    "combined": "Cheez! + Madchef"
   }
 }
