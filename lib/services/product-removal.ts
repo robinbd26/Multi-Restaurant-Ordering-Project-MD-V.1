@@ -6,6 +6,7 @@ import { revalidateCatalog } from "@/lib/cache/catalog";
 import { prisma } from "@/lib/db";
 import { conflict, forbidden, notFound, sk } from "@/lib/http/errors";
 import { logAdminAction } from "@/lib/services/audit";
+import { productForManage } from "@/lib/services/catalog";
 
 /**
  * Removing a product, under the rule every admin list follows:
@@ -19,6 +20,11 @@ import { logAdminAction } from "@/lib/services/audit";
  * database refuses the delete) and its food reviews (they cascade). A product
  * with neither was never ordered or reviewed: it is setup data, and a super
  * admin may DELETE it for good, taking its size variations with it.
+ *
+ * WHO: archive and restore are the super admin's (any branch) and the
+ * assigned branch manager's (own branch only, and never a product under an
+ * admin hold, the same rule as archiving). Permanent delete is super admin
+ * only.
  */
 
 function assertSuperAdmin(user: User): void {
@@ -52,10 +58,16 @@ export async function productRemovalCheck(user: User, productId: number): Promis
 /**
  * Bring an archived product back. It returns UNAVAILABLE: it was taken off the
  * menu on purpose, so going back on sale is a separate, deliberate switch.
+ * Super admin: any branch. Branch manager: own branch only (productForManage
+ * enforces it), and not a product the super admin is holding.
  */
 export async function restoreProduct(user: User, productId: number) {
-  assertSuperAdmin(user);
+  if (!Number.isSafeInteger(productId) || productId <= 0) throw notFound(sk("errors.catalog.productNotFound"));
+  await productForManage(user, productId);
   const product = await productOrThrow(productId);
+  if (user.role === "branch_manager" && product.heldByAdmin) {
+    throw forbidden(sk("errors.productRemoval.heldByAdmin"));
+  }
   if (!product.deletedAt) return product;
   const restored = await prisma.$transaction(async (tx) => {
     const row = await tx.product.update({

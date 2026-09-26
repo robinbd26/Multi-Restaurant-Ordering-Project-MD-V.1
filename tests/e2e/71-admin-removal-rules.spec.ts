@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, API_BASE, activeZoneId } from "./helpers";
+import { newSession, API_BASE, activeZoneId, branchMap } from "./helpers";
 
 /**
  * The admin removal rule: ANYTHING WITH HISTORY IS ARCHIVED, ONLY PURE SETUP
@@ -174,6 +174,43 @@ test.describe("products", () => {
     expect((await admin.req.post(`${API_BASE}/api/products/${product.id}/permanent-delete`)).status()).toBe(200);
     expect((await admin.req.get(`${API_BASE}/api/products/${product.id}/`)).status()).toBe(404);
     expect(await logged(admin.req, "delete", product.name)).toBe(true);
+    await admin.context.close();
+    await bm.context.close();
+  });
+
+  test("a branch manager restores their own branch's archived product, not another branch's", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const bm = await newSession(browser, "branch_manager");
+    const own = (await (await bm.req.get(`${API_BASE}/api/dashboard/branch-manager/`)).json()).branch.id as number;
+    const otherId = Object.values(await branchMap(admin.req)).find((id) => id !== own)!;
+    const ownProduct = await makeProduct(admin.req, own);
+    const foreign = await makeProduct(admin.req, otherId);
+    for (const p of [ownProduct, foreign]) {
+      expect((await admin.req.delete(`${API_BASE}/api/products/${p.id}/`)).status()).toBe(200);
+    }
+
+    // Another branch's archived product: refused.
+    expect((await bm.req.post(`${API_BASE}/api/products/${foreign.id}/restore`)).status(), "another branch → 403").toBe(403);
+
+    // Their own, from the catalogue's Archived view.
+    await bm.page.goto(`/branch-manager/catalog?archived=1&search=${encodeURIComponent(ownProduct.name)}`);
+    await bm.page.getByTestId(`product-restore-${ownProduct.id}`).click();
+    await bm.page.getByRole("dialog").getByRole("button", { name: /^restore$/i }).click();
+    await expect(bm.page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
+    const restored = await (await admin.req.get(`${API_BASE}/api/products/${ownProduct.id}/`)).json();
+    expect(restored.is_available, "comes back unavailable").toBe(false);
+
+    // Logged under the manager as the actor.
+    const logs = await (await admin.req.get(`${API_BASE}/api/activity-logs/?activity_type=action&page_size=30`)).json();
+    expect(
+      (logs.results as { description: string }[]).some((r) => r.description.includes(`Restored archived product "${ownProduct.name}"`)),
+    ).toBe(true);
+
+    // Permanent delete stays super admin only; the admin cleans up.
+    expect((await bm.req.post(`${API_BASE}/api/products/${ownProduct.id}/permanent-delete`)).status()).toBe(403);
+    for (const p of [ownProduct, foreign]) {
+      expect((await admin.req.post(`${API_BASE}/api/products/${p.id}/permanent-delete`)).status()).toBe(200);
+    }
     await admin.context.close();
     await bm.context.close();
   });

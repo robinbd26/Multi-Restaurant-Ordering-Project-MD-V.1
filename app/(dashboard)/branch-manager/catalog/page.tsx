@@ -57,6 +57,9 @@ export default async function CatalogPage({
     defaultSort: "name",
     defaultDirection: "asc",
   });
+  // Archived (soft-deleted) products are out of the catalogue by default;
+  // ?archived=1 lists only them, each with Restore.
+  const archivedView = param(sp, "archived") === "1";
   const catRaw = Number.parseInt(param(sp, "cat"), 10);
   const categoryId = Number.isSafeInteger(catRaw) && catRaw > 0 ? catRaw : 0;
 
@@ -65,7 +68,7 @@ export default async function CatalogPage({
 
   const where: Prisma.ProductWhereInput = {
     branchId,
-    deletedAt: null,
+    deletedAt: archivedView ? { not: null } : null,
     ...(categoryId ? { categoryId } : {}),
     ...(search
       ? {
@@ -96,7 +99,10 @@ export default async function CatalogPage({
 
   const products = rows.map(serializeProduct) as unknown as Product[];
   const meta = pageMeta(total, page, pageSize);
-  const filtered = hasActiveFilters(sp, ["search", "cat"]);
+  const filtered = hasActiveFilters(sp, ["search", "cat", "archived"]);
+  const archivedCount = archivedView
+    ? total
+    : await prisma.product.count({ where: { branchId, deletedAt: { not: null } } });
 
   const chip = (active: boolean) =>
     cn(
@@ -121,8 +127,8 @@ export default async function CatalogPage({
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Link href={BASE} className={chip(!categoryId)}>
-          {t("common.all")} ({fmt.num(total)})
+        <Link href={BASE} className={chip(!categoryId && !archivedView)}>
+          {t("common.all")} ({fmt.num(archivedView ? 0 : total)})
         </Link>
         {categories.map((cat) => (
           <Link
@@ -133,6 +139,13 @@ export default async function CatalogPage({
             {cat.name} ({fmt.num(cat._count.products)})
           </Link>
         ))}
+        <Link
+          href={listHref(BASE, sp, { archived: archivedView ? undefined : "1", cat: undefined, page: undefined })}
+          className={chip(archivedView)}
+          data-testid="catalog-archived-filter"
+        >
+          {t("productRemoval.filterArchived")} ({fmt.num(archivedCount)})
+        </Link>
       </div>
 
       <FilterBar
@@ -224,7 +237,13 @@ export default async function CatalogPage({
                         {/* A super-admin hold is called out here because it is
                             what withholds Delete from the manager below. */}
                         {product.held_by_admin ? <Badge tone="red">{t("adminExtras.heldBadge")}</Badge> : null}
-                        {product.is_available ? <Badge tone="green">{t("catalog.available")}</Badge> : <Badge tone="red">{t("catalog.unavailable")}</Badge>}
+                        {archivedView ? (
+                          <Badge tone="slate">{t("productRemoval.archivedBadge")}</Badge>
+                        ) : product.is_available ? (
+                          <Badge tone="green">{t("catalog.available")}</Badge>
+                        ) : (
+                          <Badge tone="red">{t("catalog.unavailable")}</Badge>
+                        )}
                       </span>
                     </Td>
                     <Td>
@@ -241,6 +260,8 @@ export default async function CatalogPage({
                         basePath="/branch-manager/catalog/products"
                         layout="inline"
                         canDelete={!product.held_by_admin}
+                        isArchived={archivedView}
+                        canRestore={!product.held_by_admin}
                       />
                     </Td>
                   </tr>
