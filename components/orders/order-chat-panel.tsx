@@ -161,10 +161,11 @@ export function OrderChatPanel({ orderId, viewerId }: { orderId: number; viewerI
   }, [load]);
 
   // Follow new messages when the reader is already at the bottom.
-  useEffect(() => {
+  const followBottom = useCallback(() => {
     const list = listRef.current;
     if (list && stickToBottom.current) list.scrollTop = list.scrollHeight;
-  }, [messages]);
+  }, []);
+  useEffect(followBottom, [messages, followBottom]);
 
   const photoPreview = useMemo(() => (photo ? URL.createObjectURL(photo) : null), [photo]);
   useEffect(() => () => {
@@ -292,12 +293,12 @@ export function OrderChatPanel({ orderId, viewerId }: { orderId: number; viewerI
   return (
     <div id="order-chat" className="scroll-mt-24">
       <Card testId="order-chat">
-        <CardHeader title={t("orderChat.title")} action={calls} />
+        <CardHeader title={t("orderChat.title")} action={calls} className="flex-wrap" />
         <CardContent className="space-y-3">
           {state ? (
-            <ul className="flex flex-wrap gap-2" aria-label={t("orderChat.participants")}>
+            <ul className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap" aria-label={t("orderChat.participants")}>
               {state.participants.map((p) => (
-                <li key={`${p.role}-${p.user}`} className="flex items-center gap-1.5 rounded-full bg-surface-muted py-1 pl-1 pr-2.5 text-xs">
+                <li key={`${p.role}-${p.user}`} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-muted py-1 pl-1 pr-2.5 text-xs">
                   <UserAvatar name={p.name} photo={p.photo} version={p.photo_version} className="size-6 text-[10px]" />
                   <span className="font-medium text-fg-base">{p.name}</span>
                   {roleBadge(p.role)}
@@ -353,6 +354,7 @@ export function OrderChatPanel({ orderId, viewerId }: { orderId: number; viewerI
                             src={m.image_thumb}
                             alt={t("orderChat.photoAlt", { name })}
                             loading="lazy"
+                            onLoad={followBottom}
                             className="max-h-60 rounded-lg object-cover"
                             data-testid="chat-photo"
                           />
@@ -380,7 +382,7 @@ export function OrderChatPanel({ orderId, viewerId }: { orderId: number; viewerI
           ) : state?.chat.can_send && !lostAccess ? (
             <form onSubmit={send} noValidate className="space-y-2">
               {state.quick_replies.length ? (
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("orderChat.quickRepliesLabel")}>
+                <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:flex-wrap" role="group" aria-label={t("orderChat.quickRepliesLabel")}>
                   {state.quick_replies.map((key) => (
                     <button
                       key={key}
@@ -388,7 +390,7 @@ export function OrderChatPanel({ orderId, viewerId }: { orderId: number; viewerI
                       disabled={pending}
                       onClick={() => sendQuick(key)}
                       data-testid={`chat-quick-${key}`}
-                      className="rounded-full border border-rider-600/30 bg-rider-50 px-3 py-1.5 text-sm font-medium text-rider-700 hover:bg-rider-600/10 disabled:opacity-50"
+                      className="shrink-0 whitespace-nowrap rounded-full border border-rider-600/30 bg-rider-50 px-3 py-1.5 text-sm font-medium text-rider-700 hover:bg-rider-600/10 disabled:opacity-50"
                     >
                       {t(`orderChat.quick.${key}`)}
                     </button>
