@@ -28,6 +28,14 @@ type Ctx = { params: Promise<{ path: string[] }> };
  */
 const PUBLIC_SUBDIRS = new Set(["products", "branch_logos", "branding", "ramadan_menus"]);
 
+/**
+ * Folders this route never serves, to anyone. Their files are only reachable
+ * through a route that checks access to the specific record: chat photos go
+ * through /api/orders/[id]/chat/messages/[messageId]/image, which applies the
+ * order chat's membership rule. "Any approved user" is far too wide for them.
+ */
+const ROUTED_ELSEWHERE_SUBDIRS = new Set(["chat_photos"]);
+
 export const GET = handle(async (_req: Request, ctx: Ctx): Promise<Response> => {
   const { path: segments } = await ctx.params;
   const key = (segments ?? []).join("/");
@@ -36,6 +44,9 @@ export const GET = handle(async (_req: Request, ctx: Ctx): Promise<Response> => 
   // crafted path can never reach the filesystem.
   const abs = resolveUploadPath(key);
   if (!abs) return new NextResponse("Not found", { status: 404 });
+  if (ROUTED_ELSEWHERE_SUBDIRS.has(key.split("/")[0] ?? "")) {
+    return new NextResponse("Not found", { status: 404 });
+  }
 
   // H-1: private media must never be served to an unauthenticated or unapproved
   // caller. Only the public brand/catalogue folders skip the check; everything

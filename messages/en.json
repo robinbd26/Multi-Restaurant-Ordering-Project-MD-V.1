@@ -2118,6 +2118,14 @@
       "superAdminOnly": "Only a super admin can permanently delete a product.",
       "hasHistory": "This product has history ({orders} order lines, {reviews} reviews), so it cannot be permanently deleted. Keep it archived: it stays off the menu and every order keeps it.",
       "heldByAdmin": "This product is on hold by the super admin, so only the super admin can restore it."
+    },
+    "orderChat": {
+      "noAccess": "You are not part of this order's chat.",
+      "observerReadOnly": "Super admins can read order chats but cannot post in them.",
+      "closed": "This chat is closed. It became read-only 2 hours after the order ended.",
+      "messageRequired": "Type a message or attach a photo.",
+      "photoTooLarge": "A photo can be at most {mb} MB.",
+      "quickReplyInvalid": "That quick reply is not available."
     }
   },
   "states": {
@@ -2518,6 +2526,13 @@
       "blockedBody": "Allow notifications for this site in your browser settings to start getting alerts.",
       "failedTitle": "Could not turn on alerts",
       "failedBody": "Phone alerts could not be turned on. In-app notifications keep working; please try again later."
+    },
+    "chat": {
+      "newMessage": {
+        "title": "New message — order {number}",
+        "photo": "{name} sent a photo.",
+        "quick": "{name}: {reply}"
+      }
     }
   },
   "notices": {
@@ -4472,5 +4487,14 @@
     "deletable": "It was never ordered or reviewed, so it can be deleted.",
     "confirmDelete": "Delete forever",
     "deleted": "Product permanently deleted"
+  },
+  "orderChat": {
+    "quick": {
+      "arrived": "I've arrived.",
+      "cant_find_address": "I can't find the address.",
+      "on_my_way": "I'm on my way.",
+      "running_late": "Running a few minutes late.",
+      "come_to_gate": "Please come to the gate."
+    }
   }
 }

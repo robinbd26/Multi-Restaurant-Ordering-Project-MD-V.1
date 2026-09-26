@@ -29,6 +29,7 @@ import { isBranchOpenNow } from "@/lib/services/branch-hours";
 import { formatClock } from "@/lib/i18n/format";
 import { isFullClosureWindow, isPastNightLastOrder } from "@/lib/services/coverage-window";
 import { isReceiveConfirmed } from "@/lib/services/rider-duty";
+import { markChatEndedInTx, openChatInTx, recordRiderChangeInTx } from "@/lib/services/order-chat";
 import { nextOrderNumber } from "@/lib/services/order-number";
 import { customerProductWhere } from "@/lib/services/product-eligibility";
 import { resolveOrderDeliveryArea } from "@/lib/services/delivery-areas";
@@ -651,6 +652,8 @@ export async function createOrder(input: {
         deliveryRadiusKmSnapshot: fulfillmentType === "delivery" ? new Prisma.Decimal(branch.deliveryRadiusKm) : null,
       },
     });
+    // The order's chat opens with it: the customer and the branch's manager.
+    await openChatInTx(tx, order.id);
     for (const line of lines) {
       await tx.orderItem.create({
         data: {
@@ -889,6 +892,11 @@ export async function updateOrderStatus(input: {
         reason: eventReason,
       },
     });
+    // Delivered/cancelled starts the chat's 2-hour read-only clock, stamped
+    // with the same commit as the status so the two can never disagree.
+    if (newStatus === "delivered" || newStatus === "cancelled") {
+      await markChatEndedInTx(tx, order.id, row.updatedAt);
+    }
     return row;
   });
 
@@ -1028,11 +1036,13 @@ export async function assignRiderToOrder(input: {
       );
     }
   }
-  // Transactional reassignment: on rider change, close the previous rider's
-  // delivery chat (history preserved; the new rider gets a fresh chat only after
-  // their own receive confirmation). Supersede prior pending offers and open a
-  // fresh pending offer for the new rider (req #6/#7 accept/reject workflow).
+  // Transactional reassignment: on a rider change the old rider leaves the
+  // order chat and the new one joins (access follows order.riderId, written
+  // below in the same transaction; history stays for everyone still in it).
+  // Supersede prior pending offers and open a fresh pending offer for the new
+  // rider (req #6/#7 accept/reject workflow).
   const updated = await prisma.$transaction(async (tx) => {
+    await recordRiderChangeInTx(tx, order.id, previousRiderId, riderId);
     if (previousRiderId && previousRiderId !== riderId) {
       await tx.orderDeliveryChatThread.updateMany({ where: { orderId: order.id, riderId: previousRiderId, status: "active" }, data: { status: "closed" } });
     }

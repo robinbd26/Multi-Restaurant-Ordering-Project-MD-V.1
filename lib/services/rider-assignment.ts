@@ -4,6 +4,7 @@ import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { notifyBranchManagers } from "@/lib/services/notifications";
+import { recordRiderChangeInTx } from "@/lib/services/order-chat";
 import { confirmReceive } from "@/lib/services/rider-duty";
 
 const RESPONDABLE_STATES = new Set(["pending", "accepted", "preparing", "ready"]);
@@ -114,7 +115,9 @@ export async function respondToAssignment(
       data: { status: "rejected", rejectionReason: trimmed, respondedAt: new Date() },
     });
     // Return the order to the correct assignment state — unassigned (not lost).
+    // The rider leaves the order chat with it.
     await tx.order.update({ where: { id: orderId }, data: { riderId: null } });
+    await recordRiderChangeInTx(tx, orderId, rider.id, null);
     await tx.orderDeliveryChatThread.updateMany({ where: { orderId, riderId: rider.id, status: "active" }, data: { status: "closed" } });
     return updated;
   });
@@ -132,8 +135,7 @@ export async function respondToAssignment(
  * Pickup verification by unique order number (req #8/#16). The rider references
  * the order number; the server verifies it maps to an order assigned to THIS
  * rider, at a branch the rider is on active duty for, then runs the existing
- * receive-confirmation (which enforces state + idempotency + opens the delivery
- * chat + notifies). A valid-looking number alone never marks an order collected.
+ * receive-confirmation (which enforces state + idempotency + notifies). A valid-looking number alone never marks an order collected.
  */
 export async function verifyPickupByOrderNumber(rider: User, orderNumber: string) {
   const number = String(orderNumber ?? "").trim();

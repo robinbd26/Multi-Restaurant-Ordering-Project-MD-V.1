@@ -313,7 +313,8 @@ export type NotificationType =
   | "security"
   | "account"
   | "branch"
-  | "catalog";
+  | "catalog"
+  | "chat";
 
 export interface Notification {
   id: number;
