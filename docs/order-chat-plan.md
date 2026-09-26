@@ -306,3 +306,6 @@ gating is kept).
 - **Layout pass.** Screenshots at 390 px showed the call buttons squeezing the
   title and the chips stacking; the header now wraps, and participants and quick
   replies are single swipeable rows on phones.
+- **Sound switch placement.** Next to the bell from `sm` up; on phones it is a
+  row in the profile menu, because one more topbar button overflowed 360 px
+  screens. The bell arms the audio unlock so it works with the menu closed.
