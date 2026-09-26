@@ -5,7 +5,8 @@ import { API_BASE, newSession, setLocale } from "./helpers";
 /**
  * ITEM 7 — a branch's location tag (Branch.zoneId, a master DeliveryZone),
  * added to the branch add/edit form, and the "Suggest areas for my branch"
- * helper it feeds on the branch-manager delivery-areas page.
+ * helper it feeds on the branch-manager delivery-areas page. The zone is
+ * REQUIRED: a branch cannot be created without one, and it cannot be cleared.
  *
  * The helper is explicitly assisted, not automatic: it pre-fills candidates
  * from the branch's own zone that are not already covered, shown for review
@@ -21,18 +22,23 @@ test.beforeEach(async ({ context }) => setLocale(context, "en"));
 
 const uniq = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
-async function firstActiveZone(req: APIRequestContext) {
+/** Active zones, first two. The master list no longer carries localities. */
+async function activeZones(req: APIRequestContext) {
   const res = await req.get(`${API_BASE}/api/area-zones`);
   expect(res.status()).toBe(200);
-  const zones = (await res.json()).results as { id: number; name: string; isActive: boolean; localities: { id: number; name: string; isActive: boolean }[] }[];
-  const zone = zones.find((z) => z.isActive && z.localities.some((l) => l.isActive));
-  expect(zone, "a seeded zone with active localities exists").toBeTruthy();
-  return zone!;
+  const zones = ((await res.json()).results as { id: number; name: string; isActive: boolean }[]).filter((z) => z.isActive);
+  expect(zones.length, "the seed has at least two active zones").toBeGreaterThanOrEqual(2);
+  return zones;
+}
+async function firstActiveZone(req: APIRequestContext) {
+  return (await activeZones(req))[0];
 }
 
+/** A branch in an active zone (a zone is required); `extra` may name another. */
 async function makeBranch(req: APIRequestContext, extra: Record<string, string> = {}) {
   const res = await req.post(`${API_BASE}/api/branches/`, {
     data: {
+      zone_id: String((await firstActiveZone(req)).id),
       name: uniq("ZoneTagBr"),
       address: "Dhaka",
       phone: "01711119992",
@@ -73,19 +79,30 @@ test.describe("Branch location tag (zone)", () => {
     await admin.context.close();
   });
 
-  test("a branch may be created with no zone tag, and it can be set/cleared later", async ({ browser }) => {
+  test("a zone is required: no branch without one, and it can be changed but never cleared", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
-    const branch = await makeBranch(admin.req);
-    expect(branch.zone_id, "no zone by default").toBeNull();
 
-    const zone = await firstActiveZone(admin.req);
-    const set = await admin.req.patch(`${API_BASE}/api/branches/${branch.id}/`, { data: { zone_id: String(zone.id) } });
-    expect(set.status()).toBe(200);
-    expect(((await set.json()) as { zone_id: number | null }).zone_id).toBe(zone.id);
+    // Creating a branch with no zone is refused, on the zone field.
+    const noZone = await admin.req.post(`${API_BASE}/api/branches/`, {
+      data: { name: uniq("NoZoneBr"), address: "Dhaka", phone: "01711119994", brand_type: "cheez" },
+    });
+    expect(noZone.status(), "a branch without a zone is refused").toBe(400);
+    expect(await noZone.text()).toContain("zone_id");
 
+    const [first, second] = await activeZones(admin.req);
+    const branch = await makeBranch(admin.req, { zone_id: String(first.id) });
+    expect(branch.zone_id).toBe(first.id);
+
+    // Changing it to another active zone works.
+    const moved = await admin.req.patch(`${API_BASE}/api/branches/${branch.id}/`, { data: { zone_id: String(second.id) } });
+    expect(moved.status()).toBe(200);
+    expect(((await moved.json()) as { zone_id: number | null }).zone_id).toBe(second.id);
+
+    // Clearing it is refused, and the branch keeps its zone.
     const cleared = await admin.req.patch(`${API_BASE}/api/branches/${branch.id}/`, { data: { zone_id: "" } });
-    expect(cleared.status()).toBe(200);
-    expect(((await cleared.json()) as { zone_id: number | null }).zone_id).toBeNull();
+    expect(cleared.status(), "a zone cannot be cleared").toBe(400);
+    const after = await (await admin.req.get(`${API_BASE}/api/branches/${branch.id}/`)).json();
+    expect(after.zone_id, "unchanged after the refused clear").toBe(second.id);
 
     await admin.context.close();
   });
