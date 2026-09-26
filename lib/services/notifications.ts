@@ -245,6 +245,18 @@ export function unreadCount(userId: number) {
   return prisma.notification.count({ where: { userId, isRead: false } });
 }
 
+/**
+ * The newest unread notification, reduced to what the bell needs to decide
+ * whether something NEW arrived since its last poll and which sound to play.
+ */
+export function latestUnread(userId: number) {
+  return prisma.notification.findFirst({
+    where: { userId, isRead: false },
+    orderBy: { id: "desc" },
+    select: { id: true, type: true, link: true },
+  });
+}
+
 // ── Campaign delivery + engagement (WS-7.5) ─────────────────────────────────
 // Marketing needs to know who a campaign actually REACHED, not who it targeted.
 // notifyUsers() returns a count, which is enough for a notice but useless for

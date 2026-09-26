@@ -3488,9 +3488,6 @@
     "noMyBookingsDesc": "Book a table.",
     "book_booked": "Booked",
     "book_cancelled": "Cancelled",
-    "enableAlert": "Enable sound alert",
-    "alertOn": "Alert on",
-    "alertMuted": "Alert muted",
     "errPartyOverCapacity": "This table seats at most {n} guests",
     "coverageFactsTitle": "Coverage basics",
     "coverageFactsHint": "The branch pin and the maximum radius are set by the super admin. Where you deliver inside that limit is up to you — draw it on the Delivery Areas page.",
@@ -4496,5 +4493,11 @@
       "running_late": "Running a few minutes late.",
       "come_to_gate": "Please come to the gate."
     }
+  },
+  "sound": {
+    "turnOn": "Turn notification sounds on",
+    "turnOff": "Turn notification sounds off",
+    "on": "Sound on",
+    "off": "Sound off"
   }
 }

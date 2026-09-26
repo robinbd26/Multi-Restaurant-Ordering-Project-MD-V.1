@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { useTranslation } from "@/lib/i18n/use-translation";
+import { announce } from "@/lib/sound";
 import { parseFieldErrors } from "@/lib/validation/contract";
 
 /**
@@ -22,6 +23,8 @@ const POLL_WITHOUT_PUSH_MS = 5_000;
 const POLL_WITH_PUSH_MS = 30_000;
 
 interface PendingAssignment {
+  /** The offer itself (one per assignment attempt), so a re-offer rings again. */
+  id: number;
   order: number;
   order_number: string | null;
   delivery_address: string;
@@ -35,7 +38,7 @@ interface PendingAssignment {
  * (the project's existing polling model — no extra WebSocket stack) and, when
  * one exists, shows a BLOCKING modal that cannot be dismissed by outside-click
  * or Escape. The rider must Accept or Reject (reason required) before using the
- * rest of the dashboard. A short WebAudio beep plays when audio is permitted;
+ * rest of the dashboard. The shared alert tone (lib/sound) plays when audio is permitted;
  * visual alerting continues regardless. Focus is trapped inside the dialog.
  * Duplicate/stale offers are handled server-side (pending endpoint filters
  * superseded/reassigned offers), so the modal never acts on a stale order.
@@ -134,26 +137,13 @@ export function RiderAssignmentGate() {
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
   }, [poll]);
 
-  // Beep + focus when a new offer becomes current.
+  // Alert tone + focus when a new offer becomes current. The shared sound
+  // system (lib/sound) handles mute and the autoplay unlock; the order's link
+  // is passed so the bell, which hears about the same offer, stays quiet.
   useEffect(() => {
     if (!current) return;
     dialogRef.current?.querySelector<HTMLButtonElement>('[data-testid="assignment-accept"]')?.focus();
-    try {
-      const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (AC) {
-        const ctx = new AC();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = 880;
-        gain.gain.value = 0.08;
-        osc.start();
-        osc.stop(ctx.currentTime + 0.25);
-      }
-    } catch {
-      /* autoplay blocked — visual alert is enough */
-    }
+    announce(`offer:${current.id}`, "alert", { link: `/rider/orders/${current.order}` });
     // Re-run only when the current offer changes (deliberate — not on every poll).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.order]);
