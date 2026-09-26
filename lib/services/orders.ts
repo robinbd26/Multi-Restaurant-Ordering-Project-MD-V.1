@@ -921,8 +921,6 @@ export async function updateOrderStatus(input: {
       totalAmount: order.totalAmount,
     });
     if (!byRule) await awardCoins(order.customerId, "order_delivered", `order:${order.id}`);
-    // C6: close the rider↔customer delivery chat to new messages (history kept).
-    await prisma.orderDeliveryChatThread.updateMany({ where: { orderId: order.id, status: "active" }, data: { status: "closed" } });
   }
 
   // Cancelled → hand back everything the order consumed. WS-7.2 releases the
@@ -1043,9 +1041,6 @@ export async function assignRiderToOrder(input: {
   // rider (req #6/#7 accept/reject workflow).
   const updated = await prisma.$transaction(async (tx) => {
     await recordRiderChangeInTx(tx, order.id, previousRiderId, riderId);
-    if (previousRiderId && previousRiderId !== riderId) {
-      await tx.orderDeliveryChatThread.updateMany({ where: { orderId: order.id, riderId: previousRiderId, status: "active" }, data: { status: "closed" } });
-    }
     // Any still-pending offer for this order is superseded by the new decision.
     await tx.riderOrderAssignment.updateMany({ where: { orderId: order.id, status: "pending" }, data: { status: "superseded" } });
     if (riderId !== null) {

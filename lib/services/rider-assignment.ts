@@ -118,7 +118,6 @@ export async function respondToAssignment(
     // The rider leaves the order chat with it.
     await tx.order.update({ where: { id: orderId }, data: { riderId: null } });
     await recordRiderChangeInTx(tx, orderId, rider.id, null);
-    await tx.orderDeliveryChatThread.updateMany({ where: { orderId, riderId: rider.id, status: "active" }, data: { status: "closed" } });
     return updated;
   });
   await notifyBranchManagers(order.branchId, {
