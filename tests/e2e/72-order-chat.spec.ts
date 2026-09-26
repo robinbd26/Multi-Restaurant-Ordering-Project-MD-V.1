@@ -25,8 +25,8 @@ import { backdateChatEnd, chatPhotoKey } from "./helpers/order-chat-db";
  *
  * Seeded actors: `customer`, `qa_upload_1` (another customer), `branch_manager`
  * (manages Main Branch only), `rider` and `courier2`, `super_admin`,
- * `management`. Every test places its own orders and cancels what it leaves
- * open, so the riders can go off duty afterwards.
+ * `management`. Every test places its own orders, cancels what it leaves
+ * open, and puts each rider back on (or off) duty as it found them.
  */
 
 test.beforeEach(() => {
@@ -90,19 +90,27 @@ async function toReady(bm: APIRequestContext, id: number) {
   for (const s of ["accepted", "preparing", "ready"]) expect((await setStatus(bm, id, s)).status(), s).toBe(200);
 }
 
-/** Put the rider on duty at `branchId` (their own earlier session is ended first). */
-async function onDutyAt(rider: APIRequestContext, branchId: number) {
-  const duty = await (await rider.get(`${API_BASE}/api/rider/duty`)).json();
-  if (duty.active_session?.branch === branchId) return;
-  if (duty.active_session) {
-    expect((await rider.post(`${API_BASE}/api/rider/duty/end`, { data: {} })).status(), "rider free to go off duty").toBe(200);
+/**
+ * Put the rider on duty at `branchId` and return a function that puts them back
+ * exactly as they were. The seeded `rider` starts the suite ON duty at Main
+ * Branch and other specs rely on that, so this spec must not leave it off duty.
+ */
+async function onDutyAt(rider: APIRequestContext, branchId: number): Promise<() => Promise<void>> {
+  const dutyBranch = async (): Promise<number | null> =>
+    (await (await rider.get(`${API_BASE}/api/rider/duty`)).json()).active_session?.branch ?? null;
+  const before = await dutyBranch();
+  if (before !== branchId) {
+    if (before !== null) {
+      expect((await rider.post(`${API_BASE}/api/rider/duty/end`, { data: {} })).status(), "rider free to go off duty").toBe(200);
+    }
+    expect((await rider.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: branchId } })).status()).toBe(201);
   }
-  expect((await rider.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: branchId } })).status()).toBe(201);
-}
-
-async function offDuty(rider: APIRequestContext) {
-  const duty = await (await rider.get(`${API_BASE}/api/rider/duty`)).json();
-  if (duty.active_session) await rider.post(`${API_BASE}/api/rider/duty/end`, { data: {} });
+  return async () => {
+    const now = await dutyBranch();
+    if (now === before) return;
+    if (now !== null) await rider.post(`${API_BASE}/api/rider/duty/end`, { data: {} });
+    if (before !== null) await rider.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: before } });
+  };
 }
 
 const assign = (req: APIRequestContext, orderId: number, riderId: number | null) =>
@@ -177,8 +185,8 @@ test.describe("Order chat — who can read and post", () => {
     const riderB = await login(browser, "courier2");
     const main = await branchIdByName(customer.req, "Main Branch");
     const [a, b] = [await me(riderA.req), await me(riderB.req)];
-    await onDutyAt(riderA.req, main);
-    await onDutyAt(riderB.req, main);
+    const restoreA = await onDutyAt(riderA.req, main);
+    const restoreB = await onDutyAt(riderB.req, main);
     const orderId = await placeOrder(customer.req, main, "delivery");
     await toReady(bm.req, orderId);
 
@@ -216,8 +224,8 @@ test.describe("Order chat — who can read and post", () => {
       expect((await say(riderB.req, orderId, "Taking over")).status()).toBe(201);
     } finally {
       await setStatus(bm.req, orderId, "cancelled", "e2e cleanup");
-      await offDuty(riderA.req);
-      await offDuty(riderB.req);
+      await restoreA();
+      await restoreB();
     }
   });
 
@@ -227,7 +235,7 @@ test.describe("Order chat — who can read and post", () => {
     const rider = await login(browser, "courier2");
     const main = await branchIdByName(customer.req, "Main Branch");
     const r = await me(rider.req);
-    await onDutyAt(rider.req, main);
+    const restoreDuty = await onDutyAt(rider.req, main);
     const orderId = await placeOrder(customer.req, main, "delivery");
     await toReady(bm.req, orderId);
 
@@ -244,7 +252,7 @@ test.describe("Order chat — who can read and post", () => {
       expect(view.participants.map((p) => p.role).sort()).toEqual(["branch_manager", "customer"]);
     } finally {
       await setStatus(bm.req, orderId, "cancelled", "e2e cleanup");
-      await offDuty(rider.req);
+      await restoreDuty();
     }
   });
 
@@ -254,7 +262,7 @@ test.describe("Order chat — who can read and post", () => {
     const rider = await login(browser, "courier2");
     const main = await branchIdByName(customer.req, "Main Branch");
     const r = await me(rider.req);
-    await onDutyAt(rider.req, main);
+    const restoreDuty = await onDutyAt(rider.req, main);
     const orderId = await placeOrder(customer.req, main, "pickup");
 
     try {
@@ -265,7 +273,7 @@ test.describe("Order chat — who can read and post", () => {
       expect(view.participants.map((p) => p.role).sort()).toEqual(["branch_manager", "customer"]);
     } finally {
       await setStatus(bm.req, orderId, "cancelled", "e2e cleanup");
-      await offDuty(rider.req);
+      await restoreDuty();
     }
   });
 });
@@ -278,7 +286,7 @@ test.describe("Order chat — phone numbers", () => {
     const main = await branchIdByName(customer.req, "Main Branch");
     const [c, r] = [await me(customer.req), await me(rider.req)];
     expect(c.phone && r.phone, "seeded users have phone numbers").toBeTruthy();
-    await onDutyAt(rider.req, main);
+    const restoreDuty = await onDutyAt(rider.req, main);
     const orderId = await placeOrder(customer.req, main, "delivery");
     await toReady(bm.req, orderId);
 
@@ -324,7 +332,7 @@ test.describe("Order chat — phone numbers", () => {
       expect(bmView.rider_phone).toBe(r.phone);
     } finally {
       await setStatus(bm.req, orderId, "cancelled", "e2e cleanup"); // no-op if delivered
-      await offDuty(rider.req);
+      await restoreDuty();
     }
   });
 });
