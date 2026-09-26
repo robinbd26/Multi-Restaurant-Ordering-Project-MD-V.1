@@ -1548,7 +1548,8 @@
     "trackingDenied": "Location permission denied — enable it to receive deliveries.",
     "hoursToday": "Hours today",
     "hoursWeek": "Hours this week",
-    "dutySessions": "Duty sessions"
+    "dutySessions": "Duty sessions",
+    "pickupConfirmation": "Pickup confirmation"
   },
   "pages": {
     "ordersTitle": "Orders",
@@ -4492,7 +4493,35 @@
       "on_my_way": "I'm on my way.",
       "running_late": "Running a few minutes late.",
       "come_to_gate": "Please come to the gate."
-    }
+    },
+    "title": "Order chat",
+    "participants": "People in this chat",
+    "role": {
+      "customer": "Customer",
+      "branchManager": "Branch Manager · {branch}",
+      "rider": "Rider"
+    },
+    "system": {
+      "rider_joined": "{name} (Rider) joined the chat.",
+      "rider_left": "{name} (Rider) left the chat."
+    },
+    "call": {
+      "branch": "Call branch",
+      "customer": "Call customer",
+      "rider": "Call rider",
+      "aria": "Call {name}"
+    },
+    "empty": "No messages yet.",
+    "placeholder": "Write a message…",
+    "send": "Send",
+    "attachPhoto": "Attach a photo",
+    "removePhoto": "Remove photo",
+    "photoAlt": "Photo from {name}",
+    "quickRepliesLabel": "Quick replies",
+    "unknownSender": "Former user",
+    "readOnly": "This chat closed 2 hours after the order ended. You can still read it.",
+    "observerNote": "You are reading this chat as super admin. You cannot post in it.",
+    "noLongerAccess": "You are no longer on this order, so its chat is closed to you."
   },
   "sound": {
     "turnOn": "Turn notification sounds on",

@@ -30,6 +30,12 @@ export const IN_FLIGHT_DELIVERY_STATUSES: readonly string[] = [
   "delayed",
 ];
 
+/**
+ * Input cap for a chat photo, checked in the browser before upload and again on
+ * the server. Phone photos are 2–8 MB; the stored copy is re-encoded far smaller.
+ */
+export const CHAT_PHOTO_MAX_MB = 10;
+
 /** One-tap replies for riders. Stored as the key, rendered in the reader's language. */
 export const RIDER_QUICK_REPLIES = [
   "arrived",

@@ -9,6 +9,7 @@ import { OrderStepTracker } from "@/components/rider/order-step-tracker";
 import { RoutePanel } from "@/components/rider/route-panel";
 import { OrderLocationMap } from "@/components/maps/order-location-map";
 import { PageHeader } from "@/components/layout/page-header";
+import { OrderChatPanel } from "@/components/orders/order-chat-panel";
 import { OrderStatusActions } from "@/components/orders/order-status-actions";
 import { OrderStatusBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -73,11 +74,16 @@ export default async function RiderOrderDetailPage({ params }: { params: Promise
       </Card>
 
       <Card className="mb-6">
-        <CardHeader title={t("rider.deliveryChat")} />
+        <CardHeader title={t("rider.pickupConfirmation")} />
         <CardContent>
-          <RiderOrderPanel orderId={order.id} viewerId={Number(me.id)} status={order.status} />
+          <RiderOrderPanel orderId={order.id} status={order.status} />
         </CardContent>
       </Card>
+
+      {/* The order chat: the customer, the branch manager and this rider. */}
+      <div className="mb-6">
+        <OrderChatPanel orderId={order.id} viewerId={Number(me.id)} />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left: route + items */}

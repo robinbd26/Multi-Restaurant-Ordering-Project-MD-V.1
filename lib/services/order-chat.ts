@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { saveUpload } from "@/lib/http/upload";
 import {
+  CHAT_PHOTO_MAX_MB,
   RIDER_QUICK_REPLIES,
   chatAccessFor,
   chatReadOnlyAt,
@@ -38,8 +39,6 @@ import { LIMITS } from "@/lib/validation/limits";
 
 /** Storage folder for chat photos. Private: /api/uploads refuses it outright. */
 export const CHAT_PHOTO_SUBDIR = "chat_photos";
-/** Input cap for a chat photo. Phone photos are 2–8 MB; stored copies are far smaller. */
-export const CHAT_PHOTO_MAX_MB = 10;
 const CHAT_PHOTO_MAX_BYTES = CHAT_PHOTO_MAX_MB * 1024 * 1024;
 /** The small copy saveUpload() writes for chat photos (lib/upload/variants.ts). */
 export const CHAT_PHOTO_THUMB_WIDTH = 320;

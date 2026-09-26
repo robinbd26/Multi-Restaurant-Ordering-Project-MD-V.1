@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { OrderDetailCard } from "@/components/orders/order-detail-card";
-import { DeliveryChatPanel } from "@/components/orders/delivery-chat-panel";
+import { OrderChatPanel } from "@/components/orders/order-chat-panel";
 import { OrderStatusActions } from "@/components/orders/order-status-actions";
 import { PaymentStatusCard, type OrderWithPayment } from "@/components/orders/payment-status-card";
 import { LiveOrderRefresher } from "@/components/customer/live-order-refresh";
@@ -125,14 +125,11 @@ export default async function CustomerOrderDetailPage({
         </Card>
       ) : null}
 
-      {order.rider ? (
-        <Card className="mt-6">
-          <CardHeader title={t("rider.deliveryChat")} subtitle={order.rider_name ?? ""} />
-          <CardContent>
-            <DeliveryChatPanel orderId={order.id} viewerId={Number(me.id)} />
-          </CardContent>
-        </Card>
-      ) : null}
+      {/* Every order has a chat with the branch (and the rider once one is
+          assigned); the call buttons live in its header. */}
+      <div className="mt-6">
+        <OrderChatPanel orderId={order.id} viewerId={Number(me.id)} />
+      </div>
     </>
   );
 }
