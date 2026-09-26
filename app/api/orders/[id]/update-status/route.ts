@@ -41,5 +41,5 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
         : Number(body.delay_minutes),
   });
   const full = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE });
-  return json(serializeOrder(full));
+  return json(serializeOrder(full, me));
 });

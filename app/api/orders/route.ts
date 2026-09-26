@@ -31,7 +31,7 @@ export const GET = handle(async (req: Request) => {
     prisma.order.count({ where }),
     prisma.order.findMany({ where, include: ORDER_INCLUDE, orderBy: { createdAt: "desc" }, skip, take }),
   ]);
-  return paginated(orders.map(serializeOrder), { page, pageSize, count });
+  return paginated(orders.map((o) => serializeOrder(o, me)), { page, pageSize, count });
 });
 
 // POST /api/orders — customers only. Checkout payload; prices come from the DB.
@@ -91,5 +91,5 @@ export const POST = handle(async (req: Request) => {
     idempotencyKey: body.idempotency_key ?? null,
   });
   const full = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE });
-  return created(serializeOrder(full));
+  return created(serializeOrder(full, me));
 });

@@ -12,5 +12,5 @@ export const GET = handle(async () => {
   const me = await requireApiRole("rider");
   const { activeBranchId, where } = await eligibleOrdersForRider(me);
   const orders = await prisma.order.findMany({ where, include: ORDER_INCLUDE, orderBy: { createdAt: "desc" }, take: 100 });
-  return json({ active_branch: activeBranchId, count: orders.length, results: orders.map(serializeOrder) });
+  return json({ active_branch: activeBranchId, count: orders.length, results: orders.map((o) => serializeOrder(o, me)) });
 });

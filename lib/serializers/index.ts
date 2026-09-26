@@ -34,6 +34,7 @@ import {
   withdrawalStatusDisplay,
 } from "@/lib/constants/enums";
 import type { ActivityType } from "@/lib/constants/enums";
+import { orderPhoneVisibility, type ChatViewer } from "@/lib/order-chat/policy";
 
 type Dec = Prisma.Decimal | number | string | null | undefined;
 
@@ -281,6 +282,7 @@ function serializeOrderItem(i: OrderItemRel) {
 
 type OrderAssignmentRel = {
   id: number;
+  riderId: number;
   status: string;
   distanceKm: unknown;
   rejectionReason: string;
@@ -296,7 +298,42 @@ type OrderRel = Order & {
   assignments?: OrderAssignmentRel[];
 };
 
-export function serializeOrder(o: OrderRel) {
+/**
+ * Who is looking at a serialized order. Required, so no call site can forget
+ * it: the customer's and the rider's phone numbers depend on the viewer (see
+ * `orderPhoneVisibility` in lib/order-chat/policy.ts).
+ */
+export type OrderViewer = ChatViewer;
+
+/**
+ * Viewer for back-office reads that are scoped by role rather than by a user
+ * (the super admin / marketing dashboards). Only the role matters
+ * to the phone rule for these roles.
+ */
+export function backOfficeViewer(role: "super_admin" | "management" | "marketing" | "accounts"): OrderViewer {
+  return { id: 0, role };
+}
+
+/**
+ * The order as the API returns it TO `viewer`. The customer and the rider see
+ * each other's numbers only during an active delivery — withheld here, not
+ * just hidden in the UI — and a rider never receives the bKash payer number.
+ * `assignments` must carry the latest offer (ORDER_INCLUDE does); without it
+ * the rule cannot see an acceptance and fails closed.
+ */
+export function serializeOrder(o: OrderRel, viewer: OrderViewer) {
+  const latest = o.assignments?.[0] ?? null;
+  const show = orderPhoneVisibility(viewer, {
+    customerId: o.customerId,
+    fulfillmentType: o.fulfillmentType,
+    status: o.status,
+    riderId: o.riderId,
+    latestAssignment: latest ? { riderId: latest.riderId, status: latest.status } : null,
+  });
+  // The offer's rider is shown with the same rule as the order's rider, and
+  // only when it IS the order's rider (an old, superseded offer names someone else).
+  const showAssignmentPhone =
+    show.riderPhone && (viewer.role !== "customer" && viewer.role !== "rider" ? true : latest?.riderId === o.riderId);
   return {
     id: o.id,
     // #15 — customer-facing unique number (ORD-YYYYMMDD-000001); falls back to
@@ -304,12 +341,12 @@ export function serializeOrder(o: OrderRel) {
     order_number: o.orderNumber ?? null,
     customer: o.customerId,
     customer_name: o.customer ? fullName(o.customer) : "",
-    customer_phone: o.customer?.phone ?? "",
+    customer_phone: show.customerPhone ? o.customer?.phone ?? "" : "",
     branch: o.branchId,
     branch_name: o.branch?.name ?? "",
     rider: o.riderId ?? null,
     rider_name: o.rider ? fullName(o.rider) : null,
-    rider_phone: o.rider?.phone ?? null,
+    rider_phone: show.riderPhone ? o.rider?.phone ?? null : null,
     status: o.status,
     status_display: orderStatusDisplay(o.status),
     payment_method: o.paymentMethod,
@@ -328,7 +365,7 @@ export function serializeOrder(o: OrderRel) {
       })) ?? [],
     payment_status: o.paymentStatus,
     bkash_transaction_id: o.bkashTransactionId,
-    bkash_payer_phone: o.bkashPayerPhone,
+    bkash_payer_phone: show.payerPhone ? o.bkashPayerPhone : "",
     bkash_destination_number: o.bkashDestinationNumber,
     payment_submitted_at: iso(o.paymentSubmittedAt),
     payment_verified_by: o.paymentVerifiedById ?? null,
@@ -372,7 +409,7 @@ export function serializeOrder(o: OrderRel) {
           rider_name: o.assignments[0].rider
             ? fullName(o.assignments[0].rider) || o.assignments[0].rider.username
             : null,
-          rider_phone: o.assignments[0].rider?.phone ?? null,
+          rider_phone: showAssignmentPhone ? o.assignments[0].rider?.phone ?? null : null,
         }
       : null,
     items: (o.items ?? []).map(serializeOrderItem),

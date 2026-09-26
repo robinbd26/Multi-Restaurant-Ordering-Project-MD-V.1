@@ -25,5 +25,5 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
 
   await assignRiderToOrder({ order, riderId: body.rider_id ?? null, actingUser: me });
   const full = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE });
-  return json(serializeOrder(full));
+  return json(serializeOrder(full, me));
 });
