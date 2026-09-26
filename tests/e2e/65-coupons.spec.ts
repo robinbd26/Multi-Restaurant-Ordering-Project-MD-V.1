@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { API_BASE, newSession, setLocale, isDhakaFullClosureWindow, FULL_CLOSURE_REASON } from "./helpers";
+import { API_BASE, newSession, setLocale, isDhakaFullClosureWindow, FULL_CLOSURE_REASON, activeZoneId } from "./helpers";
 
 /**
  * PHASE 5 — ONE coupon system.
@@ -51,6 +51,8 @@ async function mainBranch(admin: APIRequestContext) {
 async function otherBranch(admin: APIRequestContext) {
   const res = await admin.post(`${API_BASE}/api/branches/`, {
     multipart: {
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(admin)),
       name: `CouponElsewhere ${Date.now()}`,
       address: "Coupon Rd, Dhaka",
       phone: `016${Math.floor(10000000 + Math.random() * 89999999)}`,

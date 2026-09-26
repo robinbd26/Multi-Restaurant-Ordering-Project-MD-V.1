@@ -39,7 +39,7 @@ export async function generateMetadata(): Promise<Metadata> {
 const BASE = "/admin/products";
 /** The ONLY sortable fields — an arbitrary query string never reaches orderBy. */
 const SORTABLE = ["name", "price", "createdAt", "updatedAt"] as const;
-const STATUSES = ["available", "deactivated", "held"] as const;
+const STATUSES = ["available", "deactivated", "held", "archived"] as const;
 
 /** Numeric query param, ignored unless it is a positive integer. */
 function idParam(sp: RawSearchParams, key: string): number | undefined {
@@ -77,9 +77,10 @@ export default async function AdminProductsPage({
   const status = enumParam(sp, "status", STATUSES);
   const variationType = enumParam(sp, "variationType", PRODUCT_VARIATION_TYPES);
 
-  // Soft-deleted products have their own page (/admin/products/deactivated), so
-  // they stay excluded here exactly as before.
-  const and: Prisma.ProductWhereInput[] = [{ deletedAt: null }];
+  // ARCHIVED (soft-deleted) products are hidden by default, like archived
+  // branches; the Archived status filter shows only them, with Restore and
+  // Delete permanently on each row.
+  const and: Prisma.ProductWhereInput[] = [status === "archived" ? { deletedAt: { not: null } } : { deletedAt: null }];
   if (branchId) and.push({ branchId });
   if (categoryId) and.push({ categoryId });
   if (brand) and.push({ brand });
@@ -154,7 +155,9 @@ export default async function AdminProductsPage({
       ? t("adminExtras.heldBadge")
       : value === "available"
         ? t("adminExtras.availableBadge")
-        : t("adminExtras.deactivatedBadge");
+        : value === "archived"
+          ? t("productRemoval.filterArchived")
+          : t("adminExtras.deactivatedBadge");
   const activeFilters = [
     ...(search ? [chip("search", t("list.searchLabel"), search)] : []),
     ...(branchId
@@ -169,7 +172,9 @@ export default async function AdminProductsPage({
   ];
 
   const statusBadge = (p: (typeof products)[number]) =>
-    p.heldByAdmin ? (
+    p.deletedAt ? (
+      <Badge tone="slate">{t("productRemoval.archivedBadge")}</Badge>
+    ) : p.heldByAdmin ? (
       <Badge tone="red">{t("adminExtras.heldBadge")}</Badge>
     ) : p.isAvailable ? (
       <Badge tone="green">{t("adminExtras.availableBadge")}</Badge>
@@ -193,6 +198,9 @@ export default async function AdminProductsPage({
       basePath={BASE}
       canHold
       canDelete
+      isArchived={p.deletedAt != null}
+      canRestore
+      canPermanentDelete
     />
   );
 

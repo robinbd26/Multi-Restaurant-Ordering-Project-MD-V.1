@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, API_BASE } from "./helpers";
+import { newSession, apiLogin, API_BASE, activeZoneId } from "./helpers";
 
 /**
  * PHASE 9 / PHASE 16 — regression cover for the reported "Something went wrong /
@@ -115,6 +115,8 @@ test.describe("Phase 16 — branch manager catalog", () => {
     // A brand-new branch has no products; its scoped catalogue must be empty, not broken.
     const created = await admin.req.post(`${API_BASE}/api/branches/`, {
       multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
         name: `EmptyCat-${Date.now()}`,
         address: "Empty Rd, Dhaka",
         phone: `017${Math.floor(10000000 + Math.random() * 89999999)}`,

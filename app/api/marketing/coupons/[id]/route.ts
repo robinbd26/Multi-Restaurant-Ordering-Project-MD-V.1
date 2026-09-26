@@ -4,6 +4,7 @@ import { requireApiRole } from "@/lib/auth/current-user";
 import { handle, notFound } from "@/lib/http/errors";
 import { json } from "@/lib/http/respond";
 import { prisma } from "@/lib/db";
+import { logAdminAction } from "@/lib/services/audit";
 import {
   archiveOrDeleteCoupon,
   couponBranchFor,
@@ -83,5 +84,13 @@ export const DELETE = handle(async (_req: Request, ctx: Ctx) => {
   const { id } = await ctx.params;
   const { coupon } = await scopedCoupon(me, id);
   const action = await archiveOrDeleteCoupon(coupon.id);
+  await logAdminAction(
+    me.id,
+    action === "archived" ? "archive" : "delete",
+    action === "archived"
+      ? `Archived coupon ${coupon.code} (#${coupon.id}); it has been used, so its history is kept`
+      : `Permanently deleted coupon ${coupon.code} (#${coupon.id}); it was never used`,
+    { branchId: action === "archived" ? coupon.branchId : null },
+  );
   return json({ action });
 });

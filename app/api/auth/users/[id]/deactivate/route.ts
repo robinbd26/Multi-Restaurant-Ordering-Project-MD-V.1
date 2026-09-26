@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { forbidden, handle, sk } from "@/lib/http/errors";
 import { json } from "@/lib/http/respond";
 import { serializeUser } from "@/lib/serializers";
+import { logUserActiveChange } from "@/lib/services/user-removal";
 import { setUserActive } from "@/lib/services/users";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -14,5 +15,6 @@ export const POST = handle(async (_req: Request, ctx: Ctx) => {
   if (Number(id) === me.id) throw forbidden(sk("errors.auth.cannotDeactivateSelf"));
   await setUserActive(Number(id), false);
   const user = await prisma.user.findUniqueOrThrow({ where: { id: Number(id) }, include: { approvedBy: true } });
+  await logUserActiveChange(me, user, false);
   return json(serializeUser(user));
 });

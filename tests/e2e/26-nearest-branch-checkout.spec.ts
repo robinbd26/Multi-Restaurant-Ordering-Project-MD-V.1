@@ -1,13 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import {
-  newSession,
-  API_BASE,
-  inNightOrderBlackout,
-  NIGHT_BLACKOUT_REASON,
-  isDhakaFullClosureWindow,
-  FULL_CLOSURE_REASON,
-} from "./helpers";
+import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, isDhakaFullClosureWindow, FULL_CLOSURE_REASON, activeZoneId, branchMap } from "./helpers";
 
 /**
  * req #20 (nearest branch enforced server-side in order creation) + req #6
@@ -41,13 +34,6 @@ async function seedCustomerLocation(
   expect(res.status(), "customer location seeded").toBe(200);
 }
 const uniq = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-
-async function branchMap(req: APIRequestContext): Promise<Record<string, number>> {
-  const { results } = await (await req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
-}
 /**
  * Fetch a product that belongs to `branchId`. Prefer an admin/staff session so
  * catalogue scoping cannot silently swap the branch under a customer account
@@ -85,6 +71,8 @@ async function placeDelivery(
 async function createEligibleBranch(req: APIRequestContext, pt: { lat: number; lng: number }) {
   const created = await req.post(`${API_BASE}/api/branches/`, {
     multipart: {
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(req)),
       name: uniq("EligBranch"),
       address: "Test Rd, Dhaka",
       phone: `013${Math.floor(10000000 + Math.random() * 89999999)}`,
@@ -214,8 +202,8 @@ test.describe("#20 server-derived delivery branch (order creation)", () => {
     const ok = await placeDelivery(customer.req, { branch_id: branch.id, product_id: product.id, ...INSIDE });
     expect(ok.status(), "eligible branch accepts the order").toBe(201);
 
-    // Archive it (SA; it has a product dependency → archived, not deleted).
-    expect((await admin.req.delete(`${API_BASE}/api/branches/${branch.id}/`)).status()).toBeLessThan(300);
+    // Archive it (SA). It now has an order, so archiving is the only removal.
+    expect((await admin.req.post(`${API_BASE}/api/branches/${branch.id}/archive`)).status()).toBeLessThan(300);
     const afterArchive = await placeDelivery(customer.req, { branch_id: branch.id, product_id: product.id, ...INSIDE });
     expect(afterArchive.status(), "archived branch excluded").toBe(400);
   });

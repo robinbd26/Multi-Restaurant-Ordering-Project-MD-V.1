@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
-import { newSession, setLocale } from "./helpers";
+import { newSession, setLocale, activeZoneId } from "./helpers";
 
 /**
  * PRODUCT SYSTEM — the database is the single source of truth.
@@ -292,6 +292,8 @@ test.describe("Branch and category eligibility", () => {
     // A dedicated branch, so holding it cannot disturb the shared seed branches.
     const branchRes = await admin.req.post("/api/branches/", {
       data: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
         name: uniq("SyncBranch"),
         address: "Dhanmondi, Dhaka",
         phone: "01711111111",

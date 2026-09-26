@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, API_BASE } from "./helpers";
+import { newSession, apiLogin, API_BASE, activeZoneId, branchMap } from "./helpers";
 
 /**
  * PHASE J — the Branch Manager order workflow is a SERVER-ENFORCED state
@@ -15,13 +15,6 @@ import { newSession, apiLogin, API_BASE } from "./helpers";
  */
 
 const INSIDE = { lat: 23.781, lng: 90.408 };
-
-async function branchMap(req: APIRequestContext): Promise<Record<string, number>> {
-  const { results } = await (await req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
-}
 
 async function newOrder(req: APIRequestContext, branchId: number) {
   const { results } = await (await req.get(`${API_BASE}/api/products/?branch_id=${branchId}&page_size=50`)).json();
@@ -178,6 +171,8 @@ test.describe("Phase J — authorization", () => {
     // A branch that genuinely covers the point but is NOT the manager's.
     const created = await (await admin.req.post(`${API_BASE}/api/branches/`, {
       multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
         name: `WfBranch-${Date.now()}`, address: "Wf Rd", phone: `019${Math.floor(10000000 + Math.random() * 89999999)}`,
         brand_type: "cheez", latitude: String(INSIDE.lat), longitude: String(INSIDE.lng),
       },

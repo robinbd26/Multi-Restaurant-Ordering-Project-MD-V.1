@@ -27,6 +27,8 @@ export async function ProductDetailView({
   backLabel,
   canHold = false,
   canDelete = false,
+  canRestore = false,
+  canPermanentDelete = false,
 }: {
   productId: number;
   /** Section base, e.g. "/admin/products". */
@@ -34,6 +36,9 @@ export async function ProductDetailView({
   backLabel: string;
   canHold?: boolean;
   canDelete?: boolean;
+  /** Super admin: restore an archived product / delete a never-ordered one. */
+  canRestore?: boolean;
+  canPermanentDelete?: boolean;
 }) {
   const { t, fmt } = await getT();
   const product = await prisma.product.findUniqueOrThrow({
@@ -81,7 +86,9 @@ export async function ProductDetailView({
         subtitle={product.description || undefined}
         actions={
           <span className="flex flex-wrap items-center gap-2">
-            <ButtonLink href={`${basePath}/${product.id}/edit`}>{t("common.edit")}</ButtonLink>
+            {product.deletedAt ? null : (
+              <ButtonLink href={`${basePath}/${product.id}/edit`}>{t("common.edit")}</ButtonLink>
+            )}
             <ProductRowActions
               productId={product.id}
               productName={product.name}
@@ -91,6 +98,9 @@ export async function ProductDetailView({
               basePath={basePath}
               canHold={canHold}
               canDelete={canDelete}
+              isArchived={product.deletedAt != null}
+              canRestore={canRestore}
+              canPermanentDelete={canPermanentDelete}
             />
           </span>
         }

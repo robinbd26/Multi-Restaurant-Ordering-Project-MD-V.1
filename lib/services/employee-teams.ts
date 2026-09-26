@@ -2,6 +2,7 @@ import "server-only";
 import type { EmployeeTeam, User } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { logAdminAction } from "@/lib/services/audit";
 import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { branchForManager } from "@/lib/selectors";
 import { assertManagesBranch, resolveManageableBranch } from "@/lib/services/branch-ops";
@@ -128,8 +129,17 @@ export async function deleteTeam(user: User, teamId: number) {
       data: { isArchived: true, isActive: false },
       include: { _count: { select: { members: true } } },
     });
+    await logAdminAction(
+      user.id,
+      "archive",
+      `Archived employee team "${team.name}" (#${team.id}); it still has ${members} member(s)`,
+      { branchId: team.branchId },
+    );
     return { archived: true, team: archived, members };
   }
   await prisma.employeeTeam.delete({ where: { id: teamId } });
+  await logAdminAction(user.id, "delete", `Deleted employee team "${team.name}" (#${team.id}); it had no members`, {
+    branchId: team.branchId,
+  });
   return { archived: false, team, members: 0 };
 }

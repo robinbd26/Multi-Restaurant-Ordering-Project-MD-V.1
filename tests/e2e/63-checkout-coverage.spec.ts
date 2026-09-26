@@ -7,8 +7,7 @@ import {
   inNightOrderBlackout,
   NIGHT_BLACKOUT_REASON,
   isDhakaFullClosureWindow,
-  FULL_CLOSURE_REASON,
-} from "./helpers";
+  FULL_CLOSURE_REASON, activeZoneId } from "./helpers";
 
 /**
  * PHASE 3 — checkout enforces coverage by NAME as well as by geometry.
@@ -60,6 +59,8 @@ async function locality(req: APIRequestContext, zoneName: string, localityName: 
 async function farBranchWithProduct(req: APIRequestContext) {
   const branchRes = await req.post(`${API_BASE}/api/branches/`, {
     data: {
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(req)),
       name: uniq("ChkBr"),
       address: "Dhaka",
       phone: "01711111111",

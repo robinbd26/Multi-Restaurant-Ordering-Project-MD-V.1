@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, API_BASE } from "./helpers";
+import { newSession, apiLogin, API_BASE, activeZoneId, branchMap } from "./helpers";
 
 /**
  * PHASE S — Cash on Delivery + MANUAL bKash.
@@ -13,13 +13,6 @@ import { newSession, apiLogin, API_BASE } from "./helpers";
 
 const INSIDE = { lat: 23.781, lng: 90.408 };
 const txn = () => `TRX${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 900 + 100)}`;
-
-async function branchMap(req: APIRequestContext): Promise<Record<string, number>> {
-  const { results } = await (await req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
-}
 
 async function firstOrderableProduct(req: APIRequestContext, branchId: number) {
   const { results } = await (await req.get(`${API_BASE}/api/products/?branch_id=${branchId}&page_size=50`)).json();
@@ -280,6 +273,8 @@ test.describe("Phase S — verification", () => {
     // have no coordinates and could never serve this cart).
     const branchRes = await admin.req.post(`${API_BASE}/api/branches/`, {
       multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
         name: `PayBranch-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
         address: "Pay Rd, Dhaka",
         phone: `018${Math.floor(10000000 + Math.random() * 89999999)}`,

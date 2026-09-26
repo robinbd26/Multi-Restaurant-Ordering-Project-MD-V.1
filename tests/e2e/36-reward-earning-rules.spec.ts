@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, API_BASE } from "./helpers";
+import { newSession, apiLogin, API_BASE, branchMap } from "./helpers";
 
 /**
  * PHASE H — super-admin EARNING RULES.
@@ -15,13 +15,6 @@ import { newSession, apiLogin, API_BASE } from "./helpers";
 
 const INSIDE = { lat: 23.781, lng: 90.408 };
 const RULES = `${API_BASE}/api/admin/reward-rules/`;
-
-async function branchMap(req: APIRequestContext): Promise<Record<string, number>> {
-  const { results } = await (await req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
-}
 
 /** The reward programme must be ON for an award to happen (Phase G gate). */
 async function ensureProgrammeActive(req: APIRequestContext) {

@@ -1,8 +1,9 @@
 import { requireApiRole } from "@/lib/auth/current-user";
 import { handle, notFound } from "@/lib/http/errors";
-import { json, noContent } from "@/lib/http/respond";
+import { json } from "@/lib/http/respond";
 import { prisma } from "@/lib/db";
-import { parseCampaignBody, serializeCampaign } from "@/lib/services/marketing";
+import { logAdminAction } from "@/lib/services/audit";
+import { archiveOrDeleteCampaign, parseCampaignBody, serializeCampaign } from "@/lib/services/marketing";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -45,11 +46,22 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
 });
 
 // DELETE /api/marketing/campaigns/[id]
+// A campaign that has ever sent owns history (its CampaignEvent rows cascade
+// on delete, its notifications would lose their campaign), so it is ARCHIVED;
+// only a never-sent campaign is removed. This route used to hard-delete every
+// campaign, bypassing archiveOrDeleteCampaign, which existed for exactly this.
 export const DELETE = handle(async (_req: Request, ctx: Ctx) => {
-  await requireApiRole("marketing", "super_admin");
+  const me = await requireApiRole("marketing", "super_admin");
   const { id } = await ctx.params;
   const existing = await prisma.campaign.findUnique({ where: { id: Number(id) } });
   if (!existing) throw notFound();
-  await prisma.campaign.delete({ where: { id: existing.id } });
-  return noContent();
+  const action = await archiveOrDeleteCampaign(existing.id);
+  await logAdminAction(
+    me.id,
+    action === "archived" ? "archive" : "delete",
+    action === "archived"
+      ? `Archived campaign "${existing.title}" (#${existing.id}); it has been sent, so its history is kept`
+      : `Permanently deleted campaign "${existing.title}" (#${existing.id}); it was never sent`,
+  );
+  return json({ action });
 });

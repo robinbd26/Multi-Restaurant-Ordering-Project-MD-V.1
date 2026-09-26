@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, API_BASE } from "./helpers";
+import { newSession, apiLogin, API_BASE, activeZoneId, branchMap } from "./helpers";
 
 /**
  * REQ #1 Super Admin branch delete/archive · REQ #2 category delete/deactivate
@@ -14,13 +14,6 @@ import { newSession, apiLogin, API_BASE } from "./helpers";
 const uniq = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const INSIDE = { lat: 23.781, lng: 90.408 };
 
-async function branchMap(req: APIRequestContext): Promise<Record<string, number>> {
-  const { results } = await (await req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
-}
-
 /** Create an unused branch (no products/orders/areas) — safe to hard delete. */
 async function createBareBranch(req: APIRequestContext) {
   const res = await req.post(`${API_BASE}/api/branches/`, {
@@ -29,6 +22,8 @@ async function createBareBranch(req: APIRequestContext) {
       address: "Nowhere Rd, Dhaka",
       phone: `014${Math.floor(10000000 + Math.random() * 89999999)}`,
       brand_type: "cheez",
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(req)),
     },
   });
   expect(res.status(), "branch created").toBe(201);
@@ -41,9 +36,11 @@ test.describe("#1 super admin branch delete/archive", () => {
     const admin = await newSession(browser, "super_admin");
     const branch = await createBareBranch(admin.req);
 
-    const res = await admin.req.delete(`${API_BASE}/api/branches/${branch.id}/`);
+    const res = await admin.req.post(`${API_BASE}/api/branches/${branch.id}/permanent-delete`, {
+      data: { confirm_name: branch.name },
+    });
     expect(res.status()).toBe(200);
-    expect((await res.json()).action, "no dependencies → hard delete").toBe("deleted");
+    expect((await res.json()).action, "no history → hard delete").toBe("deleted");
 
     // Really gone.
     expect((await admin.req.get(`${API_BASE}/api/branches/${branch.id}/`)).status()).toBe(404);
@@ -58,11 +55,11 @@ test.describe("#1 super admin branch delete/archive", () => {
     });
     expect(area.status()).toBe(201);
 
-    const res = await admin.req.delete(`${API_BASE}/api/branches/${branch.id}/`);
+    const check = await (await admin.req.get(`${API_BASE}/api/branches/${branch.id}/removal-check`)).json();
+    expect(check.setup.deliveryAreas, "the area is counted as setup data").toBeGreaterThan(0);
+    const res = await admin.req.post(`${API_BASE}/api/branches/${branch.id}/archive`);
     expect(res.status()).toBe(200);
-    const body = await res.json();
-    expect(body.action, "has dependencies → archived").toBe("archived");
-    expect(body.dependencies.areas).toBeGreaterThan(0);
+    expect((await res.json()).action).toBe("archived");
 
     // History preserved: the branch row still exists and the area still resolves.
     const still = await admin.req.get(`${API_BASE}/api/branches/${branch.id}/`);
@@ -83,10 +80,17 @@ test.describe("#1 super admin branch delete/archive", () => {
     const before = await (await customer.req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
     expect(before.results.some((b: { id: number }) => b.id === branch.id)).toBe(true);
 
-    expect((await admin.req.delete(`${API_BASE}/api/branches/${branch.id}/`)).status()).toBe(200);
+    expect((await admin.req.post(`${API_BASE}/api/branches/${branch.id}/archive`)).status()).toBe(200);
 
     const after = await (await customer.req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
     expect(after.results.some((b: { id: number }) => b.id === branch.id), "archived branch hidden").toBe(false);
+  });
+
+  test("the retired DELETE /api/branches/[id] answers 405 and changes nothing", async ({ browser }) => {
+    const admin = await newSession(browser, "super_admin");
+    const branch = await createBareBranch(admin.req);
+    expect((await admin.req.delete(`${API_BASE}/api/branches/${branch.id}/`)).status()).toBe(405);
+    expect((await admin.req.get(`${API_BASE}/api/branches/${branch.id}/`)).status()).toBe(200);
   });
 
   test("non-super-admin roles are refused server-side (403)", async ({ browser }) => {
@@ -94,15 +98,19 @@ test.describe("#1 super admin branch delete/archive", () => {
     const branch = await createBareBranch(admin.req);
     for (const role of ["branch_manager", "management", "marketing", "accounts", "rider", "customer"]) {
       const s = await apiLogin(browser, role);
-      const res = await s.req.delete(`${API_BASE}/api/branches/${branch.id}/`);
-      expect(res.status(), `${role} may not delete a branch`).toBe(403);
+      const archive = await s.req.post(`${API_BASE}/api/branches/${branch.id}/archive`);
+      expect(archive.status(), `${role} may not archive a branch`).toBe(403);
+      const del = await s.req.post(`${API_BASE}/api/branches/${branch.id}/permanent-delete`, {
+        data: { confirm_name: branch.name },
+      });
+      expect(del.status(), `${role} may not delete a branch`).toBe(403);
       await s.context.close();
     }
     // Still there after every forged attempt.
     expect((await admin.req.get(`${API_BASE}/api/branches/${branch.id}/`)).status()).toBe(200);
   });
 
-  test("confirmation dialog names the branch and warns about archiving", async ({ browser }) => {
+  test("permanent-delete dialog names the branch and needs the name typed", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
     const branch = await createBareBranch(admin.req);
     await admin.page.goto(`/admin/branches/${branch.id}`);
@@ -111,10 +119,12 @@ test.describe("#1 super admin branch delete/archive", () => {
     const dialog = admin.page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await expect(dialog, "dialog shows the exact branch name").toContainText(branch.name);
-    await expect(dialog, "dialog warns it may archive").toContainText(/archiv/i);
+    const confirm = dialog.getByRole("button", { name: /delete forever/i });
+    await expect(confirm, "disabled until the name is typed").toBeDisabled();
+    await dialog.getByTestId("branch-delete-confirm-name").fill(branch.name);
 
     // Confirm → the list reports the REAL outcome (deleted, since it is unused).
-    await dialog.getByRole("button", { name: /delete/i }).click();
+    await confirm.click();
     await admin.page.waitForURL("**/admin/branches**", { timeout: 20_000 });
     await expect(admin.page).toHaveURL(/result=deleted/);
   });

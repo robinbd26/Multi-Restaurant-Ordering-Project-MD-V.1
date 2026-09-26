@@ -33,9 +33,10 @@ export async function generateMetadata(): Promise<Metadata> {
 
 const BASE = "/admin/activity-logs";
 const SORTABLE = ["timestamp"] as const;
-/** Exactly the activity types the data records — nothing invented. */
-const TYPES = ["login", "logout", "action"] as const;
-const TYPE_TONES = { login: "green", logout: "slate", action: "blue" } as const;
+/** Exactly the activity types the data records — nothing invented. "archive"
+ *  and "delete" are written by every admin removal (lib/services/audit.ts). */
+const TYPES = ["login", "logout", "action", "archive", "delete"] as const;
+const TYPE_TONES = { login: "green", logout: "slate", action: "blue", archive: "amber", delete: "red" } as const;
 
 /** /admin/activity-logs — manager activity trail, searchable, filterable, paged. */
 export default async function ActivityLogsPage({

@@ -2,6 +2,7 @@ import "server-only";
 import type { Prisma, User } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { logAdminAction } from "@/lib/services/audit";
 import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { branchForManager } from "@/lib/selectors";
 import { midnight } from "@/lib/utils/dates";
@@ -442,6 +443,7 @@ export async function deleteTable(user: User, tableId: number) {
   if (!table) throw notFound(sk("errors.ops.tableRequired"));
   await assertManagesBranch(user, table.branchId);
   await prisma.branchTable.delete({ where: { id: tableId } });
+  await logAdminAction(user.id, "delete", `Deleted table "${table.name}" (#${table.id})`, { branchId: table.branchId });
 }
 
 // Reservations that hold a table (block new bookings) — accepted or confirmed.

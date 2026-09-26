@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { newSession } from "./helpers";
+import { newSession, activeZoneId, branchMap } from "./helpers";
 
 /**
  * NEW FEATURES (this round):
@@ -17,13 +17,6 @@ import { newSession } from "./helpers";
 
 const INSIDE = { lat: 23.781, lng: 90.408 }; // inside Main Branch coverage
 const uniqName = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-
-async function branchMap(req: APIRequestContext): Promise<Record<string, number>> {
-  const { results } = await (await req.get("/api/branches/?page_size=100")).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
-}
 
 async function firstProduct(req: APIRequestContext, branchId: number) {
   const { results } = await (await req.get(`/api/products/?branch_id=${branchId}&page_size=50`)).json();
@@ -121,21 +114,48 @@ test.describe("#4 product delete", () => {
     await cust.context.close();
   });
 
-  test("branch manager and customer cannot delete a product (403)", async ({ browser }) => {
+  test("a branch manager archives only their own branch's products; permanent delete and customers get 403", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
-    const main = (await branchMap(admin.req))["Main Branch"];
-    const prod = await firstProduct(admin.req, main);
-
     const bm = await newSession(browser, "branch_manager");
-    expect((await bm.req.delete(`/api/products/${prod.id}/`)).status()).toBe(403);
-
     const cust = await newSession(browser, "customer");
-    expect((await cust.req.delete(`/api/products/${prod.id}/`)).status()).toBe(403);
+    const own = (await (await bm.req.get("/api/dashboard/branch-manager/")).json()).branch.id as number;
+    const other = Object.values(await branchMap(admin.req)).find((id) => id !== own)!;
 
-    // The product is still there (not deleted by the forbidden attempts).
-    const still = await (await admin.req.get(`/api/products/?branch_id=${main}&page_size=200`)).json();
-    expect((still.results as { id: number }[]).some((p) => p.id === prod.id)).toBe(true);
+    // Products made for this test, so no seeded product is ever archived.
+    const makeProduct = async (branchId: number) => {
+      const res = await admin.req.post("/api/products/", {
+        multipart: {
+          branch_id: String(branchId),
+          name: uniqName("ArchProd"),
+          brand: "cheez",
+          variations: JSON.stringify([{ name: "Regular", price: 120, isDefault: true, isEnabled: true }]),
+        },
+      });
+      expect(res.status(), "product created").toBe(201);
+      return (await res.json()) as { id: number };
+    };
+    const ownProduct = await makeProduct(own);
+    const foreignProduct = await makeProduct(other);
 
+    // Another branch's product: archive refused for the manager.
+    expect((await bm.req.delete(`/api/products/${foreignProduct.id}/`)).status(), "another branch → 403").toBe(403);
+    // Customers can never archive.
+    expect((await cust.req.delete(`/api/products/${ownProduct.id}/`)).status(), "customer → 403").toBe(403);
+    // Permanent delete is super admin only, even for the manager's own product.
+    expect(
+      (await bm.req.post(`/api/products/${ownProduct.id}/permanent-delete`)).status(),
+      "permanent delete → 403 for a manager",
+    ).toBe(403);
+
+    // The manager's own product: archive works and it leaves the catalogue.
+    expect((await bm.req.delete(`/api/products/${ownProduct.id}/`)).status(), "own branch → archived").toBe(200);
+    const list = await (await admin.req.get(`/api/products/?branch_id=${own}&page_size=200`)).json();
+    expect((list.results as { id: number }[]).some((p) => p.id === ownProduct.id)).toBe(false);
+
+    // Clean up: neither product was ever ordered, so both can go for good.
+    for (const p of [ownProduct, foreignProduct]) {
+      expect((await admin.req.post(`/api/products/${p.id}/permanent-delete`)).status()).toBe(200);
+    }
     await admin.context.close();
     await bm.context.close();
     await cust.context.close();
@@ -235,6 +255,8 @@ test.describe("#2 branch coordinates", () => {
     const { context, req } = await newSession(browser, "super_admin");
     const bad = await req.post("/api/branches/", {
       multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(req)),
         name: uniqName("BadBranch"),
         address: "Somewhere",
         phone: "01712345678",

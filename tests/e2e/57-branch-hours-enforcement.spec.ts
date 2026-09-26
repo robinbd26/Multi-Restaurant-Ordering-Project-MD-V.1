@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
+import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, activeZoneId } from "./helpers";
 
 /**
  * Gap #1 — server-side OPENING-HOURS enforcement (§8 / §17 / §18).
@@ -74,6 +74,8 @@ async function makeBranchWithMenu(
   const branch = await (
     await admin.req.post(`${API_BASE}/api/branches/`, {
       multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
         name: `${opts.namePrefix}-${tag}`,
         address: "Test Rd, Sylhet",
         phone: `019${Math.floor(10000000 + Math.random() * 89999999)}`,

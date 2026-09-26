@@ -46,6 +46,8 @@ export function ConfirmModal({
   onDone,
   open: controlledOpen,
   onOpenChange,
+  details,
+  confirmDisabled = false,
 }: {
   /** Omit when the dialog is CONTROLLED — the caller supplies `open` instead. */
   trigger?: ReactNode;
@@ -64,6 +66,10 @@ export function ConfirmModal({
    */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Extra content under the description, e.g. what a delete will remove. */
+  details?: ReactNode;
+  /** Keeps the confirm button disabled, e.g. until a typed confirmation matches. */
+  confirmDisabled?: boolean;
 }) {
   const { t } = useTranslation();
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
@@ -205,6 +211,7 @@ export function ConfirmModal({
           >
             <h3 id={titleId} className="text-lg font-semibold text-fg-base">{title}</h3>
             <p id={descriptionId} className="mt-2 text-sm text-fg-muted">{description}</p>
+            {details ? <div className="mt-4">{details}</div> : null}
             {withReason ? (
               <Textarea
                 className="mt-4"
@@ -222,7 +229,7 @@ export function ConfirmModal({
               <Button variant="outline" onClick={close} disabled={pending}>
                 {t("common.cancel")}
               </Button>
-              <Button variant="danger" onClick={confirm} disabled={pending}>
+              <Button variant="danger" onClick={confirm} disabled={pending || confirmDisabled}>
                 {pending ? <Spinner className="size-4 border-white/40 border-t-white" /> : null}
                 {confirmLabel}
               </Button>

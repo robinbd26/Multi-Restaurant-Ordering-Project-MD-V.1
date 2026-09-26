@@ -11,6 +11,7 @@ import {
   type CoverageShape,
 } from "@/lib/coverage/shape";
 import { prisma } from "@/lib/db";
+import { logAdminAction } from "@/lib/services/audit";
 import { COVERAGE_WINDOW_DEFAULT, isCoverageWindow } from "@/lib/constants/enums";
 import type {
   DeliveryAreaListQuery,
@@ -338,7 +339,9 @@ export async function setAreaHold(user: User, areaId: number, held: boolean, rea
 export async function deleteArea(user: User, areaId: number) {
   const area = await areaForManage(user, areaId);
   await prisma.branchDeliveryArea.delete({ where: { id: areaId } });
-  await logAreaChange(user, area.branchId, `Deleted delivery area "${area.name}"`);
+  // Orders keep their own snapshot of the area's name, charge and estimate,
+  // so the area itself is setup data and truly deleted.
+  await logAdminAction(user.id, "delete", `Deleted delivery area "${area.name}" (#${area.id})`, { branchId: area.branchId });
   return area;
 }
 

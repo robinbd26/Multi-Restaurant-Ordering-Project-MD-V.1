@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import type { BranchEmployee, EmployeeAttendance, User } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { logAdminAction } from "@/lib/services/audit";
 import { conflict, notFound, sk, validationError } from "@/lib/http/errors";
 import { branchForManager } from "@/lib/selectors";
 import { assertManagesBranch, resolveManageableBranch } from "@/lib/services/branch-ops";
@@ -251,9 +252,22 @@ export async function setEmploymentStatus(
   });
 }
 
+/**
+ * An employee with attendance has history (it cascades on delete), so they are
+ * marked Quit Job instead, which the panel already offers; only an employee
+ * with no attendance is truly deleted. Logged.
+ */
 export async function deleteEmployee(user: User, employeeId: number) {
-  await employeeForManage(user, employeeId);
+  const employee = await employeeForManage(user, employeeId);
+  const attendance = await prisma.employeeAttendance.count({ where: { employeeId } });
+  if (attendance > 0) throw conflict(sk("errors.ops.employeeHasHistory", { count: attendance }));
   await prisma.branchEmployee.delete({ where: { id: employeeId } });
+  await logAdminAction(
+    user.id,
+    "delete",
+    `Deleted employee "${`${employee.firstName} ${employee.lastName}`.trim()}" (${employee.employeeCode || `#${employee.id}`}); no attendance recorded`,
+    { branchId: employee.branchId },
+  );
 }
 
 // ── B6: Attendance ──────────────────────────────────────────────────────

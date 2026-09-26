@@ -15,8 +15,7 @@ import {
   inNightOrderBlackout,
   NIGHT_BLACKOUT_REASON,
   isDhakaFullClosureWindow,
-  FULL_CLOSURE_REASON,
-} from "./helpers";
+  FULL_CLOSURE_REASON, activeZoneId } from "./helpers";
 
 /**
  * NEAREST-BRANCH HOMEPAGE — an authenticated customer sees, and can order, the
@@ -73,6 +72,8 @@ async function setLocation(req: APIRequestContext, point: { lat: number; lng: nu
 async function makeBranch(req: APIRequestContext, overrides: Record<string, string> = {}) {
   const res = await req.post("/api/branches/", {
     data: {
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(req)),
       name: uniq("NB"),
       address: "Dhaka",
       phone: "01711111111",
@@ -166,7 +167,7 @@ async function buildWorld(admin: { req: APIRequestContext }) {
   ).toBe(200);
 
   const archivedBranchProduct = await makeProduct(admin.req, archived.id, global.id);
-  expect((await admin.req.delete(`/api/branches/${archived.id}/`)).status()).toBe(200);
+  expect((await admin.req.post(`/api/branches/${archived.id}/archive`)).status()).toBe(200);
 
   return {
     pointA,
@@ -773,7 +774,7 @@ test.describe("The homepage follows the customer's deliver-to selection", () => 
     const admin = await newSession(browser, "super_admin");
     const world = await buildWorld(admin);
     const doomed = await makeBranch(admin.req);
-    expect((await admin.req.delete(`/api/branches/${doomed.id}/`)).status()).toBe(200);
+    expect((await admin.req.post(`/api/branches/${doomed.id}/archive`)).status()).toBe(200);
 
     const customer = await newSession(browser, "customer");
     await setLocation(customer.req, world.pointA);

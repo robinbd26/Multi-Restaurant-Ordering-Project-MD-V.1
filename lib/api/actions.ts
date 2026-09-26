@@ -5,8 +5,6 @@ import { redirect } from "next/navigation";
 
 import type {
   ActionState,
-  BranchDeleteResult,
-  BranchDeleteState,
   EarningRuleFormValues,
 } from "@/lib/api/action-state";
 import { ApiError, sendForm, sendJSON } from "@/lib/api/client";
@@ -189,21 +187,33 @@ export async function saveBranchAction(
  * later Delete click. Returning the outcome lets the dialog close, reset its
  * pending state, and refresh the list normally.
  */
-export async function deleteBranchAction(branchId: number): Promise<BranchDeleteState> {
-  let result: BranchDeleteResult = "deleted";
+/**
+ * Archive a branch: it stops taking orders and leaves the customer site and the
+ * default admin list; every record is kept. Always allowed for a super admin.
+ */
+export async function archiveBranchAction(branchId: number): Promise<ActionState> {
   try {
-    const res = await sendJSON<{ action?: string }>(`/branches/${branchId}/`, "DELETE");
-    if (res?.action === "archived" || res?.action === "deleted") result = res.action;
+    await sendJSON(`/branches/${branchId}/archive/`, "POST");
   } catch (err) {
     return await errorState(err);
   }
   revalidatePath("/admin/branches");
   revalidatePath(`/admin/branches/${branchId}`);
-  return {
-    error: null,
-    result,
-    success: await tr(result === "archived" ? "branches.archivedResult" : "branches.deletedResult"),
-  };
+  return { error: null, success: await tr("branchRemoval.archived") };
+}
+
+/**
+ * Permanently delete a branch that has no history. The server re-checks the
+ * history and the typed name; a refusal comes back as the dialog's error.
+ */
+export async function permanentlyDeleteBranchAction(branchId: number, confirmName: string): Promise<ActionState> {
+  try {
+    await sendJSON(`/branches/${branchId}/permanent-delete/`, "POST", { confirm_name: confirmName });
+  } catch (err) {
+    return await errorState(err);
+  }
+  revalidatePath("/admin/branches");
+  return { error: null, success: await tr("branches.deletedResult") };
 }
 
 export async function setBranchActiveAction(branchId: number, active: boolean): Promise<ActionState> {
@@ -340,7 +350,27 @@ export async function deleteProductAction(productId: number): Promise<ActionStat
     // Soft delete — see softDeleteProduct. Invalidation is handled server-side
     // by revalidateCatalog() so the storefront, menu and search all follow.
     await sendJSON(`/products/${productId}/`, "DELETE");
-    return { error: null, success: await tr("toast.productDeleted") };
+    return { error: null, success: await tr("productRemoval.archived") };
+  } catch (err) {
+    return await errorState(err);
+  }
+}
+
+/** Un-archive a product (super admin). It comes back unavailable. */
+export async function restoreProductAction(productId: number): Promise<ActionState> {
+  try {
+    await sendJSON(`/products/${productId}/restore/`, "POST");
+    return { error: null, success: await tr("productRemoval.restored") };
+  } catch (err) {
+    return await errorState(err);
+  }
+}
+
+/** Delete a never-ordered product for good (super admin); the server re-checks. */
+export async function permanentlyDeleteProductAction(productId: number): Promise<ActionState> {
+  try {
+    await sendJSON(`/products/${productId}/permanent-delete/`, "POST");
+    return { error: null, success: await tr("productRemoval.deleted") };
   } catch (err) {
     return await errorState(err);
   }
@@ -840,9 +870,12 @@ export async function saveCampaignAction(
 
 export async function deleteCampaignAction(campaignId: number): Promise<ActionState> {
   try {
-    await sendJSON(`/marketing/campaigns/${campaignId}/`, "DELETE");
+    const res = await sendJSON<{ action?: string }>(`/marketing/campaigns/${campaignId}/`, "DELETE");
     revalidatePath("/marketing/campaigns");
-    return { error: null, success: await tr("marketingX.campaignDeleted") };
+    return {
+      error: null,
+      success: await tr(res?.action === "archived" ? "marketingX.campaignArchivedResult" : "marketingX.campaignDeleted"),
+    };
   } catch (err) {
     return await errorState(err);
   }

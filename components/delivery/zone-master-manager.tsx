@@ -21,6 +21,8 @@ export interface ZoneMasterZone {
   isActive: boolean;
   /** Branches tagged with this zone — what a deactivation would strand. */
   branchCount: number;
+  /** Their names: the branches to reassign before the zone can be deleted. */
+  branchNames: string[];
 }
 
 /**
@@ -31,10 +33,11 @@ export interface ZoneMasterZone {
  * delivers is the shapes its manager draws on the Delivery Areas page, and
  * nothing on this screen can widen or narrow that.
  *
- * Nothing here deletes. A zone that is retired is DEACTIVATED, because a zone is
- * a required field on every branch and the database refuses to delete one still
- * in use. Each row shows how many branches point at it, so the effect is visible
- * before it is confirmed rather than after.
+ * A zone that is retired is DEACTIVATED. A zone no branch uses can also be
+ * DELETED (it is pure setup data); one still in use cannot (a zone is a required
+ * field on every branch), so its delete dialog lists the branches to move to
+ * another zone first and offers no button. Each row shows how many branches
+ * point at it, so the effect is visible before it is confirmed.
  *
  * The finer locality level this screen used to manage (Sector-5, Nikonjo-1 …) is
  * gone. It existed only so a customer's typed area name could be matched against
@@ -53,11 +56,11 @@ export function ZoneMasterManager({ zones }: { zones: ZoneMasterZone[] }) {
    * One fetch path for every mutation, returning the app's ActionState so the
    * confirm dialogs can show a failure in place instead of closing over it.
    */
-  async function mutate(url: string, method: "POST" | "PATCH", body: unknown): Promise<ActionState> {
+  async function mutate(url: string, method: "POST" | "PATCH" | "DELETE", body?: unknown): Promise<ActionState> {
     const response = await fetch(url, {
       method,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const payload: unknown = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -225,6 +228,39 @@ export function ZoneMasterManager({ zones }: { zones: ZoneMasterZone[] }) {
                             {t("deliveryZone.activate")}
                           </button>
                         )}
+                        <ConfirmModal
+                          trigger={
+                            <button
+                              type="button"
+                              className="text-sm text-red-600 hover:underline"
+                              data-testid={`zone-delete-${zone.id}`}
+                            >
+                              {t("deliveryZone.deleteZone")}
+                            </button>
+                          }
+                          title={t("deliveryZone.confirmDeleteZone", { name: zone.name })}
+                          description={
+                            zone.branchCount > 0
+                              ? t("deliveryZone.deleteZoneInUse", { count: zone.branchCount })
+                              : t("deliveryZone.deleteZoneDescription")
+                          }
+                          details={
+                            zone.branchCount > 0 ? (
+                              <ul className="list-disc pl-5 text-sm text-fg-base" data-testid={`zone-delete-branches-${zone.id}`}>
+                                {zone.branchNames.map((name) => (
+                                  <li key={name}>{name}</li>
+                                ))}
+                              </ul>
+                            ) : undefined
+                          }
+                          confirmDisabled={zone.branchCount > 0}
+                          confirmLabel={t("deliveryZone.deleteZoneConfirm")}
+                          action={async () => {
+                            const state = await mutate(`/api/area-zones/${zone.id}`, "DELETE");
+                            if (!state.error) router.refresh();
+                            return state;
+                          }}
+                        />
                       </span>
                     )}
                   </Td>

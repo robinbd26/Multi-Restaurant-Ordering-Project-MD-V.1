@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { newSession } from "./helpers";
+import { newSession, activeZoneId, branchMap } from "./helpers";
 
 /**
  * ROUND 2 features (server-authoritative, asserted at the API layer):
@@ -15,13 +15,6 @@ import { newSession } from "./helpers";
 
 const INSIDE = { lat: 23.781, lng: 90.408 }; // inside Main Branch coverage
 const uniq = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-
-async function branchMap(req: APIRequestContext): Promise<Record<string, number>> {
-  const { results } = await (await req.get("/api/branches/?page_size=100")).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
-}
 async function firstProduct(req: APIRequestContext, branchId: number) {
   const { results } = await (await req.get(`/api/products/?branch_id=${branchId}&page_size=50`)).json();
   return results[0] as { id: number };
@@ -108,14 +101,21 @@ test.describe("#5 branch archive/delete", () => {
     // A dedicated branch WITH a dependency (a delivery area) → archived. (We do
     // NOT archive Main Branch — other tests rely on it.)
     const withDep = await (await admin.req.post("/api/branches/", {
-      multipart: { name: uniq("Dep"), address: "x", phone: "01712345690", brand_type: "combined" },
+      multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
+        name: uniq("Dep"),
+        address: "x",
+        phone: "01712345690",
+        brand_type: "combined",
+      },
     })).json();
     await admin.req.post("/api/delivery-areas/", { data: { branch_id: withDep.id, name: uniq("DepArea") } });
 
     const bm = await newSession(browser, "branch_manager");
-    expect((await bm.req.delete(`/api/branches/${withDep.id}/`)).status()).toBe(403); // non-SA forbidden
+    expect((await bm.req.post(`/api/branches/${withDep.id}/archive`)).status()).toBe(403); // non-SA forbidden
 
-    const del = await admin.req.delete(`/api/branches/${withDep.id}/`);
+    const del = await admin.req.post(`/api/branches/${withDep.id}/archive`);
     expect(del.status()).toBe(200);
     expect((await del.json()).action).toBe("archived");
 
@@ -126,9 +126,16 @@ test.describe("#5 branch archive/delete", () => {
 
     // an unused branch → hard delete
     const fresh = await (await admin.req.post("/api/branches/", {
-      multipart: { name: uniq("Empty"), address: "x", phone: "01712345699", brand_type: "combined" },
+      multipart: {
+        // Branch creation requires a zone (ITEM 7).
+        zone_id: String(await activeZoneId(admin.req)),
+        name: uniq("Empty"),
+        address: "x",
+        phone: "01712345699",
+        brand_type: "combined",
+      },
     })).json();
-    const del2 = await admin.req.delete(`/api/branches/${fresh.id}/`);
+    const del2 = await admin.req.post(`/api/branches/${fresh.id}/permanent-delete`, { data: { confirm_name: fresh.name } });
     expect((await del2.json()).action).toBe("deleted");
 
     await admin.context.close(); await bm.context.close(); await cust.context.close();

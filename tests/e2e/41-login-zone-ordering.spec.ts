@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, login, API_BASE, PASSWORD, ROLE_HOME, atPath, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
+import { newSession, apiLogin, login, API_BASE, PASSWORD, ROLE_HOME, atPath, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, activeZoneId } from "./helpers";
 
 /**
  * PHASES O, P, Q, R — login destination, the out-of-zone experience, ordering
@@ -27,6 +27,8 @@ async function makeBranchWithMenu(admin: { req: APIRequestContext }, point: { la
   const tag = uniq();
   const branch = await (await admin.req.post(`${API_BASE}/api/branches/`, {
     multipart: {
+      // Branch creation requires a zone (ITEM 7).
+      zone_id: String(await activeZoneId(admin.req)),
       name: `QBranch-${tag}`,
       address: "Generic Rd, Dhaka",
       phone: `019${Math.floor(10000000 + Math.random() * 89999999)}`,

@@ -28,7 +28,7 @@ export const GET = handle(async (req: Request) => {
   const activityType = url.searchParams.get("activity_type");
   if (manager && me.role !== "branch_manager") where.managerId = manager;
   if (branch) where.branchId = branch;
-  if (activityType && ["login", "logout", "action"].includes(activityType)) {
+  if (activityType && ["login", "logout", "action", "archive", "delete"].includes(activityType)) {
     where.activityType = activityType;
   }
 

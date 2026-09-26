@@ -4,6 +4,7 @@ import type { Branch, Product, User } from "@prisma/client";
 
 import { revalidateCatalog } from "@/lib/cache/catalog";
 import { prisma } from "@/lib/db";
+import { logAdminAction } from "@/lib/services/audit";
 import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import {
   branchAllowsBrand,
@@ -88,6 +89,11 @@ export async function softDeleteProduct(user: User, productId: number): Promise<
     where: { id: productId },
     data: { deletedAt: new Date(), deletedById: user.id, isAvailable: false },
     include: { branch: true, category: true, variations: { orderBy: { sortOrder: "asc" } } },
+  });
+  // This soft delete IS the product's archive: the row stays (orders and
+  // reviews point at it) and a super admin can restore it.
+  await logAdminAction(user.id, "archive", `Archived product "${deleted.name}" (#${deleted.id}) at ${deleted.branch.name}`, {
+    branchId: deleted.branchId,
   });
   // Must disappear from the storefront, menu and search immediately.
   revalidateCatalog({ productId: deleted.id, branchId: deleted.branchId });
@@ -405,10 +411,19 @@ export async function deleteCategory(user: User, categoryId: number): Promise<{ 
   if (!category) throw notFound(sk("errors.catalog.categoryNotFound"));
   if (category._count.products > 0) {
     await prisma.category.update({ where: { id: categoryId }, data: { isActive: false } });
+    await logAdminAction(
+      user.id,
+      "archive",
+      `Deactivated (archived) category "${category.name}" (#${category.id}); it has ${category._count.products} product(s)`,
+      { branchId: category.branchId },
+    );
     revalidateCatalog();
     return { deactivated: true };
   }
   await prisma.category.delete({ where: { id: categoryId } });
+  await logAdminAction(user.id, "delete", `Permanently deleted category "${category.name}" (#${category.id}); it had no products`, {
+    branchId: category.branchId,
+  });
   revalidateCatalog();
   return { deactivated: false };
 }
