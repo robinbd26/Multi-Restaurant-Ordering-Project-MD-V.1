@@ -111,7 +111,11 @@ export function Topbar({
 
       <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-2">
         <NotificationBell href={notificationsPath(role)} />
-        <SoundToggle />
+        {/* Below sm the bar has no room for another button (360 px phones):
+            the sound switch moves into the profile menu instead. */}
+        <span className="hidden sm:contents">
+          <SoundToggle />
+        </span>
         <ThemeSwitcher />
         <LanguageSwitcher />
 
@@ -163,6 +167,9 @@ export function Topbar({
                 <Icon name="lock" className="size-4" />
                 {t("profile.changePassword")}
               </Link>
+              <div className="sm:hidden">
+                <SoundToggle variant="menu" />
+              </div>
               <form action={logoutAction}>
                 <button
                   type="submit"

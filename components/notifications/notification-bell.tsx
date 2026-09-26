@@ -5,7 +5,7 @@ import Link from "next/link";
 
 import { Icon } from "@/components/layout/icons";
 import { useTranslation } from "@/lib/i18n/use-translation";
-import { announce, soundForNotification } from "@/lib/sound";
+import { announce, installSoundUnlock, soundForNotification } from "@/lib/sound";
 
 interface UnreadSummary {
   count: number;
@@ -29,6 +29,9 @@ export function NotificationBell({ href }: { href: string }) {
   const seenId = useRef<number | null>(null);
 
   useEffect(() => {
+    // The bell is on every dashboard page, so it arms the audio unlock even
+    // where the sound switch sits in a closed menu (phones).
+    installSoundUnlock();
     let alive = true;
     async function load() {
       try {

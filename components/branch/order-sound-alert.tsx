@@ -47,5 +47,5 @@ export function OrderSoundAlert({ initialCount }: { initialCount: number }) {
     };
   }, [router]);
 
-  return <SoundToggle labelled />;
+  return <SoundToggle variant="labelled" />;
 }
