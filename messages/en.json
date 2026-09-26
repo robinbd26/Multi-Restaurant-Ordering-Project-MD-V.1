@@ -1790,7 +1790,8 @@
       "outsideDeliveryArea": "This branch does not deliver to that address. Self-pickup is still available.",
       "nightLastOrderPassed": "Night delivery takes its last order at 3:45 AM. Self-pickup is still available while the branch is open.",
       "platformClosed": "We are closed right now. Delivery and self-pickup both reopen at 11:00 AM — you can still browse and build your cart.",
-      "areaOnHoldPickupOnly": "Delivery to this location is paused right now. You can still place a self-pickup order."
+      "areaOnHoldPickupOnly": "Delivery to this location is paused right now. You can still place a self-pickup order.",
+      "pickupHasNoRider": "A pickup order is collected by the customer, so it has no rider."
     },
     "catalog": {
       "onlyAssignedManagerCanModifyCatalog": "Only the assigned branch manager can modify the catalog.",

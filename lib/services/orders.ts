@@ -990,6 +990,12 @@ export async function assignRiderToOrder(input: {
   if (actingUser.role === "branch_manager" && order.branch.managerId !== actingUser.id) {
     throw forbidden(sk("errors.orders.notYourBranch"));
   }
+  // A pickup order has no rider leg, so it never gets a rider: the customer
+  // collects it, and its chat stays the customer and the branch. The branch
+  // page already hid the card; this is the server-side guarantee.
+  if (riderId !== null && order.fulfillmentType === "pickup") {
+    throw validationError({ rider_id: sk("errors.orders.pickupHasNoRider") });
+  }
   const previousRiderId = order.riderId;
   let assignSessionId: number | null = null;
   if (riderId !== null) {
