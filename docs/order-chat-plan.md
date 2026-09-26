@@ -282,4 +282,27 @@ gating is kept).
 
 ## Changes from this plan during the build
 
-(Filled in at the end.)
+- **Order of phases.** The sound system was built before the chat UI (the
+  panel uses it), and the old delivery chat was retired after the new UI was
+  in place, so no commit leaves a page pointing at a removed route.
+- **Chat photo size limit** lives in `lib/order-chat/policy.ts`
+  (`CHAT_PHOTO_MAX_MB = 10`) so the browser and the server check the same number.
+- **Rider pickup confirmation.** The rider page used to infer "pickup
+  confirmed" from whether a delivery chat existed. It now asks a new
+  `GET /api/rider/orders/[id]/confirm-receive`, and the card is titled
+  "Pickup confirmation".
+- **Old notification strings kept.** `notifications.rider.deliveryChat.*` stays
+  in `messages/`: existing inbox rows are rendered from those keys. Only the two
+  UI-only strings of the old panel were removed.
+- **The BM order alert's own button** ("Enable sound alert" / "Alert on" /
+  "Alert muted") became the shared sound switch with a label; its three strings
+  were removed.
+- **Sound de-duplication** is keyed by event (e.g. the notification id), plus
+  the record's link to silence the *other* source (bell vs. a live page) for
+  90 s. Keying the bell by link alone would have silenced a second, different
+  update about the same order.
+- **Back-office dashboards** (super admin, marketing) have no user parameter, so
+  `serializeOrder` gets `backOfficeViewer(role)` there.
+- **Layout pass.** Screenshots at 390 px showed the call buttons squeezing the
+  title and the chips stacking; the header now wraps, and participants and quick
+  replies are single swipeable rows on phones.
