@@ -21,10 +21,11 @@ interface Message {
 }
 
 /**
- * Reusable chat panel for duty (rider↔BM) and delivery (rider↔customer) chats.
- * `base` is the message endpoint prefix, e.g. "/api/duty-chat/12" or
- * "/api/delivery-chat/34"; it GETs `${base}/messages` and POSTs there. Membership
- * and closed/read-only state are enforced server-side; the UI reflects them.
+ * Chat panel for the rider↔branch-manager duty chat. `base` is the message
+ * endpoint prefix, e.g. "/api/duty-chat/12"; it GETs `${base}/messages` and
+ * POSTs there. Membership and closed/read-only state are enforced server-side;
+ * the UI reflects them. (Order conversations use the richer
+ * components/orders/order-chat-panel.tsx.)
  */
 export function ChatBox({ base, viewerId, title }: { base: string; viewerId: number; title?: string }) {
   const { t, fmt } = useTranslation();

@@ -147,6 +147,8 @@ export const NOTIFICATION_TYPES = [
   "account",
   "branch",
   "catalog",
+  // A new message in an order chat (lib/services/order-chat.ts).
+  "chat",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

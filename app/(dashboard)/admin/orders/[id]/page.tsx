@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { OrderChatPanel } from "@/components/orders/order-chat-panel";
 import { OrderDetailCard } from "@/components/orders/order-detail-card";
 import { PageHeader } from "@/components/layout/page-header";
 import { ButtonLink } from "@/components/ui/button";
@@ -17,7 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
 /** /admin/orders/[id] — super admin read-only order detail (sees every order). */
 export default async function AdminOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { t } = await getT();
-  await requireRole("super_admin");
+  const me = await requireRole("super_admin");
   const { id } = await params;
 
   let order: Order;
@@ -44,6 +45,11 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
         }
       />
       <OrderDetailCard order={order} />
+      {/* Read-only: the super admin can read any order's chat (disputes) but
+          is not a participant — the server refuses posts and sends no alerts. */}
+      <div className="mt-6">
+        <OrderChatPanel orderId={order.id} viewerId={Number(me.id)} />
+      </div>
     </>
   );
 }

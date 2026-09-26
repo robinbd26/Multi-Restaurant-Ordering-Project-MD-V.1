@@ -5,28 +5,26 @@ import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { ChatBox } from "@/components/chat/chat-box";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { parseFieldErrors } from "@/lib/validation/contract";
 
 /**
- * Rider order actions (C5/C6): confirm physically receiving the order, then
- * chat with the customer. The delivery chat only appears after confirmation.
+ * Rider pickup confirmation (C5): confirm physically receiving the order before
+ * the delivery leg can start. The chat with the customer and the branch is the
+ * order chat (components/orders/order-chat-panel.tsx), shown separately.
  */
-export function RiderOrderPanel({ orderId, viewerId, status }: { orderId: number; viewerId: number; status: string }) {
+export function RiderOrderPanel({ orderId, status }: { orderId: number; status: string }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const [thread, setThread] = useState<number | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/orders/${orderId}/delivery-chat`);
+    const res = await fetch(`/api/rider/orders/${orderId}/confirm-receive`, { cache: "no-store" });
     if (res.ok) {
-      const d = await res.json();
-      setThread(d.thread ?? null);
-      setConfirmed(Boolean(d.thread));
+      const d = (await res.json()) as { confirmed: boolean };
+      setConfirmed(Boolean(d.confirmed));
     }
   }, [orderId]);
 
@@ -60,10 +58,7 @@ export function RiderOrderPanel({ orderId, viewerId, status }: { orderId: number
           <p className="text-sm text-fg-muted">{t("rider.confirmReceiveHint")}</p>
         )
       ) : (
-        <>
-          <p className="text-xs font-medium text-emerald-600" data-testid="receive-confirmed">✓ {t("rider.received")}</p>
-          {thread ? <ChatBox base={`/api/delivery-chat/${thread}`} viewerId={viewerId} title={t("rider.deliveryChat")} /> : null}
-        </>
+        <p className="text-xs font-medium text-emerald-600" data-testid="receive-confirmed">✓ {t("rider.received")}</p>
       )}
     </div>
   );

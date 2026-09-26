@@ -3,7 +3,8 @@ import { newSession, apiLogin, API_BASE, branchMap } from "./helpers";
 
 /**
  * PART C — rider dynamic branch duty (C1/C2), branch-scoped orders + assignment
- * (C3), duty chat (C4), receive confirmation (C5), delivery chat (C6). Server
+ * (C3), duty chat (C4), receive confirmation (C5). The C6 rider↔customer
+ * delivery chat was replaced by the order chat (72-order-chat.spec.ts). Server
  * rules are the source of truth → asserted at the API layer. `rider2` is a
  * dedicated fresh rider so duty-lifecycle tests stay isolated from the seed
  * rider used by other specs.
@@ -133,8 +134,8 @@ test.describe("Part C — rider workflow", () => {
     await admin.context.close(); await s.context.close();
   });
 
-  // ── C4/C5/C6: confirmation + chats over a full delivery ─────────────────
-  test("C5/C6: confirm-receive gating, idempotency, chat lifecycle, and 403s", async ({ browser }) => {
+  // ── C5: confirmation over a full delivery (+ the rider in the order chat) ─
+  test("C5: confirm-receive gating and idempotency; the assigned rider is in the order chat", async ({ browser }) => {
     const rider = await newSession(browser, "courier2");
     const admin = await newSession(browser, "super_admin");
     const other = await newSession(browser, "rider"); // seed rider (different rider)
@@ -144,10 +145,9 @@ test.describe("Part C — rider workflow", () => {
     await rider.req.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: main } });
     const orderId = await readyOrder(browser, main);
 
-    // Before assignment/confirmation: delivery chat unavailable, picked_up blocked.
+    // Before confirmation: not confirmed, picked_up blocked.
     await admin.req.post(`${API_BASE}/api/orders/${orderId}/assign-rider`, { data: { rider_id: riderId } });
-    const preChat = await (await rider.req.get(`${API_BASE}/api/orders/${orderId}/delivery-chat`)).json();
-    expect(preChat.thread).toBeNull();
+    expect((await (await rider.req.get(`${API_BASE}/api/rider/orders/${orderId}/confirm-receive`)).json()).confirmed).toBe(false);
     expect((await rider.req.post(`${API_BASE}/api/orders/${orderId}/update-status`, { data: { status: "picked_up" } })).status()).toBe(409);
 
     // Wrong rider cannot confirm (seed rider is not assigned).
@@ -157,21 +157,21 @@ test.describe("Part C — rider workflow", () => {
     expect((await rider.req.post(`${API_BASE}/api/rider/orders/${orderId}/confirm-receive`)).status()).toBe(200);
     expect((await rider.req.post(`${API_BASE}/api/rider/orders/${orderId}/confirm-receive`)).status()).toBe(200);
 
-    // Delivery chat now exists; rider + customer can message; another rider is 403.
-    const chat = await (await rider.req.get(`${API_BASE}/api/orders/${orderId}/delivery-chat`)).json();
-    expect(chat.thread).toBeTruthy();
-    const send = await rider.req.post(`${API_BASE}/api/delivery-chat/${chat.thread}/messages`, { data: { body: "On my way" } });
-    expect(send.status()).toBe(201);
-    expect((await other.req.get(`${API_BASE}/api/delivery-chat/${chat.thread}/messages`)).status()).toBe(403);
+    expect((await (await rider.req.get(`${API_BASE}/api/rider/orders/${orderId}/confirm-receive`)).json()).confirmed).toBe(true);
+    // Another rider may not even ask.
+    expect((await other.req.get(`${API_BASE}/api/rider/orders/${orderId}/confirm-receive`)).status()).toBe(403);
 
-    // Now pickup is allowed; deliver → chat closes to new messages.
+    // The assigned rider is in the order chat; another rider is 403.
+    expect((await rider.req.post(`${API_BASE}/api/orders/${orderId}/chat/messages`, { data: { body: "On my way" } })).status()).toBe(201);
+    expect((await other.req.get(`${API_BASE}/api/orders/${orderId}/chat`)).status()).toBe(403);
+
+    // Now pickup is allowed; the delivery completes.
     for (const st of ["picked_up", "on_the_way", "delivered"]) {
       expect((await rider.req.post(`${API_BASE}/api/orders/${orderId}/update-status`, { data: { status: st } })).status()).toBe(200);
     }
-    const closed = await rider.req.post(`${API_BASE}/api/delivery-chat/${chat.thread}/messages`, { data: { body: "late" } });
-    expect(closed.status()).toBe(409);
-    // History still readable.
-    expect((await (await rider.req.get(`${API_BASE}/api/delivery-chat/${chat.thread}/messages`)).json()).results.length).toBeGreaterThan(0);
+    // History still readable after delivery (the 2-hour read-only switch is in spec 72).
+    const history = await (await rider.req.get(`${API_BASE}/api/orders/${orderId}/chat`)).json();
+    expect((history.messages as { body: string }[]).some((m) => m.body === "On my way")).toBe(true);
 
     await endDutyIfAny(rider.req);
     await admin.context.close(); await rider.context.close(); await other.context.close();

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { AssignRiderSelect } from "@/components/orders/assign-rider-select";
+import { OrderChatPanel } from "@/components/orders/order-chat-panel";
 import { OrderDetailCard } from "@/components/orders/order-detail-card";
 import { OrderStatusActions } from "@/components/orders/order-status-actions";
 import { PageHeader } from "@/components/layout/page-header";
@@ -20,7 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function BMOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { t, fmt } = await getT();
-  await requireRole("branch_manager");
+  const me = await requireRole("branch_manager");
   const { id } = await params;
 
   let order: Order;
@@ -81,6 +82,10 @@ export default async function BMOrderDetailPage({ params }: { params: Promise<{ 
           </CardContent>
         </Card>
       ) : null}
+
+      <div className="mt-6">
+        <OrderChatPanel orderId={order.id} viewerId={Number(me.id)} />
+      </div>
     </>
   );
 }

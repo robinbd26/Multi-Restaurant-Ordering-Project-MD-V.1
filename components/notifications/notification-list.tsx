@@ -57,6 +57,7 @@ const TYPE_ICON: Record<NotificationType, string> = {
   account: "user",
   branch: "store",
   catalog: "grid",
+  chat: "chat",
 };
 
 type Filter = "all" | "unread" | "read";

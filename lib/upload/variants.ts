@@ -51,6 +51,10 @@ export const UPLOAD_PROFILES: Record<string, UploadProfile> = {
   branding: { maxSide: 512, variants: [128] },
   profile_photos: { maxSide: 512, variants: [128] },
   employee_photos: { maxSide: 512, variants: [128] },
+  // Order chat photos: big enough to read a gate number or a receipt on a
+  // phone, with a thumbnail for the message bubble. Private, served only by the
+  // chat route (lib/services/order-chat.ts).
+  chat_photos: { maxSide: 1280, variants: [320] },
 };
 
 /**

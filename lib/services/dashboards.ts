@@ -6,6 +6,7 @@ import { ORDER_INCLUDE, branchForManager, dutyHistory, todayDuty } from "@/lib/s
 import {
   serializeActivityLog,
   serializeDutyLog,
+  backOfficeViewer,
   serializeOrder,
   serializePublicBranch,
 } from "@/lib/serializers";
@@ -221,7 +222,7 @@ export async function superAdminDashboard() {
       phone: u.phone,
       date_joined: u.dateJoined.toISOString(),
     })),
-    recent_orders: recentOrders.map(serializeOrder),
+    recent_orders: recentOrders.map((o) => serializeOrder(o, backOfficeViewer("super_admin"))),
     recent_activity: recentActivity.map(serializeActivityLog),
   };
 }
@@ -323,7 +324,7 @@ export async function marketingDashboard() {
     active_branches: activeBranches,
     popular_products: await popularProducts({}),
     top_categories,
-    recent_orders: recentOrders.map(serializeOrder),
+    recent_orders: recentOrders.map((o) => serializeOrder(o, backOfficeViewer("marketing"))),
   };
 }
 
@@ -445,7 +446,7 @@ export async function branchManagerDashboard(user: DashboardIdentity) {
     },
     weekly_sales: await weeklySeries(bWhere, "sales"),
     popular_items: await popularProducts(bWhere),
-    recent_orders: recent.map(serializeOrder),
+    recent_orders: recent.map((o) => serializeOrder(o, { id: user.id, role: "branch_manager" })),
     riders: { total: branchRiders, on_duty: onDuty, off_duty: branchRiders - onDuty },
     total_products: totalProducts,
   };
@@ -527,7 +528,7 @@ export async function riderDashboard(user: RiderDashboardIdentity) {
     is_online: profile?.isOnline ?? false,
     today_duty: duty ? serializeDutyLog(duty) : null,
     duty_history: history.map(serializeDutyLog),
-    active_orders: activeOrders.map(serializeOrder),
+    active_orders: activeOrders.map((o) => serializeOrder(o, { id: user.id, role: "rider" })),
     delivered_today: deliveredToday,
     online_minutes: onlineMinutes,
     total_delivered: totalDelivered,
@@ -558,7 +559,7 @@ export async function customerDashboard(user: DashboardIdentity) {
   ]);
   return {
     branches: branches.map(serializePublicBranch),
-    recent_orders: recentOrders.map(serializeOrder),
+    recent_orders: recentOrders.map((o) => serializeOrder(o, { id: user.id, role: "customer" })),
     active_order_count: activeCount,
     total_orders: totalOrders,
   };

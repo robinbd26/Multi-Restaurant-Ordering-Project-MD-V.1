@@ -18,5 +18,5 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
   const body = (await req.json().catch(() => ({}))) as { approve?: boolean; reason?: string };
   await decideWalletPayment(me, Number(id), Boolean(body.approve), body.reason ?? "");
   const full = await prisma.order.findUniqueOrThrow({ where: { id: Number(id) }, include: ORDER_INCLUDE });
-  return json(serializeOrder(full));
+  return json(serializeOrder(full, me));
 });

@@ -1535,11 +1535,9 @@
     "confirmReceive": "Confirm receipt",
     "received": "Order received",
     "dutyChat": "Duty chat",
-    "deliveryChat": "Delivery chat",
     "eligibleOrders": "Available orders",
     "activeBranch": "Active branch",
     "confirmReceiveHint": "You can confirm receipt once the order is ready.",
-    "deliveryChatUnavailable": "Chat opens after the rider confirms receiving the order.",
     "dutyChatOffline": "Go on duty to chat with the branch manager.",
     "noOnlineRiders": "No riders on duty right now.",
     "selectRiderToChat": "Select a rider to open the duty chat.",
@@ -1548,7 +1546,8 @@
     "trackingDenied": "Location permission denied — enable it to receive deliveries.",
     "hoursToday": "Hours today",
     "hoursWeek": "Hours this week",
-    "dutySessions": "Duty sessions"
+    "dutySessions": "Duty sessions",
+    "pickupConfirmation": "Pickup confirmation"
   },
   "pages": {
     "ordersTitle": "Orders",
@@ -1790,7 +1789,8 @@
       "outsideDeliveryArea": "This branch does not deliver to that address. Self-pickup is still available.",
       "nightLastOrderPassed": "Night delivery takes its last order at 3:45 AM. Self-pickup is still available while the branch is open.",
       "platformClosed": "We are closed right now. Delivery and self-pickup both reopen at 11:00 AM — you can still browse and build your cart.",
-      "areaOnHoldPickupOnly": "Delivery to this location is paused right now. You can still place a self-pickup order."
+      "areaOnHoldPickupOnly": "Delivery to this location is paused right now. You can still place a self-pickup order.",
+      "pickupHasNoRider": "A pickup order is collected by the customer, so it has no rider."
     },
     "catalog": {
       "onlyAssignedManagerCanModifyCatalog": "Only the assigned branch manager can modify the catalog.",
@@ -2117,6 +2117,14 @@
       "superAdminOnly": "Only a super admin can permanently delete a product.",
       "hasHistory": "This product has history ({orders} order lines, {reviews} reviews), so it cannot be permanently deleted. Keep it archived: it stays off the menu and every order keeps it.",
       "heldByAdmin": "This product is on hold by the super admin, so only the super admin can restore it."
+    },
+    "orderChat": {
+      "noAccess": "You are not part of this order's chat.",
+      "observerReadOnly": "Super admins can read order chats but cannot post in them.",
+      "closed": "This chat is closed. It became read-only 2 hours after the order ended.",
+      "messageRequired": "Type a message or attach a photo.",
+      "photoTooLarge": "A photo can be at most {mb} MB.",
+      "quickReplyInvalid": "That quick reply is not available."
     }
   },
   "states": {
@@ -2517,6 +2525,13 @@
       "blockedBody": "Allow notifications for this site in your browser settings to start getting alerts.",
       "failedTitle": "Could not turn on alerts",
       "failedBody": "Phone alerts could not be turned on. In-app notifications keep working; please try again later."
+    },
+    "chat": {
+      "newMessage": {
+        "title": "New message — order {number}",
+        "photo": "{name} sent a photo.",
+        "quick": "{name}: {reply}"
+      }
     }
   },
   "notices": {
@@ -3472,9 +3487,6 @@
     "noMyBookingsDesc": "Book a table.",
     "book_booked": "Booked",
     "book_cancelled": "Cancelled",
-    "enableAlert": "Enable sound alert",
-    "alertOn": "Alert on",
-    "alertMuted": "Alert muted",
     "errPartyOverCapacity": "This table seats at most {n} guests",
     "coverageFactsTitle": "Coverage basics",
     "coverageFactsHint": "The branch pin and the maximum radius are set by the super admin. Where you deliver inside that limit is up to you — draw it on the Delivery Areas page.",
@@ -4471,5 +4483,48 @@
     "deletable": "It was never ordered or reviewed, so it can be deleted.",
     "confirmDelete": "Delete forever",
     "deleted": "Product permanently deleted"
+  },
+  "orderChat": {
+    "quick": {
+      "arrived": "I've arrived.",
+      "cant_find_address": "I can't find the address.",
+      "on_my_way": "I'm on my way.",
+      "running_late": "Running a few minutes late.",
+      "come_to_gate": "Please come to the gate."
+    },
+    "title": "Order chat",
+    "participants": "People in this chat",
+    "role": {
+      "customer": "Customer",
+      "branchManager": "Branch Manager · {branch}",
+      "rider": "Rider"
+    },
+    "system": {
+      "rider_joined": "{name} (Rider) joined the chat.",
+      "rider_left": "{name} (Rider) left the chat."
+    },
+    "call": {
+      "branch": "Call branch",
+      "customer": "Call customer",
+      "rider": "Call rider",
+      "aria": "Call {name}"
+    },
+    "empty": "No messages yet.",
+    "placeholder": "Write a message…",
+    "send": "Send",
+    "attachPhoto": "Attach a photo",
+    "removePhoto": "Remove photo",
+    "photoAlt": "Photo from {name}",
+    "quickRepliesLabel": "Quick replies",
+    "unknownSender": "Former user",
+    "readOnly": "This chat closed 2 hours after the order ended. You can still read it.",
+    "observerNote": "You are reading this chat as super admin. You cannot post in it.",
+    "noLongerAccess": "You are no longer on this order, so its chat is closed to you."
+  },
+  "sound": {
+    "turnOn": "Turn notification sounds on",
+    "turnOff": "Turn notification sounds off",
+    "on": "Sound on",
+    "off": "Sound off"
   }
 }

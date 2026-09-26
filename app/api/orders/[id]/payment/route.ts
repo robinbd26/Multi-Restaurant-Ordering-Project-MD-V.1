@@ -24,5 +24,5 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     payerPhone: body.payer_phone,
   });
   const full = await prisma.order.findUniqueOrThrow({ where: { id: Number(id) }, include: ORDER_INCLUDE });
-  return json(serializeOrder(full));
+  return json(serializeOrder(full, me));
 });

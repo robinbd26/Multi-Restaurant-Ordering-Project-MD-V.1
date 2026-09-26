@@ -23,5 +23,5 @@ export const GET = handle(async (_req: Request, ctx: Ctx) => {
     include: ORDER_INCLUDE,
   });
   if (!order) throw notFound(sk("errors.orders.orderNotFound"));
-  return json(serializeOrder(order));
+  return json(serializeOrder(order, me));
 });

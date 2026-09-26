@@ -111,7 +111,7 @@ export async function OrdersExplorer({
     }),
   ]);
 
-  const orders = rows.map(serializeOrder) as unknown as Order[];
+  const orders = rows.map((o) => serializeOrder(o, user)) as unknown as Order[];
   const meta = pageMeta(total, page, pageSize);
   const filtered = hasActiveFilters(sp, ["search", "status", "method", "branch", "from", "to"]);
 

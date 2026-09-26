@@ -100,6 +100,9 @@ model User {
   receiveConfirmations    OrderReceiveConfirmation[]  @relation("ReceiveConfirmRider")
   dutyChatMessages        RiderDutyChatMessage[]      @relation("DutyChatSender")
   deliveryChatMessages    OrderDeliveryChatMessage[]  @relation("DeliveryChatSender")
+  // Per-order chat (customer + branch manager + current rider).
+  orderChatMessages       OrderChatMessage[]          @relation("OrderChatSender")
+  orderChatReads          OrderChatRead[]             @relation("OrderChatReader")
   ramadanReservations     RamadanReservation[]        @relation("RamadanReservationCustomer")
   orderStatusEvents       OrderStatusEvent[]          @relation("OrderStatusActor")
   // PHASE H — earning rules this admin authored / last edited.
@@ -1415,6 +1418,7 @@ model Order {
   receiveConfirmations OrderReceiveConfirmation[]
   deliveryChats        OrderDeliveryChatThread[]
   statusEvents         OrderStatusEvent[]
+  chat                 OrderChat?
 
   // A customer may reuse a key only for the same checkout attempt.
   @@unique([customerId, idempotencyKey])
@@ -1618,7 +1622,70 @@ model RiderDutyChatMessage {
   @@index([threadId])
 }
 
+// ── Order chat: one per order (customer + branch manager + current rider) ──
+// Supersedes the rider↔customer delivery chat below: the order_chat migration
+// copied its messages in, and those two tables are no longer written.
+//
+// Participants are NOT stored. They are derived from the order itself
+// (customerId, branch.managerId, riderId), the same fields every other
+// permission check reads, so the chat can never disagree with the order about
+// who the rider is. Riders joining/leaving are recorded as system messages.
+// See docs/order-chat-plan.md and lib/services/order-chat.ts.
+model OrderChat {
+  id        Int       @id @default(autoincrement())
+  orderId   Int       @unique
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // When the order became delivered/cancelled; the chat is read-only from
+  // endedAt + 2h. Null while the order is open. For orders that ended before
+  // this table existed it is derived (and saved) on first read.
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  messages OrderChatMessage[]
+  reads    OrderChatRead[]
+}
+
+model OrderChatMessage {
+  id         Int       @id @default(autoincrement())
+  chatId     Int
+  chat       OrderChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  // The author; for a system row, the rider it is about. SetNull keeps the
+  // conversation readable for everyone else if an account is ever removed.
+  senderId   Int?
+  sender     User?     @relation("OrderChatSender", fields: [senderId], references: [id], onDelete: SetNull)
+  // Role at the time of sending, so the badge stays right if the role changes.
+  senderRole String // customer | branch_manager | rider | system
+  kind       String    @default("text") // text | image | quick | system
+  // text: as typed · image: optional caption · quick: the quick-reply key
+  // (rendered in each reader's language) · system: the event key.
+  body       String    @default("")
+  imageKey   String? // storage key under chat_photos/ (served only by the chat route)
+  params     Json? // system-message params, e.g. { name: "Rahim" }
+  createdAt  DateTime  @default(now())
+
+  @@index([chatId, id])
+}
+
+// Per-person read position + presence. Every poll stamps lastSeenAt; someone
+// seen in the last few seconds is looking at the chat, so they get no
+// notification or push for new messages.
+model OrderChatRead {
+  id                Int       @id @default(autoincrement())
+  chatId            Int
+  chat              OrderChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  userId            Int
+  user              User      @relation("OrderChatReader", fields: [userId], references: [id], onDelete: Cascade)
+  lastReadMessageId Int       @default(0)
+  lastSeenAt        DateTime  @default(now())
+
+  @@unique([chatId, userId])
+  @@index([userId])
+}
+
 // ── Rider ↔ Customer delivery chat (per order; new thread per assigned rider) ──
+// SUPERSEDED by OrderChat above. Kept (not dropped) so the order_chat migration
+// can be rolled back; nothing writes to these tables any more.
 model OrderDeliveryChatThread {
   id                 Int       @id @default(autoincrement())
   orderId            Int

@@ -34,5 +34,5 @@ export const POST = handle(async (_req: Request, ctx: Ctx) => {
     foodNotes: source.foodNotes,
   });
   const full = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE });
-  return created(serializeOrder(full));
+  return created(serializeOrder(full, me));
 });
