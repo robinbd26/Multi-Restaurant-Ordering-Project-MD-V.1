@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, API_BASE, activeZoneId } from "./helpers";
+import { newSession, apiLogin, API_BASE, activeZoneId, branchMap } from "./helpers";
 
 /**
  * REQ #1 Super Admin branch delete/archive · REQ #2 category delete/deactivate
@@ -13,13 +13,6 @@ import { newSession, apiLogin, API_BASE, activeZoneId } from "./helpers";
 
 const uniq = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const INSIDE = { lat: 23.781, lng: 90.408 };
-
-async function branchMap(req: APIRequestContext): Promise<Record<string, number>> {
-  const { results } = await (await req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
-}
 
 /** Create an unused branch (no products/orders/areas) — safe to hard delete. */
 async function createBareBranch(req: APIRequestContext) {

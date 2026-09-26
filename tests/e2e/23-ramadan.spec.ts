@@ -1,18 +1,11 @@
 import { test, expect, type APIRequestContext, type Browser } from "@playwright/test";
-import { newSession, API_BASE } from "./helpers";
+import { newSession, API_BASE, branchMap } from "./helpers";
 
 /**
  * B4 reservation chat verification + B7/B8/B9 Ramadan system. Server rules are
  * the source of truth → asserted at the API layer. Bookings use future dates
  * inside the seeded config range and distinct tables/dates to stay isolated.
  */
-
-async function branches(req: APIRequestContext) {
-  const { results } = await (await req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
-}
 // A YYYY-MM-DD n days ahead (UTC), within the seeded 45-day config window.
 function futureDate(days: number): string {
   const d = new Date(Date.now() + days * 86400000);
@@ -28,7 +21,7 @@ async function available(req: APIRequestContext, branchId: number, date?: string
 test.describe("B4 — reservation chat", () => {
   async function makeReservation(browser: Browser) {
     const cust = await newSession(browser, "customer");
-    const main = (await branches(cust.req))["Main Branch"];
+    const main = (await branchMap(cust.req))["Main Branch"];
     const r = await cust.req.post(`${API_BASE}/api/reservations/`, {
       data: { branch_id: main, guest_name: "Chat Guest", guest_phone: "01700000000", party_size: 2, requested_at: `${futureDate(3)}T19:00` },
     });
@@ -73,7 +66,7 @@ test.describe("Ramadan (B7/B8/B9)", () => {
     expect(cfg.status()).toBe(200);
     // A slot on another branch (created by SA) cannot be edited by this BM.
     const admin = await newSession(browser, "super_admin");
-    const cheez = (await branches(admin.req))["Cheez Gulshan"];
+    const cheez = (await branchMap(admin.req))["Cheez Gulshan"];
     const slot = await (await admin.req.post(`${API_BASE}/api/ramadan/slots`, { data: { branch_id: cheez, label: "X", start_time: "18:00", end_time: "19:00" } })).json();
     const idor = await bm.req.patch(`${API_BASE}/api/ramadan/slots/${slot.id}`, { data: { label: "hijack" } });
     expect(idor.status()).toBe(403);
@@ -83,7 +76,7 @@ test.describe("Ramadan (B7/B8/B9)", () => {
   // ── Booking rules ───────────────────────────────────────────────────────
   test("B7: capacity, out-of-range date, double-booking and normal-overlap are enforced", async ({ browser }) => {
     const cust = await newSession(browser, "customer");
-    const main = (await branches(cust.req))["Main Branch"];
+    const main = (await branchMap(cust.req))["Main Branch"];
     const av = await available(cust.req, main, futureDate(5));
     const slot = av.slots[0], menu = av.menus[0];
     const small = av.tables.find((t: { seats: number }) => t.seats === 2) ?? av.tables[0];
@@ -116,7 +109,7 @@ test.describe("Ramadan (B7/B8/B9)", () => {
   test("B8: eligible menus filter + immutable price snapshot after menu edit", async ({ browser }) => {
     const cust = await newSession(browser, "customer");
     const bm = await newSession(browser, "branch_manager");
-    const main = (await branches(cust.req))["Main Branch"];
+    const main = (await branchMap(cust.req))["Main Branch"];
     const av = await available(cust.req, main, futureDate(6));
     expect(av.menus.length).toBeGreaterThan(0);
     const slot = av.slots[0], menu = av.menus[0], table = av.tables[2] ?? av.tables[0];
@@ -142,7 +135,7 @@ test.describe("Ramadan (B7/B8/B9)", () => {
     const cust = await newSession(browser, "customer");
     const bm = await newSession(browser, "branch_manager");
     const accounts = await newSession(browser, "accounts");
-    const main = (await branches(cust.req))["Main Branch"];
+    const main = (await branchMap(cust.req))["Main Branch"];
 
     // Percent 20% advance, threshold 4 (seeded). Family platter 1200, 4 guests → total 1200, advance 240.
     await bm.req.patch(`${API_BASE}/api/ramadan/config`, { data: { is_enabled: true, advance_type: "percent", advance_value: 20, advance_guest_threshold: 4, booking_start_date: futureDate(0), booking_end_date: futureDate(45) } });
@@ -245,7 +238,7 @@ test.describe("Ramadan (B7/B8/B9)", () => {
   test("B9: no-advance booking is immediately pending; mandatory rejection reason", async ({ browser }) => {
     const cust = await newSession(browser, "customer");
     const bm = await newSession(browser, "branch_manager");
-    const main = (await branches(cust.req))["Main Branch"];
+    const main = (await branchMap(cust.req))["Main Branch"];
     // No advance for < threshold parties (percent 20, threshold 4). 2 guests → no advance.
     await bm.req.patch(`${API_BASE}/api/ramadan/config`, { data: { is_enabled: true, advance_type: "percent", advance_value: 20, advance_guest_threshold: 4, booking_start_date: futureDate(0), booking_end_date: futureDate(45) } });
     const av = await available(cust.req, main, futureDate(9));

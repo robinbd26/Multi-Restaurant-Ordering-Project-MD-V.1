@@ -1,12 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import {
-  newSession,
-  API_BASE,
-  inNightOrderBlackout,
-  NIGHT_BLACKOUT_REASON,
-  isDhakaFullClosureWindow,
-  FULL_CLOSURE_REASON, activeZoneId } from "./helpers";
+import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, isDhakaFullClosureWindow, FULL_CLOSURE_REASON, activeZoneId, branchMap } from "./helpers";
 
 /**
  * REQ #4  product variation type (Thick / Thin / Both)
@@ -35,13 +29,6 @@ async function seedCustomerLocation(
     data: { lat: point.lat, lng: point.lng, accuracy: 10, captured_at: Date.now() },
   });
   expect(res.status(), "customer location seeded").toBe(200);
-}
-
-async function branchMap(req: APIRequestContext): Promise<Record<string, number>> {
-  const { results } = await (await req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
 }
 
 async function makeProduct(

@@ -1,12 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import {
-  newSession,
-  API_BASE,
-  inNightOrderBlackout,
-  NIGHT_BLACKOUT_REASON,
-  isDhakaFullClosureWindow,
-  FULL_CLOSURE_REASON, activeZoneId } from "./helpers";
+import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, isDhakaFullClosureWindow, FULL_CLOSURE_REASON, activeZoneId, branchMap } from "./helpers";
 
 /**
  * req #20 (nearest branch enforced server-side in order creation) + req #6
@@ -40,13 +34,6 @@ async function seedCustomerLocation(
   expect(res.status(), "customer location seeded").toBe(200);
 }
 const uniq = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-
-async function branchMap(req: APIRequestContext): Promise<Record<string, number>> {
-  const { results } = await (await req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
-}
 /**
  * Fetch a product that belongs to `branchId`. Prefer an admin/staff session so
  * catalogue scoping cannot silently swap the branch under a customer account

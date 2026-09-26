@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Browser } from "@playwright/test";
-import { newSession, apiLogin, API_BASE } from "./helpers";
+import { newSession, apiLogin, API_BASE, branchMap } from "./helpers";
 
 /**
  * PART C — rider dynamic branch duty (C1/C2), branch-scoped orders + assignment
@@ -8,13 +8,6 @@ import { newSession, apiLogin, API_BASE } from "./helpers";
  * dedicated fresh rider so duty-lifecycle tests stay isolated from the seed
  * rider used by other specs.
  */
-
-async function branches(req: APIRequestContext) {
-  const { results } = await (await req.get(`${API_BASE}/api/branches/?page_size=100`)).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
-}
 
 async function endDutyIfAny(req: APIRequestContext) {
   const duty = await (await req.get(`${API_BASE}/api/rider/duty`)).json();
@@ -55,7 +48,7 @@ test.describe("Part C — rider workflow", () => {
     await endDutyIfAny(s.req);
     const duty = await (await s.req.get(`${API_BASE}/api/rider/duty`)).json();
     expect(duty.eligible_branches.length).toBeGreaterThan(0);
-    const main = (await branches(s.req))["Main Branch"];
+    const main = (await branchMap(s.req))["Main Branch"];
     const start = await s.req.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: main } });
     expect(start.status()).toBe(201);
     expect((await start.json()).branch).toBe(main);
@@ -69,7 +62,7 @@ test.describe("Part C — rider workflow", () => {
   test("C1: a second concurrent active session is prevented (409)", async ({ browser }) => {
     const s = await newSession(browser, "courier2");
     await endDutyIfAny(s.req);
-    const b = await branches(s.req);
+    const b = await branchMap(s.req);
     expect((await s.req.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: b["Main Branch"] } })).status()).toBe(201);
     // Second start (same or other branch) while active → 409.
     expect((await s.req.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: b["Cheez Gulshan"] } })).status()).toBe(409);
@@ -81,7 +74,7 @@ test.describe("Part C — rider workflow", () => {
   test("C2: end + start at another branch; history preserves sessions", async ({ browser }) => {
     const s = await newSession(browser, "courier2");
     await endDutyIfAny(s.req);
-    const b = await branches(s.req);
+    const b = await branchMap(s.req);
     await s.req.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: b["Main Branch"] } });
     // Cannot start elsewhere while online (switch requires going offline first).
     expect((await s.req.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: b["Cheez Gulshan"] } })).status()).toBe(409);
@@ -99,7 +92,7 @@ test.describe("Part C — rider workflow", () => {
     const s = await newSession(browser, "courier2");
     const admin = await newSession(browser, "super_admin");
     await endDutyIfAny(s.req);
-    const main = (await branches(s.req))["Main Branch"];
+    const main = (await branchMap(s.req))["Main Branch"];
     await s.req.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: main } });
     const riderId = (await (await s.req.get(`${API_BASE}/api/auth/me`)).json()).id;
     const orderId = await readyOrder(browser, main);
@@ -117,7 +110,7 @@ test.describe("Part C — rider workflow", () => {
     const s = await newSession(browser, "courier2");
     const admin = await newSession(browser, "super_admin");
     await endDutyIfAny(s.req);
-    const b = await branches(s.req);
+    const b = await branchMap(s.req);
     const riderId = (await (await s.req.get(`${API_BASE}/api/auth/me`)).json()).id;
     // Rider on duty at Main; order at Cheez → assignment rejected (wrong branch).
     await s.req.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: b["Main Branch"] } });
@@ -146,7 +139,7 @@ test.describe("Part C — rider workflow", () => {
     const admin = await newSession(browser, "super_admin");
     const other = await newSession(browser, "rider"); // seed rider (different rider)
     await endDutyIfAny(rider.req);
-    const main = (await branches(rider.req))["Main Branch"];
+    const main = (await branchMap(rider.req))["Main Branch"];
     const riderId = (await (await rider.req.get(`${API_BASE}/api/auth/me`)).json()).id;
     await rider.req.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: main } });
     const orderId = await readyOrder(browser, main);
@@ -189,7 +182,7 @@ test.describe("Part C — rider workflow", () => {
     const bm = await newSession(browser, "branch_manager");
     const customer = await newSession(browser, "customer");
     await endDutyIfAny(rider.req);
-    const main = (await branches(rider.req))["Main Branch"];
+    const main = (await branchMap(rider.req))["Main Branch"];
     const riderId = (await (await rider.req.get(`${API_BASE}/api/auth/me`)).json()).id;
     await rider.req.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: main } });
 

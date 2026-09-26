@@ -1,5 +1,5 @@
-import { test, expect, type APIRequestContext } from "@playwright/test";
-import { newSession, inNightOrderBlackout, NIGHT_BLACKOUT_REASON } from "./helpers";
+import { test, expect } from "@playwright/test";
+import { newSession, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, branchMap } from "./helpers";
 
 /**
  * PHASE B CORE — delivery zones + nearest pickup (B1), prep-time snapshot (B2),
@@ -13,13 +13,6 @@ const uniq = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const FUTURE = "2030-03-15T19:00";
 const FUTURE2 = "2030-03-15T19:30"; // within the 2h overlap window of FUTURE
 
-async function branches(req: APIRequestContext) {
-  const { results } = await (await req.get("/api/branches/?page_size=100")).json();
-  const map: Record<string, number> = {};
-  for (const b of results as { id: number; name: string }[]) map[b.name] = b.id;
-  return map;
-}
-
 // PHASE 3 — 03:45–04:00 Dhaka: a delivery order is refused by design.
 test.beforeEach(() => {
   test.skip(inNightOrderBlackout(), NIGHT_BLACKOUT_REASON);
@@ -29,7 +22,7 @@ test.describe("Phase B Core", () => {
   // ── B1 delivery coverage + nearest pickup ──────────────────────────────
   test("B1: address inside coverage allowed, outside returns nearest pickup", async ({ browser }) => {
     const { context, req } = await newSession(browser, "customer");
-    const main = (await branches(req))["Main Branch"];
+    const main = (await branchMap(req))["Main Branch"];
     const inside = await (await req.post("/api/delivery/coverage", { data: { branch_id: main, lat: 23.781, lng: 90.408 } })).json();
     expect(inside.covered).toBe(true);
     const outside = await req.post("/api/delivery/coverage", { data: { branch_id: main, lat: 23.95, lng: 90.62 } });
@@ -42,7 +35,7 @@ test.describe("Phase B Core", () => {
 
   test("B1: checkout revalidates coverage — out-of-zone delivery is rejected", async ({ browser }) => {
     const { context, req } = await newSession(browser, "customer");
-    const main = (await branches(req))["Main Branch"];
+    const main = (await branchMap(req))["Main Branch"];
     const products = await (await req.get(`/api/products/?branch_id=${main}&page_size=50`)).json();
     const prod = products.results[0];
     const order = await req.post("/api/orders/", {
@@ -58,7 +51,7 @@ test.describe("Phase B Core", () => {
 
   test("B1: delivery checkout without coordinates is rejected; pickup allowed without coords", async ({ browser }) => {
     const { context, req } = await newSession(browser, "customer");
-    const main = (await branches(req))["Main Branch"];
+    const main = (await branchMap(req))["Main Branch"];
     const prod = (await (await req.get(`/api/products/?branch_id=${main}&page_size=50`)).json()).results[0];
     const base = { branch_id: main, payment_method: "cash", delivery_address: "No coords, Dhaka", items: [{ product_id: prod.id, quantity: 1 }] };
 
@@ -77,7 +70,7 @@ test.describe("Phase B Core", () => {
 
   test("B1: branch manager cannot edit another branch's zone (403 IDOR)", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
-    const cheez = (await branches(admin.req))["Cheez Gulshan"];
+    const cheez = (await branchMap(admin.req))["Cheez Gulshan"];
     // SA creates a zone on Cheez Gulshan.
     const zone = await (await admin.req.post("/api/delivery-zones/", { data: { branch_id: cheez, name: `Z${uniq()}`, center_lat: 23.79, center_lng: 90.41, radius_km: 2 } })).json();
     const bm = await newSession(browser, "branch_manager");
@@ -93,7 +86,7 @@ test.describe("Phase B Core", () => {
   test("B2: order snapshots prep time; branch change does not affect existing orders", async ({ browser }) => {
     const cust = await newSession(browser, "customer");
     const bm = await newSession(browser, "branch_manager");
-    const main = (await branches(cust.req))["Main Branch"];
+    const main = (await branchMap(cust.req))["Main Branch"];
     const prod = (await (await cust.req.get(`/api/products/?branch_id=${main}&page_size=50`)).json()).results[0];
 
     // Set a known prep time, place order A.
@@ -120,7 +113,7 @@ test.describe("Phase B Core", () => {
   test("B3: capacity + double-booking + rejection-reason enforced server-side", async ({ browser }) => {
     const bm = await newSession(browser, "branch_manager");
     const cust = await newSession(browser, "customer");
-    const main = (await branches(bm.req))["Main Branch"];
+    const main = (await branchMap(bm.req))["Main Branch"];
 
     // BM creates a 2-seat table.
     const table = await (await bm.req.post("/api/branch-tables/", { data: { name: `QA-${uniq()}`, seats: 2, pos_x: 10, pos_y: 10 } })).json();
@@ -153,7 +146,7 @@ test.describe("Phase B Core", () => {
 
   test("B3: cross-branch table + wrong-role are blocked", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
-    const cheez = (await branches(admin.req))["Cheez Gulshan"];
+    const cheez = (await branchMap(admin.req))["Cheez Gulshan"];
     const cheezTable = await (await admin.req.post("/api/branch-tables/", { data: { branch_id: cheez, name: `CH-${uniq()}`, seats: 4 } })).json();
     // BM (Main) cannot edit Cheez's table.
     const bm = await newSession(browser, "branch_manager");
@@ -187,7 +180,7 @@ test.describe("Phase B Core", () => {
 
     // Cross-branch: SA creates an employee on Cheez, BM (Main) cannot edit it.
     const admin = await newSession(browser, "super_admin");
-    const cheez = (await branches(admin.req))["Cheez Gulshan"];
+    const cheez = (await branchMap(admin.req))["Cheez Gulshan"];
     const foreign = await (await admin.req.post("/api/employees/", { multipart: { branch_id: String(cheez), first_name: "For", employee_code: `F-${uniq()}`, role: "cashier" } })).json();
     const idor = await bm.req.patch(`/api/employees/${foreign.id}/`, { multipart: { department: "hijack" } });
     expect(idor.status()).toBe(403);
@@ -231,7 +224,7 @@ test.describe("Phase B Core", () => {
 
   test("B6: cross-branch attendance is blocked (403)", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
-    const cheez = (await branches(admin.req))["Cheez Gulshan"];
+    const cheez = (await branchMap(admin.req))["Cheez Gulshan"];
     const foreign = await (await admin.req.post("/api/employees/", { multipart: { branch_id: String(cheez), first_name: "Att", employee_code: `A-${uniq()}`, role: "waiter" } })).json();
     const bm = await newSession(browser, "branch_manager");
     const res = await bm.req.post("/api/employee-attendance", { data: { employee_id: foreign.id, date: "2029-02-02", status: "present" } });

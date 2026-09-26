@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { newSession } from "./helpers";
+import { newSession, branchRowsByName } from "./helpers";
 
 /**
  * PART A — product variations, brand type, and product permissions.
@@ -12,16 +12,6 @@ const uniq = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 interface V { id: number; name: string; price: string; is_default: boolean; is_enabled: boolean }
 interface P { id: number; name: string; brand: string | null; variations: V[] }
 interface OItem { product: number; unit_price: string }
-
-// Resolve seeded branches by name via the API, so tests never hardcode ids.
-async function branchesByName(req: import("@playwright/test").APIRequestContext) {
-  const res = await req.get("/api/branches/?page_size=100");
-  expect(res.ok()).toBeTruthy();
-  const { results } = (await res.json()) as { results: { id: number; name: string; brand_type: string }[] };
-  const map: Record<string, { id: number; brand_type: string }> = {};
-  for (const b of results) map[b.name] = { id: b.id, brand_type: b.brand_type };
-  return map;
-}
 
 test.describe("Part A: product variations + brand type", () => {
   test("super admin product create page loads with a working category dropdown", async ({ browser }) => {
@@ -38,7 +28,7 @@ test.describe("Part A: product variations + brand type", () => {
 
   test("super admin creates a multi-variation product for a single-brand branch", async ({ browser }) => {
     const { page, context, req } = await newSession(browser, "super_admin");
-    const branches = await branchesByName(req);
+    const branches = await branchRowsByName(req);
     const cheez = branches["Cheez Gulshan"];
     expect(cheez).toBeTruthy();
 
@@ -81,7 +71,7 @@ test.describe("Part A: product variations + brand type", () => {
 
   test("CHEEZ branch rejects a MADCHEF product (cross-brand blocked server-side)", async ({ browser }) => {
     const { context, req } = await newSession(browser, "super_admin");
-    const branches = await branchesByName(req);
+    const branches = await branchRowsByName(req);
     const cheez = branches["Cheez Gulshan"];
     const form = new URLSearchParams();
     form.set("branch_id", String(cheez.id));
@@ -101,7 +91,7 @@ test.describe("Part A: product variations + brand type", () => {
 
   test("combined branch requires and accepts an explicit brand", async ({ browser }) => {
     const { context, req } = await newSession(browser, "super_admin");
-    const branches = await branchesByName(req);
+    const branches = await branchRowsByName(req);
     const main = branches["Main Branch"]; // combined
     expect(main.brand_type).toBe("combined");
 
@@ -134,7 +124,7 @@ test.describe("Part A: product variations + brand type", () => {
   test("branch manager cannot modify another branch's product (IDOR 403)", async ({ browser }) => {
     const { context, req } = await newSession(browser, "branch_manager");
     // The BM manages Main Branch; Cheez Gulshan's product belongs to another branch.
-    const branches = await branchesByName(req);
+    const branches = await branchRowsByName(req);
     const cheez = branches["Cheez Gulshan"];
     // Discover a foreign-branch product id via a super-admin session; the BM will
     // then attempt to PATCH it directly (bypassing the hidden-button guard).
@@ -152,7 +142,7 @@ test.describe("Part A: product variations + brand type", () => {
   test("historical order price snapshot survives a later variation price change", async ({ browser }) => {
     const cust = await newSession(browser, "customer");
     const admin = await newSession(browser, "super_admin");
-    const branches = await branchesByName(cust.req);
+    const branches = await branchRowsByName(cust.req);
     const main = branches["Main Branch"];
 
     // Pick a Main-branch product + its default variation.
