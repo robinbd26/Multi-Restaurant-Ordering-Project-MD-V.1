@@ -29,7 +29,7 @@ import type { Order } from "@/types";
 
 const SORTABLE = ["createdAt", "totalAmount", "orderNumber"] as const;
 const ORDER_STATUSES = [
-  "pending", "accepted", "preparing", "ready", "picked_up", "on_the_way", "delayed", "delivered", "cancelled",
+  "pending", "accepted", "preparing", "ready", "picked_up", "on_the_way", "delivered", "cancelled",
 ] as const;
 const PAYMENT_METHODS = ["cash", "bkash"] as const;
 

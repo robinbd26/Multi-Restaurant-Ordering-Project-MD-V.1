@@ -113,3 +113,22 @@ export async function branchMap(req: APIRequestContext): Promise<Record<string, 
   const rows = await branchRowsByName(req);
   return Object.fromEntries(Object.entries(rows).map(([name, row]) => [name, row.id]));
 }
+
+/**
+ * A delivery order of the branch manager's branch that a rider may be assigned
+ * to: accepted, preparing or ready (Part 3: never before the branch accepts,
+ * never after pickup). A pending delivery order is accepted first. Throws when
+ * the branch has neither, so a spec never silently assigns to a wrong order.
+ */
+export async function assignableOrderId(bmReq: APIRequestContext): Promise<number> {
+  const res = await bmReq.get(`${API_BASE}/api/orders/?page_size=100`);
+  const rows = ((await res.json()) as { results?: { id: number; status: string; fulfillment_type?: string }[] }).results ?? [];
+  const delivery = rows.filter((o) => o.fulfillment_type !== "pickup");
+  const ready = delivery.find((o) => ["accepted", "preparing", "ready"].includes(o.status));
+  if (ready) return ready.id;
+  const pending = delivery.find((o) => o.status === "pending");
+  if (!pending) throw new Error("no pending or accepted delivery order on the branch manager's branch");
+  const accepted = await bmReq.post(`${API_BASE}/api/orders/${pending.id}/update-status/`, { data: { status: "accepted" } });
+  if (!accepted.ok()) throw new Error(`could not accept order ${pending.id}: ${accepted.status()}`);
+  return pending.id;
+}

@@ -11,7 +11,7 @@ import {
   serializePublicBranch,
 } from "@/lib/serializers";
 import { roleDisplay } from "@/lib/constants/enums";
-import { ALLOWED_TRANSITIONS } from "@/lib/constants/orders";
+import { ORDER_FLOW_STATUSES } from "@/lib/constants/orders";
 import { periodFinancials } from "@/lib/services/financials";
 import { riderTravelDistanceKm } from "@/lib/services/rider-location";
 import { riderWalletSummary } from "@/lib/services/wallet";
@@ -32,9 +32,10 @@ interface RiderDashboardIdentity extends DashboardIdentity {
 // returns its result through an `as Record<OrderStatus, number>` cast, so a
 // status missing from this array is NOT caught by the compiler — it just goes
 // silently absent from every dashboard breakdown (this is how `delayed` was
-// dropped). Keying off ALLOWED_TRANSITIONS keeps the two in lockstep, and its
-// declaration order is already lifecycle order.
-const ORDER_STATUSES = Object.keys(ALLOWED_TRANSITIONS) as OrderStatus[];
+// dropped once). Keyed off ORDER_FLOW_STATUSES, the one list of statuses a
+// current order can hold, in lifecycle order. ("delayed" is no longer a status:
+// delays are announcements, and the migration moved delayed orders to on_the_way.)
+const ORDER_STATUSES = [...ORDER_FLOW_STATUSES] as OrderStatus[];
 
 const num = (d: Prisma.Decimal | null | undefined) => (d ? d.toNumber() : 0);
 

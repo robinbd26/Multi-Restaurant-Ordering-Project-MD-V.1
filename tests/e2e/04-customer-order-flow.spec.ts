@@ -45,8 +45,9 @@ test("customer order → BM pipeline → rider deliver → commission once → r
       expect(r.status(), `rider ${status}`).toBe(200);
     }
 
-    // 5. commission recorded exactly once — a replayed "delivered" is rejected
-    expect((await rider.req.post(`${API_BASE}/api/orders/${order.id}/update-status`, { data: { status: "delivered" } })).status(), "no double commission (invalid transition → 409)").toBe(409);
+    // 5. commission recorded exactly once — a replayed "delivered" (double tap,
+    // stale screen) is a harmless no-op now, and pays nothing twice (step 6).
+    expect((await rider.req.post(`${API_BASE}/api/orders/${order.id}/update-status`, { data: { status: "delivered" } })).status(), "replayed delivered is a no-op").toBe(200);
 
     // 6. wallet earnings increased by exactly one delivery
     const after = await (await rider.req.get(`${API_BASE}/api/rider/wallet`)).json();

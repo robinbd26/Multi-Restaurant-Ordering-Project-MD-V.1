@@ -15,7 +15,8 @@ import { OrderStatusBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { ApiError, getJSON } from "@/lib/api/client";
 import { requireRole } from "@/lib/auth/session";
-import { RIDER_NEXT_STATUS } from "@/lib/constants";
+import { riderNextStatuses } from "@/lib/constants/orders";
+import { LiveOrderRefresher } from "@/components/customer/live-order-refresh";
 import { getT } from "@/lib/i18n/server";
 import { directionsUrl } from "@/lib/services/geo";
 import { mediaUrl } from "@/lib/utils";
@@ -39,7 +40,7 @@ export default async function RiderOrderDetailPage({ params }: { params: Promise
     throw err;
   }
 
-  const next = RIDER_NEXT_STATUS[order.status] ?? [];
+  const next = riderNextStatuses(order.status, order.fulfillment_type === "pickup" ? "pickup" : "delivery");
   // WS-4.7 — navigate with the stored delivery coordinate (turn-by-turn);
   // free-text address search is only the fallback for never-geocoded orders.
   const mapsHref =
@@ -62,16 +63,22 @@ export default async function RiderOrderDetailPage({ params }: { params: Promise
         <CardHeader
           title={
             <span className="flex items-center gap-3">
-              {t("rider.orderNumber", { id: fmt.num(order.id) })} <OrderStatusBadge status={order.status} />
+              {t("rider.orderNumber", { id: fmt.num(order.id) })} <OrderStatusBadge status={order.status} fulfillment={order.fulfillment_type} />
             </span>
           }
           subtitle={order.branch_name}
-          action={<OrderStatusActions orderId={order.id} nextStatuses={next} />}
+          action={<OrderStatusActions orderId={order.id} nextStatuses={next} fulfillment={order.fulfillment_type} />}
         />
         <CardContent>
           <OrderStepTracker status={order.status} />
         </CardContent>
       </Card>
+
+      {/* Follows changes made elsewhere (the manager, an override) live. */}
+      <LiveOrderRefresher
+        orderId={order.id}
+        initial={{ status: order.status, payment_status: (order as Order & { payment_status?: string }).payment_status ?? "", rider: order.rider, updated_at: order.updated_at }}
+      />
 
       <Card className="mb-6">
         <CardHeader title={t("rider.pickupConfirmation")} />

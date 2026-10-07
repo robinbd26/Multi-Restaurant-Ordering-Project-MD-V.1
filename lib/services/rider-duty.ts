@@ -381,7 +381,8 @@ export async function confirmReceive(rider: User, orderId: number) {
   if (order.riderId !== rider.id) throw forbidden(sk("errors.rider.notAssignedRider"));
   const active = await activeDutySession(rider.id);
   if (!active || active.branchId !== order.branchId) throw forbidden(sk("errors.rider.notOnDutyForBranch"));
-  if (order.status !== "ready") throw conflict(sk("errors.rider.orderNotConfirmable"));
+  // From Accepted on: a rider may collect before the manager tapped Ready.
+  if (!["accepted", "preparing", "ready"].includes(order.status)) throw conflict(sk("errors.rider.orderNotConfirmable"));
 
   const { confirmation, created } = await prisma.$transaction(async (tx) => {
     // Idempotent: a repeat confirm by the same rider returns the existing row.

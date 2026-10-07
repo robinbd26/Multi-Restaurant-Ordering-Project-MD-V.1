@@ -10,7 +10,9 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { ApiError, getJSON } from "@/lib/api/client";
 import { requireRole } from "@/lib/auth/session";
-import { BM_NEXT_STATUS } from "@/lib/constants";
+import { managerNextStatuses } from "@/lib/constants/orders";
+import { LiveOrderRefresher } from "@/components/customer/live-order-refresh";
+import { OverrideStatusControl } from "@/components/orders/override-status-control";
 import { getT } from "@/lib/i18n/server";
 import type { Order, OrderStatus, RiderProfile } from "@/types";
 
@@ -38,13 +40,10 @@ export default async function BMOrderDetailPage({ params }: { params: Promise<{ 
   const riders = isPickup
     ? []
     : await getJSON<RiderProfile[]>("/riders/branch/").catch(() => [] as RiderProfile[]);
-  // From "ready", a pickup order skips straight to "delivered" (its actual
-  // "Picked Up (Done)" step — lib/services/orders.ts allows this transition
-  // directly for pickup) instead of the delivery-only picked_up/on_the_way
-  // chain. Every other status offers the same next steps regardless of
-  // fulfillment type.
-  const nextStatuses: OrderStatus[] =
-    isPickup && order.status === "ready" ? ["delivered", "cancelled"] : (BM_NEXT_STATUS[order.status] ?? []);
+  // The manager's own steps for this order's channel. On a delivery order the
+  // rider leg (Picked up / On the way / Delivered) is the rider's alone; it
+  // shows up here live, and the override below is the emergency lever.
+  const nextStatuses: OrderStatus[] = managerNextStatuses(order.status, isPickup ? "pickup" : "delivery");
 
   return (
     <>
@@ -62,8 +61,22 @@ export default async function BMOrderDetailPage({ params }: { params: Promise<{ 
         }
       />
 
+      {/* Follows the rider's taps (Picked up / On the way / Delivered) live. */}
+      <LiveOrderRefresher
+        orderId={order.id}
+        initial={{
+          status: order.status,
+          payment_status: (order as Order & { payment_status?: string }).payment_status ?? "",
+          rider: order.rider,
+          updated_at: order.updated_at,
+        }}
+      />
+
       <OrderDetailCard order={order}>
-        <OrderStatusActions orderId={order.id} nextStatuses={nextStatuses} pickup={isPickup} />
+        <div className="flex flex-col items-end gap-2">
+          <OrderStatusActions orderId={order.id} nextStatuses={nextStatuses} fulfillment={order.fulfillment_type} />
+          <OverrideStatusControl orderId={order.id} status={order.status} fulfillment={order.fulfillment_type} />
+        </div>
       </OrderDetailCard>
 
       {/* ITEM 6 — no assign-rider step for a pickup order: there is no rider. */}

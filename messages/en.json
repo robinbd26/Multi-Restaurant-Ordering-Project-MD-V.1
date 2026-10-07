@@ -172,9 +172,7 @@
     "on_the_way": "On the Way",
     "delayed": "Delayed",
     "delivered": "Delivered",
-    "cancelled": "Cancelled",
-    "readyForPickup": "Ready for Pickup",
-    "pickedUpDone": "Picked Up (Done)"
+    "cancelled": "Cancelled"
   },
   "payment": {
     "cash": "Cash on Delivery",
@@ -953,7 +951,6 @@
     "time": "Time",
     "nextAccepted": "Accept Order",
     "nextPreparing": "Start Preparing",
-    "nextReady": "Mark Ready",
     "nextPickedUp": "Picked Up",
     "nextOnTheWay": "On the Way",
     "nextDelivered": "Delivered",
@@ -979,7 +976,18 @@
     "nagadHint": "Pay to the branch's Nagad number",
     "rocketHint": "Pay to the branch's Rocket number",
     "bankHint": "Transfer to the branch's bank account — the branch verifies the payment before preparation.",
-    "nextPickedUpDone": "Mark Picked Up (Done)"
+    "nextReadyForRider": "Mark Ready for rider",
+    "nextReadyForCollection": "Mark Ready for collection",
+    "nextCollected": "Mark Collected",
+    "orderDelayedBy": "Your rider says delivery will take about {minutes} minutes longer.",
+    "overrideOpen": "Override status",
+    "overrideTitle": "Override status (emergencies only)",
+    "overrideHint": "For when the normal flow is stuck — the rider's phone died, or they forgot to tap Delivered. A written reason is required and the change is logged with your name.",
+    "overrideTarget": "New status",
+    "overridePickStatus": "Choose the new status",
+    "overrideReason": "Reason",
+    "overrideReasonPlaceholder": "What happened? (required)",
+    "overrideConfirm": "Override"
   },
   "branches": {
     "title": "Branches",
@@ -1521,7 +1529,7 @@
     "dutyChat": "Duty chat",
     "eligibleOrders": "Available orders",
     "activeBranch": "Active branch",
-    "confirmReceiveHint": "You can confirm receipt once the order is ready.",
+    "confirmReceiveHint": "You can confirm receipt once the branch has accepted the order.",
     "dutyChatOffline": "Go on duty to chat with the branch manager.",
     "noOnlineRiders": "No riders on duty right now.",
     "selectRiderToChat": "Select a rider to open the duty chat.",
@@ -1775,7 +1783,12 @@
       "brandClosedOpensToday": "{brand} is not taking {channel} orders right now. It opens at {time}.",
       "brandClosedOpensTomorrow": "{brand} is not taking {channel} orders right now. It opens tomorrow at {time}.",
       "brandClosedOpensOnDay": "{brand} is not taking {channel} orders right now. It opens {day} at {time}.",
-      "brandDeliveryPaused": "{brand} has paused delivery for a short while. Pickup is still open."
+      "brandDeliveryPaused": "{brand} has paused delivery for a short while. Pickup is still open.",
+      "riderStatusOnlyRider": "Picked up, On the way and Delivered are set by the assigned rider. Use Override status in an emergency.",
+      "overrideStaffOnly": "Only the branch manager or the super admin can override an order's status.",
+      "overrideReasonRequired": "Write a reason of at least {min} characters.",
+      "overrideNotAllowed": "This order can't be overridden from \"{status}\".",
+      "riderAssignWindow": "A rider can be assigned once the order is accepted and until it is picked up."
     },
     "catalog": {
       "onlyAssignedManagerCanModifyCatalog": "Only the assigned branch manager can modify the catalog.",
@@ -2271,6 +2284,10 @@
       },
       "delayedWithNote": {
         "body": "Your order needs about {minutes} more minutes. Reason: {note}"
+      },
+      "overridden": {
+        "title": "Order status changed",
+        "body": "The branch set order #{id} to {status}."
       }
     },
     "delivery": {
@@ -4614,5 +4631,12 @@
     "openEditor": "Edit hours",
     "formNoteEdit": "Opening hours are set per brand and per delivery/pickup on the branch's Hours page.",
     "formNoteCreate": "After saving, set this branch's opening hours per brand on its Hours page (until then it has no time limit)."
+  },
+  "orderStatusPickup": {
+    "ready": "Ready for collection",
+    "delivered": "Collected"
+  },
+  "orderStatusDelivery": {
+    "ready": "Ready for rider"
   }
 }

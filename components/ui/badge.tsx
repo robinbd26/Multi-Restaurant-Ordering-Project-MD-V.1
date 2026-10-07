@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
+import { orderStatusLabelKey } from "@/lib/constants/orders";
 import type { OrderStatus, Role, UserStatus } from "@/types";
 
 type Tone =
@@ -113,9 +114,13 @@ const ORDER_STATUS_TONES: Record<OrderStatus, Tone> = {
   cancelled: "red",
 };
 
-export function OrderStatusBadge({ status }: { status: OrderStatus }) {
+/**
+ * Status pill. Pass the order's fulfillment type so a pickup order reads
+ * "Ready for collection" / "Collected" and a delivery order "Ready for rider".
+ */
+export function OrderStatusBadge({ status, fulfillment }: { status: OrderStatus; fulfillment?: string | null }) {
   const { t } = useTranslation();
-  return <Badge dot tone={ORDER_STATUS_TONES[status]}>{t(`orderStatus.${status}`)}</Badge>;
+  return <Badge dot tone={ORDER_STATUS_TONES[status] ?? "slate"}>{t(orderStatusLabelKey(status, fulfillment))}</Badge>;
 }
 
 const ROLE_TONES: Record<Role, Tone> = {

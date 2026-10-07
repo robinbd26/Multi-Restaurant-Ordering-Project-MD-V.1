@@ -15,13 +15,12 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("rider.myDeliveries") };
 }
 
-// WS-5.2 — the six statuses the roles spec names for a rider (their "Received"
-// is the receive-confirmation step, which lands the order on `ready`).
+// The rider's leg: Picked up → On the way → Delivered (a delay is an
+// announcement, not a status), plus Ready for orders waiting at the branch.
 const RIDER_FILTERS: OrderStatus[] = [
   "ready",
   "picked_up",
   "on_the_way",
-  "delayed",
   "delivered",
   "cancelled",
 ];

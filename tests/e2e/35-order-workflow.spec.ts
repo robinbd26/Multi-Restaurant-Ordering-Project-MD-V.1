@@ -64,15 +64,13 @@ test.describe("Phase J — valid workflow", () => {
     for (const s of ["accepted", "preparing", "ready"]) await setStatus(bm.req, order.id, s);
     expect((await bm.req.post(`${API_BASE}/api/orders/${order.id}/assign-rider/`, { data: { rider_id: riderId } })).status()).toBe(200);
 
-    // The rider must confirm physical receipt before pickup is allowed.
-    const early = await setStatus(rider.req, order.id, "picked_up");
-    expect(early.status(), "pickup before receive-confirmation is refused").toBe(409);
-
-    expect((await rider.req.post(`${API_BASE}/api/rider/orders/${order.id}/confirm-receive/`)).status()).toBe(200);
+    // Tapping Picked up IS the receipt confirmation now (Part 3): it is
+    // accepted directly and the confirmation record is written with it.
     for (const s of ["picked_up", "on_the_way", "delivered"]) {
       const res = await setStatus(rider.req, order.id, s);
       expect(res.status(), `→ ${s}`).toBe(200);
     }
+    expect((await (await rider.req.get(`${API_BASE}/api/rider/orders/${order.id}/confirm-receive`)).json()).confirmed, "receipt recorded by Picked up").toBe(true);
   });
 });
 
@@ -111,9 +109,11 @@ test.describe("Phase J — invalid transitions are refused with 409", () => {
     await rider.req.post(`${API_BASE}/api/rider/orders/${order.id}/confirm-receive/`);
     for (const s of ["picked_up", "on_the_way", "delivered"]) await setStatus(rider.req, order.id, s);
 
-    // Re-delivering (a duplicate transition) is a conflict — and must not pay
-    // a second commission.
-    expect((await setStatus(rider.req, order.id, "delivered")).status(), "delivered is final").toBe(409);
+    // Re-sending Delivered (double tap / stale screen) is a harmless no-op —
+    // never a second commission (unique per order) — while any OTHER move from a
+    // delivered order is still a conflict.
+    expect((await setStatus(rider.req, order.id, "delivered")).status(), "repeat is a no-op").toBe(200);
+    expect((await setStatus(rider.req, order.id, "on_the_way")).status(), "delivered is final").toBe(409);
     expect((await setStatus(bm.req, order.id, "cancelled", "too late")).status(), "cannot cancel a delivered order").toBe(409);
   });
 });

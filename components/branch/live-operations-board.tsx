@@ -29,7 +29,7 @@ interface Snapshot {
   generated_at: string;
 }
 
-const ORDER_TILES = ["pending", "accepted", "preparing", "ready", "picked_up", "on_the_way", "delayed", "delivered"] as const;
+const ORDER_TILES = ["pending", "accepted", "preparing", "ready", "picked_up", "on_the_way", "delivered"] as const;
 
 function Tile({ label, value, testid, tone }: { label: string; value: number; testid: string; tone?: "warn" }) {
   return (

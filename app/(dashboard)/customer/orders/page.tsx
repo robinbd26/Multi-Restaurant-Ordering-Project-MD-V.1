@@ -26,9 +26,8 @@ const CUSTOMER_FILTERS: OrderStatus[] = [
   "pending",
   "preparing",
   "on_the_way",
-  // WS-5.2 — a customer whose delivery was flagged as delayed must be able to
-  // find that order, not lose it between the "on the way" and "delivered" chips.
-  "delayed",
+  // A delay is an announcement on an On-the-way order now, not a status of its
+  // own, so it needs no filter chip.
   "delivered",
   "cancelled",
 ];

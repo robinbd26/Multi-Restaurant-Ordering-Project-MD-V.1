@@ -15,11 +15,16 @@ import type { OrderStatus } from "@/types";
 const NEXT_LABEL_KEYS: Partial<Record<OrderStatus, string>> = {
   accepted: "orders.nextAccepted",
   preparing: "orders.nextPreparing",
-  ready: "orders.nextReady",
+  ready: "orders.nextReadyForRider",
   picked_up: "orders.nextPickedUp",
   on_the_way: "orders.nextOnTheWay",
   delivered: "orders.nextDelivered",
   delayed: "orders.nextDelayed",
+};
+/** A pickup order reads "Ready for collection" and "Mark collected". */
+const PICKUP_LABEL_KEYS: Partial<Record<OrderStatus, string>> = {
+  ready: "orders.nextReadyForCollection",
+  delivered: "orders.nextCollected",
 };
 
 /**
@@ -38,10 +43,13 @@ const NEXT_LABEL_KEYS: Partial<Record<OrderStatus, string>> = {
 export function OrderStatusActions({
   orderId,
   nextStatuses,
-  pickup = false,
+  pickup: pickupProp = false,
+  fulfillment,
 }: {
   orderId: number;
   nextStatuses: OrderStatus[];
+  /** The order's fulfillment_type; "pickup" switches to the pickup wording. */
+  fulfillment?: string | null;
   /**
    * ITEM 6 — a pickup order's "delivered" transition IS its "Picked Up
    * (Done)" step (lib/services/orders.ts allows ready → delivered directly
@@ -51,6 +59,7 @@ export function OrderStatusActions({
   pickup?: boolean;
 }) {
   const { t, fmt } = useTranslation();
+  const pickup = pickupProp || fulfillment === "pickup";
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [delayOpen, setDelayOpen] = useState(false);
@@ -103,8 +112,8 @@ export function OrderStatusActions({
           onClick={() => advance(status)}
         >
           {pending ? <Spinner className="size-3.5 border-white/40 border-t-white" /> : null}
-          {pickup && status === "delivered"
-            ? t("orders.nextPickedUpDone")
+          {pickup && PICKUP_LABEL_KEYS[status]
+            ? t(PICKUP_LABEL_KEYS[status]!)
             : NEXT_LABEL_KEYS[status]
               ? t(NEXT_LABEL_KEYS[status]!)
               : t(`orderStatus.${status}`)}

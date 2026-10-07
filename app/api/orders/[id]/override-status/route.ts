@@ -2,45 +2,32 @@ import { requireApproved } from "@/lib/auth/current-user";
 import { handle, notFound, sk, validationError } from "@/lib/http/errors";
 import { json } from "@/lib/http/respond";
 import { prisma } from "@/lib/db";
+import { ORDER_FLOW_STATUSES } from "@/lib/constants/orders";
 import { ORDER_INCLUDE } from "@/lib/selectors";
 import { serializeOrder } from "@/lib/serializers";
-import { updateOrderStatus } from "@/lib/services/orders";
-import { ORDER_FLOW_STATUSES } from "@/lib/constants/orders";
+import { overrideOrderStatus } from "@/lib/services/orders";
 import type { OrderStatus } from "@/types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// POST /api/orders/[id]/update-status  { status }
+// POST /api/orders/[id]/override-status { status, reason } — the emergency
+// override (rider's phone died, rider forgot to tap Delivered). Branch manager
+// (own branch) or super admin only, written reason required, logged to Activity
+// Logs. Every rule is enforced in overrideOrderStatus, server-side.
 export const POST = handle(async (req: Request, ctx: Ctx) => {
   const me = await requireApproved();
   const { id } = await ctx.params;
-  const body = (await req.json().catch(() => ({}))) as {
-    status?: string;
-    reason?: string;
-    delay_minutes?: number | string | null;
-  };
+  const body = (await req.json().catch(() => ({}))) as { status?: string; reason?: string };
   const newStatus = body.status as OrderStatus;
-  // "delayed" is accepted as the rider's delay ANNOUNCEMENT (not a status).
-  if (!newStatus || !([...ORDER_FLOW_STATUSES, "delayed"] as string[]).includes(newStatus)) {
+  if (!newStatus || !(ORDER_FLOW_STATUSES as readonly string[]).includes(newStatus)) {
     throw validationError({ status: sk("errors.orders.selectValidStatus") });
   }
-
   const order = await prisma.order.findUnique({
     where: { id: Number(id) },
     include: { branch: { select: { managerId: true } } },
   });
   if (!order) throw notFound(sk("errors.orders.orderNotFound"));
-
-  await updateOrderStatus({ order, newStatus, user: me,
-    // PHASE J — rejection/cancellation reason, stored exactly as typed.
-    reason: body.reason ?? "",
-    // WS-5.2 — extra delivery minutes announced with a "delayed" update. Left
-    // null when absent so the service can tell "not sent" from "sent as 0".
-    delayMinutes:
-      body.delay_minutes === null || body.delay_minutes === undefined || body.delay_minutes === ""
-        ? null
-        : Number(body.delay_minutes),
-  });
+  await overrideOrderStatus({ order, newStatus, user: me, reason: body.reason ?? "" });
   const full = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE });
   return json(serializeOrder(full, me));
 });

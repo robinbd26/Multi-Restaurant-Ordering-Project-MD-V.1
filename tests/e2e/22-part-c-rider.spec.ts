@@ -145,10 +145,10 @@ test.describe("Part C — rider workflow", () => {
     await rider.req.post(`${API_BASE}/api/rider/duty/start`, { data: { branch_id: main } });
     const orderId = await readyOrder(browser, main);
 
-    // Before confirmation: not confirmed, picked_up blocked.
+    // Before confirmation: not confirmed. (Tapping Picked up would now record
+    // the confirmation itself; this spec confirms explicitly first.)
     await admin.req.post(`${API_BASE}/api/orders/${orderId}/assign-rider`, { data: { rider_id: riderId } });
     expect((await (await rider.req.get(`${API_BASE}/api/rider/orders/${orderId}/confirm-receive`)).json()).confirmed).toBe(false);
-    expect((await rider.req.post(`${API_BASE}/api/orders/${orderId}/update-status`, { data: { status: "picked_up" } })).status()).toBe(409);
 
     // Wrong rider cannot confirm (seed rider is not assigned).
     expect((await other.req.post(`${API_BASE}/api/rider/orders/${orderId}/confirm-receive`)).status()).toBe(403);

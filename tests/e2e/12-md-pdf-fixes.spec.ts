@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { login, newSession, setLocale, API_BASE, PASSWORD, clearCustomerAddresses } from "./helpers";
+import { login, newSession, setLocale, API_BASE, PASSWORD, clearCustomerAddresses, assignableOrderId } from "./helpers";
 import {
   disconnectResetDb,
   mintResetToken,
@@ -273,10 +273,6 @@ test.describe("Offline rider cannot be assigned (rider spec)", () => {
     expect(Array.isArray(riders) && riders.length).toBeTruthy();
     const riderUserId = riders[0].user;
 
-    const ordersRes = await bm.page.request.get(API_BASE + "/api/orders/?page_size=1");
-    const orders = await ordersRes.json();
-    const order = orders.results[0];
-    const orderId = order.id;
 
     // Rider goes offline. Ending duty is REFUSED while a delivery is still
     // running, so any delivery an earlier spec left open is cleared first —
@@ -295,6 +291,10 @@ test.describe("Offline rider cannot be assigned (rider spec)", () => {
     const duty = await (await riderSess.page.request.get(API_BASE + "/api/rider/duty")).json();
     expect(duty.active_session, "the rider really is off duty").toBeFalsy();
 
+    // A rider is assigned only once the branch has accepted the order; picked
+    // AFTER the clean-up above so it cannot be one the clean-up cancelled.
+    const orderId = await assignableOrderId(bm.page.request);
+
     // Assigning an offline rider (no active session) is rejected.
     const bad = await bm.page.request.post(
       API_BASE + `/api/orders/${orderId}/assign-rider`,
@@ -304,7 +304,7 @@ test.describe("Offline rider cannot be assigned (rider spec)", () => {
     expect(await bad.text()).toContain("rider_id");
 
     // Rider starts duty on the order's branch → assignment succeeds.
-    const start = await riderSess.page.request.post(API_BASE + "/api/rider/duty/start", { data: { branch_id: order.branch } });
+    const start = await riderSess.page.request.post(API_BASE + "/api/rider/duty/start", { data: { branch_id: (await (await bm.page.request.get(API_BASE + `/api/orders/${orderId}/`)).json()).branch } });
     expect(start.ok(), "rider starts duty").toBeTruthy();
     const ok = await bm.page.request.post(
       API_BASE + `/api/orders/${orderId}/assign-rider`,

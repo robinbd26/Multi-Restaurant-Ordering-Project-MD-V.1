@@ -5,7 +5,7 @@ import { Icon } from "@/components/layout/icons";
 import { OrderStatusBadge } from "@/components/ui/badge";
 import { Card, CardHeader, ViewAllLink } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { RIDER_NEXT_STATUS } from "@/lib/constants";
+import { riderNextStatuses } from "@/lib/constants/orders";
 import { getT } from "@/lib/i18n/server";
 import type { Order } from "@/types";
 
@@ -51,7 +51,7 @@ export async function RiderPendingOrders({ orders, online = true }: { orders: Or
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 text-sm font-semibold text-fg-base">
                   <Link href={`/rider/orders/${o.id}`} className="hover:text-brand-600">{o.order_number ?? `#${fmt.num(o.id)}`}</Link>
-                  <OrderStatusBadge status={o.status} />
+                  <OrderStatusBadge status={o.status} fulfillment={o.fulfillment_type} />
                 </p>
                 <p className="truncate text-xs text-fg-muted">
                   {o.branch_name} → {o.delivery_address}
@@ -62,7 +62,7 @@ export async function RiderPendingOrders({ orders, online = true }: { orders: Or
                 <p className="font-semibold text-fg-base">{fmt.money(o.total_amount)}</p>
                 <p className="text-xs text-fg-subtle">{t(`payment.${o.payment_method}`)}</p>
               </div>
-              <OrderStatusActions orderId={o.id} nextStatuses={RIDER_NEXT_STATUS[o.status] ?? []} />
+              <OrderStatusActions orderId={o.id} nextStatuses={riderNextStatuses(o.status)} fulfillment={o.fulfillment_type} />
             </li>
           ))}
         </ul>

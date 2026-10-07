@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { newSession, API_BASE } from "./helpers";
+import { newSession, API_BASE, assignableOrderId } from "./helpers";
 
 // Role → its notifications inbox route.
 const NOTIF_PAGE: Record<string, string> = {
@@ -56,8 +56,8 @@ test("system notification content translates in English and Bangla", async ({ br
   let orderId: number;
   try {
     const riders = await (await bm.page.request.get(`${API_BASE}/api/riders/branch`)).json();
-    const orders = await (await bm.page.request.get(`${API_BASE}/api/orders/?page_size=1`)).json();
-    orderId = orders.results[0].id;
+    // A rider is assigned only once the branch has accepted the order.
+    orderId = await assignableOrderId(bm.page.request);
     const res = await bm.page.request.post(`${API_BASE}/api/orders/${orderId}/assign-rider`, {
       data: { rider_id: riders[0].user },
     });
@@ -174,14 +174,15 @@ test("order lifecycle creates customer + rider + branch-manager notifications", 
     await expect.poll(() => unread(customer.req)).toBeGreaterThan(beforeCustomer);
     await expect.poll(() => unread(bm.req)).toBeGreaterThan(beforeBm);
 
+    // status change → customer gets another update (a rider is assigned only
+    // once the branch has accepted the order)
+    const beforeAccept = await unread(customer.req);
+    expect((await bm.req.post(`${API_BASE}/api/orders/${order.id}/update-status`, { data: { status: "accepted" } })).status()).toBe(200);
+    await expect.poll(() => unread(customer.req)).toBeGreaterThan(beforeAccept);
+
     // rider assigned → rider notification
     expect((await bm.req.post(`${API_BASE}/api/orders/${order.id}/assign-rider`, { data: { rider_id: riderId } })).status()).toBe(200);
     await expect.poll(() => unread(rider.req)).toBeGreaterThan(beforeRider);
-
-    // status change → customer gets another update
-    const afterAssign = await unread(customer.req);
-    expect((await bm.req.post(`${API_BASE}/api/orders/${order.id}/update-status`, { data: { status: "accepted" } })).status()).toBe(200);
-    await expect.poll(() => unread(customer.req)).toBeGreaterThan(afterAssign);
 
     // Cleanup: cancel so the rider has no dangling active delivery (blocks offline).
     await bm.req.post(`${API_BASE}/api/orders/${order.id}/update-status`, { data: { status: "cancelled", reason: "Cancelled by branch manager for test" } });
