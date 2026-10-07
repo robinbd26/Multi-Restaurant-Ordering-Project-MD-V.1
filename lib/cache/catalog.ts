@@ -53,6 +53,8 @@ const STAFF_SURFACES = [
   "/admin/products",
   "/admin/products/deactivated",
   "/admin/categories",
+  "/admin/brands",
+  "/admin/branches",
   "/admin/dashboard",
   "/branch-manager/catalog",
   "/branch-manager/dashboard",
