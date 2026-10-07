@@ -9,6 +9,7 @@ export const ROLE_PAGES: Record<string, string[]> = {
     "/admin/dashboard", "/admin/users", "/admin/customers", "/admin/staff",
     "/admin/products", "/admin/reports/sales", "/admin/reports/attendance",
     "/admin/notices", "/admin/rewards", "/admin/complaints", "/admin/coupons",
+    "/admin/brands", "/admin/brands/new",
   ],
   branch_manager: [
     "/branch-manager/dashboard", "/branch-manager/orders", "/branch-manager/riders",

@@ -1,10 +1,15 @@
-// Types for the public homepage (Cheez! Pizza / Madchef storefront).
+// Types for the public homepage storefront.
 //
 // These describe the SHAPE the storefront cards and modals render. The DATA is
 // built from the database by lib/services/public-catalog.ts — there is no
 // hardcoded catalogue behind them any more.
 
-export type Brand = "cheez" | "madchef";
+/**
+ * A brand SLUG (Brand.slug). Brands are data managed at /admin/brands; the
+ * full brand record (name, logo, colour …) travels separately as BrandInfo
+ * (lib/brands/shared.ts) and is looked up by this key.
+ */
+export type Brand = string;
 
 /**
  * A category identity in the storefront. Formerly a closed union of hardcoded

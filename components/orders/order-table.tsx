@@ -65,7 +65,7 @@ export async function OrderTable({
                 </Td>
               ) : null}
               {showBranch ? <Td>{order.branch_name}</Td> : null}
-              <Td><OrderStatusBadge status={order.status} /></Td>
+              <Td><OrderStatusBadge status={order.status} fulfillment={order.fulfillment_type} /></Td>
               <Td className="whitespace-nowrap">{t(`payment.${order.payment_method}`)}</Td>
               <Td mono><span className="font-semibold">{fmt.money(order.total_amount)}</span></Td>
               <Td mono className="whitespace-nowrap">
@@ -94,7 +94,7 @@ export async function OrderTable({
               )}
               <p className="mt-1 font-mono text-xs text-fg-subtle">{fmt.dateTime(order.created_at)}</p>
             </div>
-            <OrderStatusBadge status={order.status} />
+            <OrderStatusBadge status={order.status} fulfillment={order.fulfillment_type} />
           </div>
 
           {showCustomer || showBranch ? (

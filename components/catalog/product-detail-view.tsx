@@ -12,6 +12,9 @@ import { getT } from "@/lib/i18n/server";
 import { isProductOrderable } from "@/lib/services/product-eligibility";
 import { mediaUrl } from "@/lib/utils";
 
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
+import { brandBySlug, brandName } from "@/lib/brands/shared";
+import { brandsForRequest } from "@/lib/services/brands";
 /**
  * The dedicated Product VIEW page, shared by /admin/products/[id] and
  * /branch-manager/catalog/products/[id]. Neither section had one — a product
@@ -40,11 +43,12 @@ export async function ProductDetailView({
   canRestore?: boolean;
   canPermanentDelete?: boolean;
 }) {
-  const { t, fmt } = await getT();
+  const { t, fmt, locale } = await getT();
   const product = await prisma.product.findUniqueOrThrow({
     where: { id: productId },
-    include: { branch: true, category: true, variations: { orderBy: { sortOrder: "asc" } } },
+    include: { branch: { include: BRANCH_BRANDS_INCLUDE }, category: true, variations: { orderBy: { sortOrder: "asc" } } },
   });
+  const productBrand = product.brand ? brandBySlug(await brandsForRequest(), product.brand) : undefined;
 
   // The same predicate every customer surface uses, so this page reports the
   // product's REAL public visibility rather than a second opinion about it.
@@ -63,7 +67,10 @@ export async function ProductDetailView({
 
   const rows: [string, string][] = [
     [t("pages.colBranch"), product.branch.name],
-    [t("catalog.brand"), product.brand ? t(`brands.${product.brand}`) : "—"],
+    [
+      t("catalog.brand"),
+      product.brand ? (productBrand ? brandName(productBrand, locale) : product.brand) : t("brands.allBrandsShort"),
+    ],
     [t("adminExtras.colCategory"), product.category?.name ?? "—"],
     // "" = "Not applicable" (no crust policy) — never interpolate an empty key.
     [

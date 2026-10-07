@@ -34,7 +34,7 @@ export async function RiderOrderList({ orders }: { orders: Order[] }) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-extrabold text-fg-base">{order.order_number ?? `#${fmt.num(order.id)}`}</span>
-                  <OrderStatusBadge status={order.status} />
+                  <OrderStatusBadge status={order.status} fulfillment={order.fulfillment_type} />
                 </div>
                 <p className="truncate text-[11px] text-fg-muted">
                   {order.branch_name} → {order.delivery_address}

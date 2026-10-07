@@ -14,6 +14,7 @@ import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
 import type { Branch, ManagerAssignment, Paginated, User } from "@/types";
 
+import { BrandBadges } from "@/components/brands/brand-badges";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("branches.branchInfo") };
@@ -77,14 +78,24 @@ export default async function BranchDetailPage({ params }: { params: Promise<{ i
             action={branch.is_active ? <Badge tone="green">{t("common.active")}</Badge> : <Badge tone="red">{t("common.inactive")}</Badge>}
           />
           <CardContent className="grid gap-x-8 sm:grid-cols-2">
-            <InfoRow label={t("branches.brandType")} value={t(`brands.${branch.brand_type ?? "combined"}`)} />
+            <InfoRow label={t("branches.brandsServed")} value={<BrandBadges slugs={branch.brands ?? []} emptyLabel={t("brands.noneAssigned")} />} />
             <InfoRow label={t("branches.businessType")} value={t(`branches.businessType${branch.business_type === "cloud_kitchen" ? "CloudKitchen" : "DineIn"}`)} />
             <InfoRow label={t("common.phone")} value={branch.phone} />
             <InfoRow label={t("common.email")} value={branch.email} />
             <InfoRow label={t("branches.bkashNumber")} value={branch.bkash_number} />
             <InfoRow label={t("branches.deliveryRadius")} value={`${fmt.num(branch.delivery_radius_km)} ${t("branches.km")}`} />
-            <InfoRow label={t("branches.openLabel")} value={fmt.clock(branch.opening_time)} />
-            <InfoRow label={t("branches.closeLabel")} value={fmt.clock(branch.closing_time)} />
+            <InfoRow
+              label={t("hours.todayLabel")}
+              value={
+                <a href={`/admin/branches/${branch.id}/hours`} className="text-brand-600 hover:underline" data-testid="branch-hours-link">
+                  {branch.hours_today
+                    ? `${fmt.clock(branch.hours_today.start)} – ${fmt.clock(branch.hours_today.end)}`
+                    : t("hours.notSetOrClosed")}
+                  {" · "}
+                  {t("hours.openEditor")}
+                </a>
+              }
+            />
             <InfoRow label={t("common.address")} value={branch.address} />
             <InfoRow label={t("branches.zoneField")} value={branch.zone_name ?? t("branches.zoneNone")} />
             <InfoRow label={t("branches.currentManager")} value={branch.manager_name ?? t("common.notAssigned")} />

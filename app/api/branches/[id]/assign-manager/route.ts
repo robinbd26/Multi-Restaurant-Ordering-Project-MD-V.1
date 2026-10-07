@@ -3,6 +3,7 @@ import { forbidden, handle, sk } from "@/lib/http/errors";
 import { json } from "@/lib/http/respond";
 import { prisma } from "@/lib/db";
 import { serializeBranch } from "@/lib/serializers";
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
 import { assignBranchManager } from "@/lib/services/branches";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -21,6 +22,6 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     notes: String(body.notes ?? ""),
   });
 
-  const branch = await prisma.branch.findUniqueOrThrow({ where: { id: Number(id) }, include: { manager: true } });
+  const branch = await prisma.branch.findUniqueOrThrow({ where: { id: Number(id) }, include: { manager: true, ...BRANCH_BRANDS_INCLUDE } });
   return json(serializeBranch(branch));
 });

@@ -20,10 +20,8 @@ export const RIDER_STEPS: RiderStep[] = [
  * Anything before `ready` (pending/accepted/preparing) sits at the first step,
  * `cancelled` returns -1.
  *
- * WS-5.2 — `delayed` is NOT a step of its own and never moves the tracker
- * backwards: the rider still has the food and is still on the way, they have
- * only told the customer it will take longer. It therefore holds at the
- * on-the-way step (the amber status badge is what communicates the delay).
+ * A legacy `delayed` status (delays are announcements now, and the migration
+ * moved those orders to on_the_way) holds at the on-the-way step.
  */
 export function riderStepIndex(status: OrderStatus): number {
   if (status === "cancelled") return -1;

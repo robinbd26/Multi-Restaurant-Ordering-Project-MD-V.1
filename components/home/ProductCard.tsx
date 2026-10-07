@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 
 import { FoodImage } from "@/components/home/food-image";
 import { useHomeCart } from "@/components/home/home-cart-context";
@@ -9,6 +9,7 @@ import type { MenuItem } from "@/lib/home/types";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
 
+import { withAlpha } from "@/lib/brands/shared";
 /**
  * Badge tint. Badges are now the product's own DATABASE flags (isPopular /
  * isRecommended) rather than a hardcoded menu group, so there are exactly two.
@@ -45,12 +46,16 @@ export function ProductCard({
    */
   showBranch?: boolean;
 }) {
-  const { add, openCart } = useHomeCart();
+  const { add, openCart, brandInfo } = useHomeCart();
   const { t, fmt } = useTranslation();
-  const isMad = item.brand === "madchef";
-  const accentText = isMad ? "text-brand-500" : "text-cheez-gold";
-  const accentBtn = isMad ? "bg-brand-500 text-white" : "bg-cheez-gold text-[#111]";
-  const hoverBorder = isMad ? "hover:border-brand-500/40" : "hover:border-cheez-gold/40";
+  // The card wears its brand's colour (Brand.accentColor), with a text colour
+  // computed to stay readable on it — no brand is named in code.
+  const info = brandInfo(item.brand);
+  const accent = info?.accent_color ?? "#e8192c";
+  const accentFg = info?.accent_foreground ?? "#ffffff";
+  const accentText = "text-(--brand-accent)";
+  const accentBtn = "bg-(--brand-accent) text-(--brand-accent-fg)";
+  const hoverBorder = "hover:border-(--brand-accent-40)";
   const hasOptions = itemHasOptions(item);
   // Card-level quantity selector (req #1): the customer picks HOW MANY before
   // ordering, and the card itself shows qty × price = line total, live.
@@ -90,6 +95,13 @@ export function ProductCard({
         "group relative flex flex-col overflow-hidden rounded-[14px] border border-white/8 bg-surface-dark transition-all hover:-translate-y-0.5 hover:shadow-xl",
         hoverBorder,
       )}
+      style={
+        {
+          "--brand-accent": accent,
+          "--brand-accent-fg": accentFg,
+          "--brand-accent-40": withAlpha(accent, 0.4),
+        } as CSSProperties
+      }
     >
       {/* Whole-card click target (reference design: any card opens the modal). */}
       <button
@@ -139,7 +151,7 @@ export function ProductCard({
               ) : null}
               {fmt.money(item.price)}
             </span>
-            <QuantityControl qty={qty} onChange={setQty} accent={isMad ? "#f43f5e" : "#F5C518"} />
+            <QuantityControl qty={qty} onChange={setQty} accent={accent} />
           </div>
           {/* Live line maths on the card (req #1): qty × unit price = total. */}
           <p className="text-[0.72rem] text-[#a0a0b0]" data-testid="card-line-math">

@@ -1,5 +1,5 @@
 import { NIGHT_END_MINUTES, NIGHT_START_MINUTES, coverageWindowAt } from "@/lib/services/coverage-window";
-import { nowMinutesInDhaka } from "@/lib/services/branch-hours";
+import { nowMinutesInDhaka } from "@/lib/hours/clock";
 
 /**
  * BRANCH-LEVEL "PAUSE DELIVERY" — the branch manager's short-term brake.
@@ -53,9 +53,8 @@ export function isDeliveryPaused(branch: DeliveryPauseState, now: Date = new Dat
  *
  * Note the quiet stretch: 04:00–11:00 resolves to the DAY shift (that is the
  * list a customer browses before opening time), so a pause started at, say,
- * 05:00 runs to 22:45. That is long on the clock but not in practice — the
- * whole platform refuses orders until 11:00 anyway, so the only hours it
- * actually suspends are the day shift's own.
+ * 05:00 runs to 22:45. In practice the brands' own schedules are closed in
+ * that stretch, so the only hours it actually suspends are the day shift's.
  */
 export function pauseEndsAt(mode: DeliveryPauseMode, now: Date = new Date()): Date | null {
   if (mode === "until_resumed") return null;

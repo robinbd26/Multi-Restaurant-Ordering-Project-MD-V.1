@@ -1,47 +1,36 @@
+import type { CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
 import { BrandCardLink } from "@/components/home/BrandCardLink";
-import type { Brand } from "@/lib/home/types";
+import { brandDescription, brandName, brandTagline, withAlpha, type BrandInfo } from "@/lib/brands/shared";
 import { getT } from "@/lib/i18n/server";
 
-/** `signedIn` hides the "New here? Create an account" line from anyone already logged in. */
-export async function HeroSection({ signedIn = false }: { signedIn?: boolean }) {
-  const { t, fmt } = await getT();
+/**
+ * The storefront hero. Brand cards, the brand names in the blurb and the three
+ * stats all come from data: the live brands (/admin/brands, in their display
+ * order), the live branches and the menu actually on offer. Nothing here names
+ * a brand, so a brand the super admin adds gets its card with no code change.
+ *
+ * `signedIn` hides the "New here? Create an account" line from anyone logged in.
+ */
+export async function HeroSection({
+  signedIn = false,
+  brands,
+  branchCount,
+  menuItemCount,
+}: {
+  signedIn?: boolean;
+  brands: BrandInfo[];
+  branchCount: number;
+  menuItemCount: number;
+}) {
+  const { t, fmt, locale } = await getT();
 
   const STATS = [
-    { num: "2", label: t("home.hero.statBrands") },
-    { num: "10", label: t("home.hero.statBranches") },
-    { num: "80", label: t("home.hero.statMenuItems") },
-  ];
-
-  const BRAND_CARDS: {
-    brand: Brand;
-    logo: string;
-    name: string;
-    desc: string;
-    tag: string;
-    tagClass: string;
-    hoverClass: string;
-  }[] = [
-    {
-      brand: "cheez",
-      logo: "/images/brand/cheez-logo.webp",
-      name: "Cheez! Pizza",
-      desc: t("home.hero.cheezDesc"),
-      tag: t("home.hero.cheezTag"),
-      tagClass: "bg-cheez-gold/12 text-cheez-gold",
-      hoverClass: "hover:border-cheez-gold/35",
-    },
-    {
-      brand: "madchef",
-      logo: "/images/brand/madchef-logo.webp",
-      name: "Madchef",
-      desc: t("home.hero.madchefDesc"),
-      tag: t("home.hero.madchefTag"),
-      tagClass: "bg-brand-500/12 text-brand-500",
-      hoverClass: "hover:border-brand-500/35",
-    },
+    { num: brands.length, label: t("home.hero.statBrands") },
+    { num: branchCount, label: t("home.hero.statBranches") },
+    { num: menuItemCount, label: t("home.hero.statMenuItems") },
   ];
 
   return (
@@ -71,9 +60,14 @@ export async function HeroSection({ signedIn = false }: { signedIn?: boolean }) 
               <span className="italic text-brand-500">PLATFORM</span>
             </h1>
             <p className="animate-fade-up mt-5 max-w-100 text-base leading-7 text-[#a0a0b0]">
-              {t("home.hero.blurbPre")} <strong className="text-cheez-gold">Cheez!</strong>{" "}
-              {t("home.hero.blurbAnd")} <strong className="text-brand-500">Madchef</strong>{" "}
-              {t("home.hero.blurbPost", { n: fmt.num(10) })}
+              {t("home.hero.blurbPre")}{" "}
+              {brands.map((b, i) => (
+                <span key={b.slug}>
+                  {i > 0 ? (i === brands.length - 1 ? ` ${t("home.hero.blurbAnd")} ` : ", ") : null}
+                  <strong style={{ color: b.accent_color }}>{brandName(b, locale)}</strong>
+                </span>
+              ))}{" "}
+              {t("home.hero.blurbPost", { n: fmt.num(branchCount) })}
             </p>
             <div className="animate-fade-up mt-8 flex flex-wrap gap-3">
               <a
@@ -103,27 +97,41 @@ export async function HeroSection({ signedIn = false }: { signedIn?: boolean }) 
           </div>
 
           <div className="animate-fade-right hidden flex-col gap-4 md:flex">
-            {BRAND_CARDS.map((card) => (
-              <BrandCardLink
-                key={card.name}
-                brand={card.brand}
-                className={`group flex items-center gap-4.5 rounded-[20px] border border-white/8 bg-surface-dark px-6 py-5.5 transition-all hover:translate-x-1.5 hover:shadow-2xl ${card.hoverClass}`}
-              >
-                <span className="relative size-15 shrink-0 overflow-hidden rounded-xl border border-white/8">
-                  <Image src={card.logo} alt={card.name} fill sizes="60px" className="object-cover" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-display text-[1.3rem] font-extrabold leading-tight text-white" style={{ letterSpacing: "0.5px" }}>
-                    {card.name}
+            {brands.map((brand) => {
+              const name = brandName(brand, locale);
+              const tagline = brandTagline(brand, locale);
+              return (
+                <BrandCardLink
+                  key={brand.slug}
+                  brand={brand.slug}
+                  className="group flex items-center gap-4.5 rounded-[20px] border border-white/8 bg-surface-dark px-6 py-5.5 transition-all hover:translate-x-1.5 hover:border-(--brand-accent-35) hover:shadow-2xl"
+                  style={{ "--brand-accent-35": withAlpha(brand.accent_color, 0.35) } as CSSProperties}
+                >
+                  <span className="relative flex size-15 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/8 text-2xl">
+                    {brand.logo ? (
+                      <Image src={brand.logo} alt={name} fill sizes="60px" className="object-cover" />
+                    ) : (
+                      <span aria-hidden>{brand.emoji}</span>
+                    )}
                   </span>
-                  <span className="block truncate text-[0.8rem] text-[#a0a0b0]">{card.desc}</span>
-                  <span className={`mt-1 inline-flex items-center rounded-full px-2.25 py-0.75 text-[0.7rem] font-bold ${card.tagClass}`}>
-                    {card.tag}
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-display text-[1.3rem] font-extrabold leading-tight text-white" style={{ letterSpacing: "0.5px" }}>
+                      {name}
+                    </span>
+                    <span className="block truncate text-[0.8rem] text-[#a0a0b0]">{brandDescription(brand, locale)}</span>
+                    {tagline ? (
+                      <span
+                        className="mt-1 inline-flex items-center rounded-full px-2.25 py-0.75 text-[0.7rem] font-bold"
+                        style={{ background: withAlpha(brand.accent_color, 0.12), color: brand.accent_color }}
+                      >
+                        {tagline}
+                      </span>
+                    ) : null}
                   </span>
-                </span>
-                <span className="text-[#606070] transition-transform group-hover:translate-x-1">→</span>
-              </BrandCardLink>
-            ))}
+                  <span className="text-[#606070] transition-transform group-hover:translate-x-1">→</span>
+                </BrandCardLink>
+              );
+            })}
             {signedIn ? null : (
               <p className="text-center text-xs text-white/40" data-testid="hero-signup-prompt">
                 {t("home.hero.newHere")}{" "}

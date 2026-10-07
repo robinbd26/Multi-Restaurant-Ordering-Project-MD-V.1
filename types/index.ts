@@ -81,7 +81,10 @@ export interface Branch {
   zone_id?: number | null;
   zone_name?: string | null;
   delivery_radius_km: string;
-  brand_type?: string; // cheez | madchef | combined
+  /** Slugs of the brands this branch serves (Brand.slug). */
+  brands?: string[];
+  /** Deprecated, derived from `brands`: one slug, "combined" for several, "" for none. */
+  brand_type?: string;
   /** "dine_in" | "cloud_kitchen" — a display badge only, never an order type. */
   business_type?: string;
   /** Branch-level delivery fee (৳, 2dp string). 0 = free. */
@@ -95,8 +98,10 @@ export interface Branch {
   // req #5 — serialized by `serializeBranch`; lets the list show "Archived"
   // (history preserved, no new orders) rather than merely "Inactive".
   is_archived?: boolean;
-  opening_time: string | null;
-  closing_time: string | null;
+  /** Today's ordering window across the branch's live brands (display only). */
+  hours_today?: { start: string; end: string } | null;
+  /** Display-only dine-in hours (lib/hours/schedule DineInHours). */
+  dine_in_hours?: { everyDay: { start: string; end: string }[]; days: Record<string, { start: string; end: string }[]> } | null;
   logo: string | null;
   created_at?: string;
   updated_at?: string;
@@ -107,8 +112,8 @@ export interface Category {
   branch: number | null; // null = global ("Main Branch")
   branch_name: string | null;
   is_global: boolean;
-  /** "cheez" | "madchef" — null = serves BOTH brands (the default). */
-  brand: "cheez" | "madchef" | null;
+  /** A Brand.slug — null = serves EVERY brand (the default). */
+  brand: string | null;
   name: string;
   description: string;
   is_active: boolean;
@@ -168,6 +173,8 @@ export interface OrderItem {
   product_image: string | null;
   variation: number | null;
   variation_name: string;
+  /** Brand slug the line was sold under ("" for legacy multi-brand lines). */
+  brand?: string;
   quantity: number;
   unit_price: string;
   food_note: string;
@@ -498,7 +505,7 @@ export interface BranchManagerDashboard {
     is_active: boolean;
     // req #5 — branch identity shown on the Branch Manager dashboard.
     is_archived?: boolean;
-    brand_type?: string;
+    brands?: string[];
     delivery_area_count?: number;
     delivery_radius_km?: number;
     delivery_fee?: number;

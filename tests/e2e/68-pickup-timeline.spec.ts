@@ -8,7 +8,7 @@ import { API_BASE, newSession, setLocale, isDhakaFullClosureWindow, FULL_CLOSURE
  * The 7-step delivery flow (Pending → Accepted → Preparing → Ready → Picked Up
  * → On the Way → Delivered) was built for a rider leg a pickup order never
  * travels. Pickup now renders 5 steps — Pending → Accepted → Preparing →
- * "Ready for Pickup" → "Picked Up (Done)" — on BOTH the branch-manager and the
+ * "Ready for collection" → "Collected" — on BOTH the branch-manager and the
  * customer order views (one shared component, components/orders/
  * order-detail-card.tsx), with no "assign rider" card and no "on the way" step.
  *
@@ -102,7 +102,10 @@ test.describe("Pickup orders skip the delivery-only middle statuses", () => {
     await manager.context.close();
   });
 
-  test("the old ready → picked_up → on_the_way → delivered path still works (backward compatible)", async ({ browser }) => {
+  // Part 3: a pickup order has no rider leg at all now. The old ready →
+  // picked_up → on_the_way detour is refused (the migration moved any pickup
+  // order left in those states back to ready), so Collected is the only way out.
+  test("a pickup order has no rider leg: picked_up is refused, Collected completes it", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
     const { branchId, product } = await mainBranchProduct(admin.req);
     const customer = await newSession(browser, "customer");
@@ -112,9 +115,9 @@ test.describe("Pickup orders skip the delivery-only middle statuses", () => {
     await setStatus(manager.req, order.id, "accepted");
     await setStatus(manager.req, order.id, "preparing");
     await setStatus(manager.req, order.id, "ready");
-    expect((await setStatus(manager.req, order.id, "picked_up")).status(), "the OLD edge is not removed").toBe(200);
-    expect((await setStatus(manager.req, order.id, "on_the_way")).status()).toBe(200);
-    expect((await setStatus(manager.req, order.id, "delivered")).status()).toBe(200);
+    expect((await setStatus(manager.req, order.id, "picked_up")).status(), "no rider leg on a pickup order").toBe(409);
+    expect((await setStatus(manager.req, order.id, "on_the_way")).status()).toBe(409);
+    expect((await setStatus(manager.req, order.id, "delivered")).status(), "Collected").toBe(200);
 
     await admin.context.close();
     await customer.context.close();
@@ -132,8 +135,10 @@ test.describe("Pickup orders skip the delivery-only middle statuses", () => {
     await setStatus(manager.req, order.id, "preparing");
     await setStatus(manager.req, order.id, "ready");
 
+    // Part 3: on a delivery order Delivered belongs to the assigned rider; the
+    // manager is refused outright (403), and uses Override in an emergency.
     const skip = await setStatus(manager.req, order.id, "delivered");
-    expect(skip.status(), "a delivery order still needs the picked_up/on_the_way steps").toBe(409);
+    expect(skip.status(), "the rider leg is the rider's").toBe(403);
 
     await admin.context.close();
     await customer.context.close();
@@ -153,15 +158,15 @@ test.describe("Pickup orders skip the delivery-only middle statuses", () => {
 
     await manager.page.goto(`/branch-manager/orders/${order.id}`, { waitUntil: "domcontentloaded" });
     const timeline = manager.page.getByTestId("order-status-timeline");
-    await expect(timeline).toContainText("Ready for Pickup");
-    await expect(timeline).toContainText("Picked Up (Done)");
+    await expect(timeline).toContainText("Ready for collection");
+    await expect(timeline).toContainText("Collected");
     await expect(timeline).not.toContainText("On the Way");
 
     // No rider-assignment card for a pickup order.
     await expect(manager.page.getByText(/assign.*rider/i)).toHaveCount(0);
 
     // The offered next action reads the pickup wording and completes the order.
-    const action = manager.page.getByRole("button", { name: /picked up \(done\)/i });
+    const action = manager.page.getByRole("button", { name: /mark collected/i });
     await expect(action).toBeVisible();
     await expect(manager.page.getByRole("button", { name: /^on the way$/i })).toHaveCount(0);
     await action.click();
@@ -187,8 +192,8 @@ test.describe("Pickup orders skip the delivery-only middle statuses", () => {
 
     await customer.page.goto(`/customer/orders/${order.id}`, { waitUntil: "domcontentloaded" });
     const timeline = customer.page.getByTestId("order-status-timeline");
-    await expect(timeline).toContainText("Ready for Pickup");
-    await expect(timeline).toContainText("Picked Up (Done)");
+    await expect(timeline).toContainText("Ready for collection");
+    await expect(timeline).toContainText("Collected");
     await expect(timeline).not.toContainText("On the Way");
     await expect(customer.page.getByRole("heading", { name: "Track rider" })).toHaveCount(0);
 
@@ -207,8 +212,8 @@ test.describe("Pickup orders skip the delivery-only middle statuses", () => {
     await manager.page.goto(`/branch-manager/orders/${order.id}`, { waitUntil: "domcontentloaded" });
     const timeline = manager.page.getByTestId("order-status-timeline");
     await expect(timeline).toContainText("On the Way");
-    await expect(timeline).not.toContainText("Ready for Pickup");
-    await expect(timeline).not.toContainText("Picked Up (Done)");
+    await expect(timeline).not.toContainText("Ready for collection");
+    await expect(timeline).not.toContainText("Collected");
 
     await admin.context.close();
     await customer.context.close();

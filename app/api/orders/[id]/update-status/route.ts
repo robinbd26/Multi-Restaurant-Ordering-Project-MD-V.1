@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { ORDER_INCLUDE } from "@/lib/selectors";
 import { serializeOrder } from "@/lib/serializers";
 import { updateOrderStatus } from "@/lib/services/orders";
-import { ALLOWED_TRANSITIONS } from "@/lib/constants/orders";
+import { ORDER_FLOW_STATUSES } from "@/lib/constants/orders";
 import type { OrderStatus } from "@/types";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -20,7 +20,8 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     delay_minutes?: number | string | null;
   };
   const newStatus = body.status as OrderStatus;
-  if (!newStatus || !(newStatus in ALLOWED_TRANSITIONS)) {
+  // "delayed" is accepted as the rider's delay ANNOUNCEMENT (not a status).
+  if (!newStatus || !([...ORDER_FLOW_STATUSES, "delayed"] as string[]).includes(newStatus)) {
     throw validationError({ status: sk("errors.orders.selectValidStatus") });
   }
 

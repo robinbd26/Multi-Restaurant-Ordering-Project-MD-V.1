@@ -12,8 +12,11 @@ import {
   pointForCustomerAddress,
   type TrustedPoint,
 } from "@/lib/services/customer-location";
-import { isBranchOpenNow } from "@/lib/services/branch-hours";
 
+import { BRANCH_BRANDS_INCLUDE, branchLiveBrandSlugsOf } from "@/lib/brands/branch";
+import { branchNextOpening, branchOpenFor } from "@/lib/hours/availability";
+import { dhakaMoment } from "@/lib/hours/clock";
+import type { NextOpening } from "@/lib/hours/schedule";
 export { isBranchCoveredForCustomer };
 
 /**
@@ -37,7 +40,8 @@ export interface CustomerBranchContext {
   branch: {
     id: number;
     name: string;
-    brandType: string;
+    /** Live brand slugs the branch serves, in display order. */
+    brands: string[];
     /** "dine_in" | "cloud_kitchen" — a display badge only. */
     businessType: string;
     address: string;
@@ -53,7 +57,7 @@ export interface CustomerBranchContext {
   /** Whether the resolved branch can take an order right now (active + within hours). */
   open: boolean;
   /** Opening time ("HH:MM") to show when the branch is currently closed; null otherwise. */
-  opensAt: string | null;
+  opensAt: NextOpening | null;
 }
 
 const EMPTY: CustomerBranchContext = {
@@ -105,6 +109,7 @@ export async function resolveCustomerBranch(
 
   const branch = await prisma.branch.findFirst({
     where: { id: targetBranchId, isActive: true, isArchived: false },
+    include: BRANCH_BRANDS_INCLUDE,
   });
   if (!branch) {
     return { ...EMPTY, state: "out-of-zone", pointSource: nearest.pointSource };
@@ -128,8 +133,8 @@ export async function resolveCustomerBranch(
     branch: {
       id: branch.id,
       name: branch.name,
-      brandType: branch.brandType,
-      businessType: branch.businessType,
+      brands: branchLiveBrandSlugsOf(branch),
+          businessType: branch.businessType,
       address: branch.address,
       pickupEnabled: branch.pickupEnabled,
       prepTimeMinutes: branch.prepTimeMinutes,
@@ -297,6 +302,7 @@ export async function resolveHomeBranch(
   if (scope.branchId != null) {
     const branch = await prisma.branch.findFirst({
       where: { id: scope.branchId, isActive: true, isArchived: false },
+      include: BRANCH_BRANDS_INCLUDE,
     });
     if (branch) {
       const selection: BrowseScope = { deliverTo: target.deliverTo, branchId: branch.id };
@@ -316,15 +322,20 @@ export async function resolveHomeBranch(
 
       // No distance and no fee: both are properties of a delivery that cannot
       // happen from here, and inventing them would be the lie the bar exists to avoid.
-      const hours = isBranchOpenNow(branch);
+      // Open = any live brand takes delivery or pickup right now (Dhaka clock).
+      const at = dhakaMoment();
+      const hours = {
+        orderable: branchOpenFor(branch, "any", at),
+        opensAt: branchNextOpening(branch, "any", at),
+      };
       return {
         state: "ok",
         branchId: branch.id,
         branch: {
           id: branch.id,
           name: branch.name,
-          brandType: branch.brandType,
-      businessType: branch.businessType,
+          brands: branchLiveBrandSlugsOf(branch),
+          businessType: branch.businessType,
           address: branch.address,
           pickupEnabled: branch.pickupEnabled,
           prepTimeMinutes: branch.prepTimeMinutes,

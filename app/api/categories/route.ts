@@ -37,7 +37,7 @@ export const POST = handle(async (req: Request) => {
     description: body.description,
     isActive: body.is_active,
     branchId: body.branch_id,
-    // req #3 — "cheez" | "madchef" | "" ("" = serves BOTH brands).
+    // req #3 — a Brand.slug, or "" for "serves every brand".
     brand: body.brand,
   });
   return created(serializeCategory(category));

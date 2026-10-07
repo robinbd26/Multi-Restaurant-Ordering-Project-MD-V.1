@@ -28,8 +28,10 @@ export function RiderOrderPanel({ orderId, status }: { orderId: number; status: 
     }
   }, [orderId]);
 
+  // Re-check when the status moves: tapping Picked up records the receipt too,
+  // so the card must not keep offering it after the leg has started.
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, status]);
 
   async function confirm() {
     setPending(true); setError(null);
@@ -50,7 +52,7 @@ export function RiderOrderPanel({ orderId, status }: { orderId: number; status: 
     <div className="space-y-3">
       <Alert tone="error" message={error} />
       {!confirmed ? (
-        status === "ready" ? (
+        ["accepted", "preparing", "ready"].includes(status) ? (
           <Button type="button" onClick={confirm} disabled={pending} data-testid="confirm-receive">
             {t("rider.confirmReceive")}
           </Button>

@@ -1,7 +1,7 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
 
-import { PRODUCT_BRANDS, PRODUCT_VARIATION_TYPES } from "@/lib/constants/enums";
+import { PRODUCT_VARIATION_TYPES } from "@/lib/constants/enums";
 
 /**
  * THE single definition of "a customer may see and order this product".
@@ -51,19 +51,22 @@ const VALID_VARIATION_TYPE = {
 } satisfies Prisma.ProductWhereInput;
 
 /**
- * Brand compatibility. A "combined" branch sells either brand; a single-brand
- * branch may only sell its own. A null product brand inherits the branch, so it
- * is always compatible.
+ * Brand compatibility, the query half. Brands are data, so a product is only
+ * customer-visible when the brand it is sold under is live:
+ *   - an explicit brand must be active and not archived;
+ *   - a NULL brand ("sold under every brand the branch serves") needs the
+ *     branch to serve at least one live brand.
  *
- * Written as an explicit enumeration because Prisma cannot compare two columns
- * (`product.brand = branch.brandType`) inside a `where`. The brand set is a
- * closed two-value enum, so enumerating it is exact rather than approximate.
+ * The other half, "the branch actually serves the product's brand", compares
+ * two columns, which a Prisma `where` cannot do. Writes already refuse such a
+ * product (resolveProductBrand / setBranchBrands), and `productBrandServed`
+ * below re-checks it exactly on every loaded row before it is listed or sold.
  */
-const BRAND_MATCHES_BRANCH = {
+const LIVE_BRAND = { isActive: true, isArchived: false } satisfies Prisma.BrandWhereInput;
+const BRAND_IS_LIVE = {
   OR: [
-    { brand: null },
-    { branch: { brandType: "combined" } },
-    ...PRODUCT_BRANDS.map((b) => ({ brand: b, branch: { brandType: b } })),
+    { brand: null, branch: { brands: { some: { brand: LIVE_BRAND } } } },
+    { brandRef: LIVE_BRAND },
   ],
 } satisfies Prisma.ProductWhereInput;
 
@@ -102,7 +105,10 @@ function categoryScope(branchId?: number): Prisma.ProductWhereInput {
 export interface CustomerProductFilters {
   /** Restrict to one branch — also makes the category-scope rule exact. */
   branchId?: number;
-  /** "cheez" | "madchef" — a product brand, not a branch brandType. */
+  /**
+   * A brand slug: products sold under it, i.e. tagged with it or sold under
+   * every brand of a branch that serves it.
+   */
   brand?: string | null;
   categoryId?: number | null;
   /** Free-text over name + description. */
@@ -124,13 +130,20 @@ export function customerProductWhere(
     LIVE_BRANCH,
     HAS_ENABLED_VARIATION,
     VALID_VARIATION_TYPE,
-    BRAND_MATCHES_BRANCH,
+    BRAND_IS_LIVE,
     categoryScope(filters.branchId),
   ];
 
   if (filters.ids) and.push({ id: { in: filters.ids } });
   if (filters.branchId != null) and.push({ branchId: filters.branchId });
-  if (filters.brand) and.push({ brand: filters.brand });
+  if (filters.brand) {
+    and.push({
+      OR: [
+        { brand: filters.brand },
+        { brand: null, branch: { brands: { some: { brand: { slug: filters.brand } } } } },
+      ],
+    });
+  }
   if (filters.categoryId != null) and.push({ categoryId: filters.categoryId });
 
   // Trimmed and length-capped, matching the convention in lib/selectors.
@@ -144,7 +157,7 @@ export function customerProductWhere(
 
 /** Relations every public product surface needs to render or price a product. */
 export const CUSTOMER_PRODUCT_INCLUDE = {
-  branch: true,
+  branch: { include: { brands: { include: { brand: true } } } },
   category: true,
   variations: { orderBy: { sortOrder: "asc" as const } },
 } satisfies Prisma.ProductInclude;
@@ -169,6 +182,29 @@ export function productCategoryScopeOk(product: {
 }
 
 /**
+ * The live brands a loaded product is sold under, in brand display order: its
+ * own brand when the branch serves it, or every live brand of its branch when
+ * it carries none. Empty = not sellable under any brand right now.
+ */
+export function productSaleBrands(product: {
+  brand: string | null;
+  branch: { brands: { brand: { slug: string; isActive: boolean; isArchived: boolean; sortOrder: number; id: number } }[] };
+}): string[] {
+  const live = product.branch.brands
+    .map((bb) => bb.brand)
+    .filter((b) => b.isActive && !b.isArchived)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
+    .map((b) => b.slug);
+  if (product.brand == null) return live;
+  return live.includes(product.brand) ? [product.brand] : [];
+}
+
+/** Object-level half of the brand rule (see BRAND_IS_LIVE). */
+export function productBrandServed(product: Parameters<typeof productSaleBrands>[0]): boolean {
+  return productSaleBrands(product).length > 0;
+}
+
+/**
  * Full eligibility re-checked on an already-loaded row. `customerProductWhere`
  * is the query-time gate; this is the object-time gate, and the two agree by
  * construction. Used where a row arrives by id rather than by listing (product
@@ -185,8 +221,7 @@ export function isProductOrderable(product: CustomerProduct): boolean {
   if (product.category && !product.category.isActive) return false;
   if (!productCategoryScopeOk(product)) return false;
 
-  const brandType = product.branch.brandType;
-  if (product.brand && brandType !== "combined" && product.brand !== brandType) return false;
+  if (!productBrandServed(product)) return false;
 
   return true;
 }

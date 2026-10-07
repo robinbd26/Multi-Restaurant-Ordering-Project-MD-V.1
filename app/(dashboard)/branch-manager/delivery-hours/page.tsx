@@ -1,76 +1,49 @@
 import type { Metadata } from "next";
 
+import { HoursEditor } from "@/components/branch/hours-editor";
 import { PageHeader } from "@/components/layout/page-header";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Table, Td } from "@/components/ui/table";
-import {
-  DeliveryHoursForm,
-  TimeSlotDeleteButton,
-  TimeSlotForm,
-} from "@/components/branch/delivery-settings-forms";
-import { getJSON } from "@/lib/api/client";
+import { getSessionUser } from "@/lib/auth/current-user";
 import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
-import type { Paginated } from "@/types";
+import { branchForManager } from "@/lib/selectors";
+import { branchSchedule } from "@/lib/services/branch-schedule";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("bmExtras.hoursTitle") };
 }
 
-interface SettingsT {
-  opening_time: string | null;
-  closing_time: string | null;
-}
-interface SlotT {
-  id: number;
-  label: string;
-  start_time: string;
-  end_time: string;
-}
-
-/** /branch-manager/delivery-hours — opening/closing + delivery time slots. */
+/**
+ * /branch-manager/delivery-hours — this branch's ordering hours per brand
+ * (slots with Delivery / Pickup boxes, every day or per weekday) and its
+ * display-only dine-in hours. These schedules decide, on the Asia/Dhaka clock,
+ * whether each brand takes delivery or pickup orders right now.
+ */
 export default async function DeliveryHoursPage() {
-  const { t, fmt } = await getT();
-  await requireRole("branch_manager");
-  const [settings, slots] = await Promise.all([
-    getJSON<SettingsT>("/branch-manager/delivery-settings/"),
-    getJSON<Paginated<SlotT>>("/branch-manager/time-slots/"),
-  ]);
-
+  const { t } = await getT();
+  const me = await requireRole("branch_manager");
+  const branch = await branchForManager(Number(me.id));
+  if (!branch) {
+    return (
+      <>
+        <PageHeader title={t("bmExtras.hoursTitle")} subtitle={t("hours.pageSub")} />
+        <EmptyState title={t("errors.ops.noBranchAssigned")} />
+      </>
+    );
+  }
+  // The service checks, server-side, that this manager manages this branch.
+  const view = await branchSchedule((await getSessionUser())!, branch.id);
   return (
     <>
-      <PageHeader title={t("bmExtras.hoursTitle")} subtitle={t("bmExtras.hoursSub")} />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="h-fit">
-          <CardHeader title={t("bmExtras.openingHours")} />
-          <CardContent>
-            <DeliveryHoursForm opening={settings.opening_time} closing={settings.closing_time} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader title={t("bmExtras.timeSlots")} subtitle={t("bmExtras.timeSlotsSub")} />
-          <CardContent className="space-y-4">
-            <TimeSlotForm />
-            {slots.results.length === 0 ? (
-              <EmptyState title={t("bmExtras.noSlots")} />
-            ) : (
-              <Table headers={[t("bmExtras.slotLabel"), t("bmExtras.fromLabel"), t("bmExtras.toLabel"), ""]}>
-                {slots.results.map((s) => (
-                  <tr key={s.id} className="hover:bg-surface-hover/70">
-                    <Td><span className="font-medium text-fg-base">{s.label || "—"}</span></Td>
-                    <Td>{fmt.clock(s.start_time)}</Td>
-                    <Td>{fmt.clock(s.end_time)}</Td>
-                    <Td className="text-right"><TimeSlotDeleteButton slotId={s.id} /></Td>
-                  </tr>
-                ))}
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <PageHeader title={t("bmExtras.hoursTitle")} subtitle={t("hours.pageSub")} />
+      <HoursEditor
+        branchId={view.branch.id}
+        branchName={view.branch.name}
+        businessType={view.branch.business_type}
+        brands={view.brands}
+        dineIn={view.dine_in}
+      />
     </>
   );
 }

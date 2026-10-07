@@ -65,9 +65,10 @@ test.describe("Full page audit — Branch Manager delivery configuration", () =>
     const settings = await (
       await page.request.get("/api/branch-manager/delivery-settings")
     ).json();
-    const slots = await (
-      await page.request.get("/api/branch-manager/time-slots")
-    ).json();
+    // Hours are per brand now; the editor shows one card per brand served.
+    const hours = (await (
+      await page.request.get(`/api/branches/${settings.branch_id}/hours`)
+    ).json()) as { brands: { brand: { slug: string } }[] };
 
     await page.goto("/branch-manager/delivery-areas", {
       waitUntil: "domcontentloaded",
@@ -96,27 +97,11 @@ test.describe("Full page audit — Branch Manager delivery configuration", () =>
     await page.goto("/branch-manager/delivery-hours", {
       waitUntil: "domcontentloaded",
     });
-    await expect(page.locator('input[name="opening_time"]')).toHaveValue(
-      settings.opening_time ?? "",
-    );
-    await expect(page.locator('input[name="closing_time"]')).toHaveValue(
-      settings.closing_time ?? "",
-    );
-    await expect(page.getByLabel(/^label$/i)).toBeVisible();
-    await expect(page.locator('input[name="start_time"]')).toBeVisible();
-    await expect(page.locator('input[name="end_time"]')).toBeVisible();
-    await expect(page.locator("tbody tr")).toHaveCount(slots.results.length);
-    await page.getByRole("button", { name: /add slot/i }).click();
-    await expect(page.getByText(/this field is required/i)).toHaveCount(2);
-    if (slots.results.length > 0) {
-      const first = slots.results[0] as { label: string };
-      const row = page.locator("tbody tr").filter({ hasText: first.label });
-      await row.getByRole("button", { name: /^delete$/i }).click();
-      const dialog = page.getByRole("dialog", { name: /delete slot/i });
-      await expect(dialog).toBeVisible();
-      await dialog.getByRole("button", { name: /^cancel$/i }).click();
-      await expect(row).toBeVisible();
+    await expect(page.getByTestId("hours-editor")).toBeVisible();
+    for (const row of hours.brands) {
+      await expect(page.getByTestId(`hours-brand-${row.brand.slug}`)).toBeVisible();
     }
+    await expect(page.getByTestId("hours-save")).toBeVisible();
 
     await page.goto("/branch-manager/delivery-zone", {
       waitUntil: "domcontentloaded",

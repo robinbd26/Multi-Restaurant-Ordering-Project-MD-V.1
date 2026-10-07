@@ -4,10 +4,12 @@ import type { Branch } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { validationError, sk } from "@/lib/http/errors";
-import { branchAllowsBrand, isProductBrand } from "@/lib/constants/enums";
 import { branchPoint, coverageForPoint, type BranchCoverage } from "@/lib/services/coverage";
 import { directionsUrl, haversineKm, roundKm, type LatLng } from "@/lib/services/geo";
 
+import { BRANCH_BRANDS_INCLUDE, branchLiveBrandSlugsOf } from "@/lib/brands/branch";
+import { branchTodaySpan, type AvailabilityBranch } from "@/lib/hours/availability";
+import { dhakaMoment } from "@/lib/hours/clock";
 /**
  * Delivery pricing + pickup, on top of the ONE coverage answer.
  *
@@ -61,12 +63,12 @@ export interface PickupInfo {
   distance_km: number | null;
   latitude: string | null;
   longitude: string | null;
-  opening_time: string | null;
-  closing_time: string | null;
+  /** Today's pickup window across the branch's live brands (display only). */
+  pickup_hours_today: { start: string; end: string } | null;
   directions_url: string | null;
 }
 
-function pickupInfo(branch: Branch, point: LatLng | null): PickupInfo {
+function pickupInfo(branch: Branch & Pick<AvailabilityBranch, "brands">, point: LatLng | null): PickupInfo {
   const bp = branchPoint(branch);
   return {
     branch_id: branch.id,
@@ -76,8 +78,7 @@ function pickupInfo(branch: Branch, point: LatLng | null): PickupInfo {
     distance_km: bp && point ? roundKm(haversineKm(bp, point)) : null,
     latitude: branch.latitude?.toString() ?? null,
     longitude: branch.longitude?.toString() ?? null,
-    opening_time: branch.openingTime,
-    closing_time: branch.closingTime,
+    pickup_hours_today: branchTodaySpan(branch, "pickup", dhakaMoment().day),
     // A plain Google Maps URL for the customer to navigate with — no API key.
     directions_url: bp ? directionsUrl(bp) : null,
   };
@@ -102,12 +103,13 @@ export async function nearestPickupBranch(
       latitude: { not: null },
       longitude: { not: null },
     },
+    include: BRANCH_BRANDS_INCLUDE,
   });
-  let best: { branch: Branch; d: number } | null = null;
+  let best: { branch: (typeof branches)[number]; d: number } | null = null;
   for (const b of branches) {
     if (opts.excludeBranchId && b.id === opts.excludeBranchId) continue;
-    // Only filter by brand when a real PRODUCT brand is supplied (cheez/madchef).
-    if (opts.brand && isProductBrand(opts.brand) && !branchAllowsBrand(b.brandType, opts.brand)) continue;
+    // When a product brand is in play, only branches serving that brand qualify.
+    if (opts.brand && !branchLiveBrandSlugsOf(b).includes(opts.brand)) continue;
     const bp = branchPoint(b);
     if (!bp) continue;
     const d = haversineKm(bp, point);
@@ -148,8 +150,7 @@ export async function checkCoverage(
     branch_name: branch.name,
     distance_km: coverage.distanceKm,
     delivery_fee: Number(coverage.charge.toFixed(2)),
-    // Nearest pickup respects the product brand when one is in play; the branch's
-    // own brandType is NOT a product brand and must not filter pickup options.
+    // Nearest pickup respects the product brand when one is in play.
     nearest_pickup: coverage.covered ? null : await nearestPickupBranch(point, { brand: opts.brand ?? null }),
     pricing: serializeCoverage(coverage),
   };

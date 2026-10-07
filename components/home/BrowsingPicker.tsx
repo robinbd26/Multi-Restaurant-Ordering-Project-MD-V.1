@@ -6,11 +6,13 @@ import { BarMenu, MenuHeading, RadioRow } from "@/components/home/BarMenu";
 import { updateBrowseScope } from "@/lib/browse-scope/client";
 import { useTranslation } from "@/lib/i18n/use-translation";
 
+import { useBrandNames } from "@/components/home/use-brand-names";
 /** A live branch, from the same public list the rest of the homepage renders. */
 export interface BrowseBranchOption {
   id: number;
   name: string;
-  brandType: string;
+  /** Live brand slugs the branch serves. */
+  brands: string[];
   open: boolean;
 }
 
@@ -36,6 +38,7 @@ export function BrowsingPicker({
   branches: BrowseBranchOption[];
   value: string;
 }) {
+  const brandNames = useBrandNames();
   const { t } = useTranslation();
   const router = useRouter();
 
@@ -70,7 +73,7 @@ export function BrowsingPicker({
               current={(activeBranchId ?? branchId) === b.id}
               testId={`browse-branch-${b.id}`}
               title={b.name}
-              subtitle={t(`brandType.${b.brandType}`)}
+              subtitle={brandNames(b.brands)}
               onSelect={() => choose(b.id, close)}
               trailing={
                 <span

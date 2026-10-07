@@ -1,16 +1,11 @@
-import { PRODUCT_BRANDS } from "@/lib/constants/enums";
-
-import type { Brand } from "./types";
-
-/** Every menu tab, in display order — the first is the default one. */
-export const ALL_BRANDS: readonly Brand[] = PRODUCT_BRANDS;
+import type { BrandInfo } from "@/lib/brands/shared";
 
 /**
- * The menu tabs a branch actually serves. A single-brand branch has exactly
- * one; a "combined" branch (or anything unrecognised) has both, first one first.
+ * The menu tabs a browsed branch shows: the live brands it serves, in brand
+ * display order. With no branch (guests, the all-branches showcase) every live
+ * brand gets a tab. Brands themselves come from the database (activeBrands()).
  */
-export function brandsServedBy(branchBrandType: string | null | undefined): Brand[] {
-  return (ALL_BRANDS as readonly string[]).includes(branchBrandType ?? "")
-    ? [branchBrandType as Brand]
-    : [...ALL_BRANDS];
+export function brandsForStorefront(allLive: readonly BrandInfo[], servedSlugs: readonly string[] | null): BrandInfo[] {
+  if (!servedSlugs) return [...allLive];
+  return allLive.filter((b) => servedSlugs.includes(b.slug));
 }

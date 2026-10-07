@@ -41,12 +41,12 @@ import { LIMITS, decimalPlaces, isFiniteNumber } from "@/lib/validation/limits";
  */
 
 type SerializableArea = BranchDeliveryArea & {
-  branch?: { name: string; address?: string; brandType?: string } | null;
+  branch?: { name: string; address?: string } | null;
 };
 
 /** Everything serializeArea needs, in one place so no read forgets the names. */
 export const AREA_INCLUDE = {
-  branch: { select: { name: true, address: true, brandType: true } },
+  branch: { select: { name: true, address: true } },
 } as const;
 
 export function serializeArea(a: SerializableArea): DeliveryAreaRow {
@@ -55,7 +55,6 @@ export function serializeArea(a: SerializableArea): DeliveryAreaRow {
     branch: a.branchId,
     branch_name: a.branch?.name ?? null,
     branch_address: a.branch?.address ?? null,
-    branch_brand_type: a.branch?.brandType ?? null,
     name: a.name,
     is_active: a.isActive,
     is_held: a.isHeld,

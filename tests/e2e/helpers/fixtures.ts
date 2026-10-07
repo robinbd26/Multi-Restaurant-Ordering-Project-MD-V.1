@@ -3,25 +3,15 @@ import type { APIRequestContext } from "@playwright/test";
 import { API_BASE } from "./routes";
 
 /**
- * PHASE 3 — 03:45 to 04:00 Dhaka time: the night shift takes no NEW delivery
- * order, so the ride can finish by four. That is a real product rule, and for
- * those fifteen minutes a delivery quote or order is refused on purpose.
- *
- * Specs that place delivery orders skip themselves inside the window rather than
- * reporting the rule as a failure. Computed the same way the server computes it
- * (lib/services/coverage-window.ts), from Dhaka wall-clock time.
+ * The hardcoded 03:45–04:00 night-delivery blackout no longer exists: ordering
+ * hours are each brand's own schedule at its branch (lib/hours/availability),
+ * and the e2e seed leaves the demo branches' schedules unset (no time limit),
+ * as are branches the specs create. Kept, always false, so the specs that used
+ * to skip themselves inside the window still compile and simply run.
  */
-export function inNightOrderBlackout(now: Date = new Date()): boolean {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Dhaka",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(now);
-  const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0") % 24;
-  const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-  const minutes = hh * 60 + mm;
-  return minutes >= 3 * 60 + 45 && minutes < 4 * 60;
+export function inNightOrderBlackout(_now: Date = new Date()): boolean {
+  void _now;
+  return false;
 }
 
 export const NIGHT_BLACKOUT_REASON =
@@ -50,23 +40,13 @@ export async function clearCustomerAddresses(
 }
 
 /**
- * ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery and
- * pickup alike, at every branch. Mirrors isFullClosureWindow in
- * lib/services/coverage-window.ts, computed independently (not imported) the
- * same way inNightOrderBlackout above does, so this file has no dependency on
- * server code and keeps working if that module ever moves.
+ * The hardcoded 04:00–11:00 platform closure no longer exists (see above);
+ * schedules are per brand now and tested in 74-brand-hours.spec.ts. Always
+ * false, kept so existing specs compile and run at any hour.
  */
-export function isDhakaFullClosureWindow(now: Date = new Date()): boolean {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Dhaka",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(now);
-  const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0") % 24;
-  const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-  const minutes = hh * 60 + mm;
-  return minutes >= 4 * 60 && minutes < 11 * 60;
+export function isDhakaFullClosureWindow(_now: Date = new Date()): boolean {
+  void _now;
+  return false;
 }
 
 export const FULL_CLOSURE_REASON = "04:00–11:00 Dhaka: the whole platform is closed (by design)";
@@ -132,4 +112,23 @@ export async function branchRowsByName(req: APIRequestContext): Promise<Record<s
 export async function branchMap(req: APIRequestContext): Promise<Record<string, number>> {
   const rows = await branchRowsByName(req);
   return Object.fromEntries(Object.entries(rows).map(([name, row]) => [name, row.id]));
+}
+
+/**
+ * A delivery order of the branch manager's branch that a rider may be assigned
+ * to: accepted, preparing or ready (Part 3: never before the branch accepts,
+ * never after pickup). A pending delivery order is accepted first. Throws when
+ * the branch has neither, so a spec never silently assigns to a wrong order.
+ */
+export async function assignableOrderId(bmReq: APIRequestContext): Promise<number> {
+  const res = await bmReq.get(`${API_BASE}/api/orders/?page_size=100`);
+  const rows = ((await res.json()) as { results?: { id: number; status: string; fulfillment_type?: string }[] }).results ?? [];
+  const delivery = rows.filter((o) => o.fulfillment_type !== "pickup");
+  const ready = delivery.find((o) => ["accepted", "preparing", "ready"].includes(o.status));
+  if (ready) return ready.id;
+  const pending = delivery.find((o) => o.status === "pending");
+  if (!pending) throw new Error("no pending or accepted delivery order on the branch manager's branch");
+  const accepted = await bmReq.post(`${API_BASE}/api/orders/${pending.id}/update-status/`, { data: { status: "accepted" } });
+  if (!accepted.ok()) throw new Error(`could not accept order ${pending.id}: ${accepted.status()}`);
+  return pending.id;
 }

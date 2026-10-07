@@ -11,6 +11,7 @@ import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
 import { getAdminCategorySummary } from "@/lib/services/page-summaries";
 
+import { assignableBrands } from "@/lib/services/brands";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("adminExtras.createCategory") };
@@ -73,7 +74,7 @@ export default async function NewCategoryPage() {
 
       <Card className="max-w-2xl">
         <CardContent>
-          <AdminCategoryForm branches={branches.map((b) => ({ id: b.id, name: b.name }))} />
+          <AdminCategoryForm branches={branches.map((b) => ({ id: b.id, name: b.name }))} brands={await assignableBrands()} />
         </CardContent>
       </Card>
     </DashboardPage>

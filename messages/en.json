@@ -130,7 +130,8 @@
     "commissions": "Commissions",
     "deductions": "Deductions",
     "inventory": "Inventory",
-    "deliveryZones": "Delivery Zones"
+    "deliveryZones": "Delivery Zones",
+    "brands": "Brands"
   },
   "navGroup": {
     "people": "People",
@@ -171,9 +172,7 @@
     "on_the_way": "On the Way",
     "delayed": "Delayed",
     "delivered": "Delivered",
-    "cancelled": "Cancelled",
-    "readyForPickup": "Ready for Pickup",
-    "pickedUpDone": "Picked Up (Done)"
+    "cancelled": "Cancelled"
   },
   "payment": {
     "cash": "Cash on Delivery",
@@ -359,13 +358,9 @@
       "badge": "Dhaka's #1 Food Delivery Platform",
       "blurbPre": "Order from",
       "blurbAnd": "and",
-      "blurbPost": "— two of Dhaka's most loved restaurants — all in one place. {n} branches, one helpline.",
+      "blurbPost": "— Dhaka's most loved restaurants, all in one place. {n} branches, one helpline.",
       "browseMenu": "Browse Menu",
       "callToOrder": "Call to Order",
-      "cheezDesc": "Thick crust, thin crust, pasta, boats & more",
-      "cheezTag": "Pizza Specialist",
-      "madchefDesc": "Burgers, wraps, rice meals, poutines & more",
-      "madchefTag": "Gourmet Kitchen",
       "newHere": "New here?",
       "createAccount": "Create an account",
       "toPlaceOrders": "to place & track orders."
@@ -377,14 +372,8 @@
       "crust3Desc": "Crispier, lighter base",
       "availableForDelivery": "Available for delivery",
       "crustGuideTitle": "Crust & Size Guide",
-      "cheezTagline": "Dhaka's favourite pizza destination — thick, thin, pasta & more",
-      "madchefTagline": "Gourmet burgers, wraps, rice meals & more — made with mad love",
-      "pizzaSpecialist": "Pizza Specialist",
-      "gourmetKitchen": "Gourmet Kitchen",
       "branchesCount": "{n} Branches",
       "openDaily": "Open Daily",
-      "cheezPlaceholder": "Search pizzas, pasta, drinks…",
-      "madchefPlaceholder": "Search burgers, wraps, rice meals…",
       "branchesLower": "{n} branches",
       "noItems": "No items found — try searching for something else.",
       "itemsCount": "{n} items",
@@ -431,7 +420,13 @@
         "Canned Drinks": "Canned Drinks",
         "Desserts": "Desserts"
       },
-      "emptyBrandOtherHasItems": "No items in this brand right now — {brand} has products available."
+      "emptyBrandOtherHasItems": "No items in this brand right now — {brand} has products available.",
+      "searchBrandPlaceholder": "Search the {brand} menu…",
+      "closedNow": "Closed right now",
+      "deliveryOnlyNow": "Delivery only right now",
+      "pickupOnlyNow": "Pickup only right now",
+      "brandClosedNow": "{brand} is closed right now.",
+      "brandPartlyOpen": "{brand}:"
     },
     "categoryTabs": {
       "all": "All"
@@ -449,40 +444,37 @@
     },
     "callToOrder": {
       "title": "CALL TO ORDER",
-      "availablePre": "Available daily",
       "availablePost": "for all {n} branches across Dhaka",
-      "hoursNote": "Cheez! late-night delivery until 3:45 AM · Madchef closes 10:45 PM"
+      "availableTodayPre": "Open today",
+      "closedToday": "Closed today",
+      "brandDeliversUntil": "{brand} delivers until {time}"
     },
     "hours": {
-      "cloudKitchenOnly": "Cloud Kitchen Only",
       "eyebrow": "All {n} Branches",
-      "subtitle": "Dine-in, delivery & late-night service times for Cheez! and Madchef.",
       "openingTimesTitle": "Opening Times by Branch",
       "scheduleTitle": "Dine-In & Delivery Schedule",
       "dineIn": "Dine-In",
       "delivery": "Delivery",
-      "lateNightTitle": "Late-Night Cheez! Delivery",
-      "lateNightPre": "After Madchef closes at 11 PM, selected Cheez! branches continue delivering right through the night. Last order is accepted at",
-      "lateNightMid": " and service fully closes at",
       "pickupTitle": "Night Pickup Points",
       "pickupNotePre": "Home delivery to",
       "pickupNotePost": ". Orders after this time must be self-collected from the pickup points below.",
       "titlePre": "Operating",
       "titleAccent": "Hours",
-      "dineInDetail": "10:30 PM last guest · 11:00 PM close",
-      "cheezDeliveryDetail": "3:45 AM last order · 4:00 AM close",
-      "madchefDeliveryDetail": "10:45 PM last order · 11:00 PM close",
-      "cheezNote": "Cheez! branches deliver until 3:45 AM",
-      "madchefNote": "Madchef delivery closes at 10:45 PM across all branches",
       "lastOrder": "Last Order",
-      "serviceEnds": "Service Ends",
       "pickupNoteMid": "is available until",
       "pickupMainGate": "Pickup from Main Gate",
       "pickupRawaClub": "Pickup from Rawa Club",
       "pickupSainikClub": "Pickup from Sainik Club",
       "pickupNavyHq": "Pickup from Navy HQ",
       "pickupBaridhara": "Pickup from Baridhara J Block",
-      "bashundharaNote": "Last order inside Bashundhara accepted until 10:15 PM"
+      "bashundharaNote": "Last order inside Bashundhara accepted until 10:15 PM",
+      "range": "{from} – {to}",
+      "notToday": "Closed today",
+      "pickup": "Pickup",
+      "subtitleToday": "Today's dine-in, delivery and pickup hours, straight from each branch's schedule.",
+      "brandNote": "Served at {n} branch(es). Times are today's last orders.",
+      "lateNightTitleGeneric": "Late-Night Delivery",
+      "lateNightBody": "These branches keep delivering past midnight tonight. Last order is accepted at {time}."
     },
     "branches": {
       "eyebrow": "{n} Branches Across Dhaka",
@@ -498,26 +490,20 @@
       "titleAccent": "Branches",
       "titlePost": "& Coverage",
       "closedText": "This branch is currently closed.",
-      "deliveryOnlyStrong": "Cheez! delivery only",
-      "deliveryOnlyText": "— Madchef is closed for the night",
       "status": {
         "permanentlyClosed": "Permanently Closed",
         "closed": "Closed",
-        "opens": "Opens {time}",
-        "opensAt": "Opens at {time}",
-        "openingSoon": "Opening Soon",
         "lastOrders": "Last Orders",
-        "cheezLastOrder": "Cheez! last order 3:45 AM",
-        "cheezDelivery": "Cheez! Delivery",
-        "deliveryUntil": "Delivery only — until 3:45 AM",
-        "lastEntry": "Last entry 10:30 PM",
         "openNow": "Open Now",
-        "cloudKitchenOpen": "Cloud Kitchen Open",
-        "diningDelivery": "Dining & Delivery",
-        "closesAt": "Closes 11:00 PM",
-        "deliveryOnly": "Delivery Only"
+        "deliveryOnly": "Delivery Only",
+        "deliveryAndPickup": "Delivery & pickup",
+        "pickupOnly": "Pickup Only",
+        "deliveryPaused": "Delivery paused",
+        "lastOrderIn": "Last order in {minutes} min"
       },
-      "emptyState": "No branches are available right now. Please check back soon."
+      "emptyState": "No branches are available right now. Please check back soon.",
+      "brandsOpenNow": "{brands} open now",
+      "brandsClosedNow": "— {brands} closed"
     },
     "footer": {
       "aboutText": "Dhaka's premier food delivery platform serving Cheez! Pizza and Madchef restaurants across {n} branches.",
@@ -573,9 +559,8 @@
       "addedToCart": "Added to cart"
     },
     "countdown": {
-      "madchefLastOrder": "Madchef Last Order",
-      "cheezLastDelivery": "Cheez! Last Delivery",
-      "orderBefore": "Order before {time}"
+      "orderBefore": "Order before {time}",
+      "brandLastOrder": "{brand} last order"
     },
     "order": {
       "nearestBranch": "Nearest Branch",
@@ -670,15 +655,16 @@
       "coverageCheckFailed": "Could not check delivery for this address. Please try again.",
       "platformFee": "Platform fee",
       "freeDelivery": "Free delivery",
-      "platformClosedTitle": "Closed until 11:00 AM",
-      "platformClosedBody": "We reopen at 11:00 AM. Delivery and self-pickup are both paused until then — your cart is safe, come back and check out any time.",
       "useOneTimeAddress": "Use a one-time address",
       "oneTimeAddressLabel": "One-time address",
       "oneTimeAddressNotice": "Used for this order only — not added to your saved addresses.",
       "useOneTimeAddressConfirm": "Use for this order",
       "discount": "Discount",
       "couponOnConfirm": "Coupon {code} is checked and applied when you confirm the order.",
-      "orderNoteLabel": "Note for the restaurant (optional)"
+      "orderNoteLabel": "Note for the restaurant (optional)",
+      "brandClosedTitle": "Some of your items can't be ordered this way right now",
+      "brandClosedFor": "{brand} is not taking {channel} orders right now.",
+      "brandDeliveryPaused": "{brand} has paused delivery for a short while. Pickup is still open."
     }
   },
   "superAdmin": {
@@ -965,7 +951,6 @@
     "time": "Time",
     "nextAccepted": "Accept Order",
     "nextPreparing": "Start Preparing",
-    "nextReady": "Mark Ready",
     "nextPickedUp": "Picked Up",
     "nextOnTheWay": "On the Way",
     "nextDelivered": "Delivered",
@@ -991,7 +976,18 @@
     "nagadHint": "Pay to the branch's Nagad number",
     "rocketHint": "Pay to the branch's Rocket number",
     "bankHint": "Transfer to the branch's bank account — the branch verifies the payment before preparation.",
-    "nextPickedUpDone": "Mark Picked Up (Done)"
+    "nextReadyForRider": "Mark Ready for rider",
+    "nextReadyForCollection": "Mark Ready for collection",
+    "nextCollected": "Mark Collected",
+    "orderDelayedBy": "Your rider says delivery will take about {minutes} minutes longer.",
+    "overrideOpen": "Override status",
+    "overrideTitle": "Override status (emergencies only)",
+    "overrideHint": "For when the normal flow is stuck — the rider's phone died, or they forgot to tap Delivered. A written reason is required and the change is logged with your name.",
+    "overrideTarget": "New status",
+    "overridePickStatus": "Choose the new status",
+    "overrideReason": "Reason",
+    "overrideReasonPlaceholder": "What happened? (required)",
+    "overrideConfirm": "Override"
   },
   "branches": {
     "title": "Branches",
@@ -1008,8 +1004,6 @@
     "createSubtitle": "Fill in the branch details",
     "branchInfo": "Branch Info",
     "bkashNumber": "bKash Number",
-    "openLabel": "Opens",
-    "closeLabel": "Closes",
     "location": "Location",
     "currentManager": "Current Manager",
     "assignManager": "Assign Manager",
@@ -1030,8 +1024,6 @@
     "latitude": "Latitude",
     "longitude": "Longitude",
     "deliveryRadiusField": "Delivery Radius (km)",
-    "openingTime": "Opening Time",
-    "closingTime": "Closing Time",
     "logo": "Logo",
     "branchActive": "Branch Active",
     "deactivate": "Deactivate",
@@ -1040,8 +1032,6 @@
     "notePlaceholder": "Note (optional)",
     "saving": "Saving…",
     "updateManager": "Update Manager",
-    "brandType": "Brand Type",
-    "brandTypeHint": "Which brand(s) this branch serves.",
     "deliveryRadiusHint": "Coverage radius used for delivery checks.",
     "archivedResult": "The branch was archived — all history is preserved and it no longer accepts new orders.",
     "deletedResult": "The branch was deleted.",
@@ -1056,7 +1046,9 @@
     "businessType": "Branch Type",
     "businessTypeHint": "Shown to customers as a badge. It does not change how orders work.",
     "businessTypeDineIn": "Dine-in restaurant",
-    "businessTypeCloudKitchen": "Cloud kitchen"
+    "businessTypeCloudKitchen": "Cloud kitchen",
+    "brandsServed": "Brands served",
+    "brandsServedHint": "Tick every brand this branch serves. Manage the brand list under Brands."
   },
   "catalog": {
     "title": "Products",
@@ -1537,7 +1529,7 @@
     "dutyChat": "Duty chat",
     "eligibleOrders": "Available orders",
     "activeBranch": "Active branch",
-    "confirmReceiveHint": "You can confirm receipt once the order is ready.",
+    "confirmReceiveHint": "You can confirm receipt once the branch has accepted the order.",
     "dutyChatOffline": "Go on duty to chat with the branch manager.",
     "noOnlineRiders": "No riders on duty right now.",
     "selectRiderToChat": "Select a rider to open the duty chat.",
@@ -1773,8 +1765,6 @@
       "riderNotOnBranchDuty": "The rider is not on an active duty session for this branch.",
       "invalidCoordinates": "Invalid coordinates.",
       "noEligibleBranch": "No eligible branch is available for delivery to this location.",
-      "branchClosed": "This branch is closed right now. Please order during its opening hours.",
-      "branchClosedOpensAt": "This branch is currently closed. It opens at {time}.",
       "variationTypeRequired": "Please choose Thick or Thin for this item.",
       "variationTypeNotAvailable": "That crust is not available for this product.",
       "rejectionReasonRequired": "A reason is required when rejecting or cancelling an order.",
@@ -1787,10 +1777,18 @@
       "invalidPaymentMethod": "That payment method is not available.",
       "branchOnHold": "This branch has paused taking new orders. Please try again shortly.",
       "outsideDeliveryArea": "This branch does not deliver to that address. Self-pickup is still available.",
-      "nightLastOrderPassed": "Night delivery takes its last order at 3:45 AM. Self-pickup is still available while the branch is open.",
-      "platformClosed": "We are closed right now. Delivery and self-pickup both reopen at 11:00 AM — you can still browse and build your cart.",
       "areaOnHoldPickupOnly": "Delivery to this location is paused right now. You can still place a self-pickup order.",
-      "pickupHasNoRider": "A pickup order is collected by the customer, so it has no rider."
+      "pickupHasNoRider": "A pickup order is collected by the customer, so it has no rider.",
+      "brandClosed": "{brand} is not taking {channel} orders right now.",
+      "brandClosedOpensToday": "{brand} is not taking {channel} orders right now. It opens at {time}.",
+      "brandClosedOpensTomorrow": "{brand} is not taking {channel} orders right now. It opens tomorrow at {time}.",
+      "brandClosedOpensOnDay": "{brand} is not taking {channel} orders right now. It opens {day} at {time}.",
+      "brandDeliveryPaused": "{brand} has paused delivery for a short while. Pickup is still open.",
+      "riderStatusOnlyRider": "Picked up, On the way and Delivered are set by the assigned rider. Use Override status in an emergency.",
+      "overrideStaffOnly": "Only the branch manager or the super admin can override an order's status.",
+      "overrideReasonRequired": "Write a reason of at least {min} characters.",
+      "overrideNotAllowed": "This order can't be overridden from \"{status}\".",
+      "riderAssignWindow": "A rider can be assigned once the order is accepted and until it is picked up."
     },
     "catalog": {
       "onlyAssignedManagerCanModifyCatalog": "Only the assigned branch manager can modify the catalog.",
@@ -1819,7 +1817,6 @@
       "selectBrand": "Please select a brand.",
       "brandNotAllowedForBranch": "This brand is not allowed for the selected branch.",
       "categoryBrandMismatch": "The selected category belongs to a different brand. Choose a category of the same brand, or one that serves both brands.",
-      "invalidBrandType": "Invalid brand type.",
       "invalidBusinessType": "Invalid branch type.",
       "zoneRequired": "Select a Zone / Area for this branch.",
       "variationsInvalid": "Variation data is invalid.",
@@ -2125,6 +2122,31 @@
       "messageRequired": "Type a message or attach a photo.",
       "photoTooLarge": "A photo can be at most {mb} MB.",
       "quickReplyInvalid": "That quick reply is not available."
+    },
+    "brands": {
+      "nameRequired": "Brand name is required.",
+      "colorInvalid": "Pick a colour as a 6-digit hex code, like #e8192c.",
+      "sortOrderInvalid": "Display order must be a whole number from 0 to 9999.",
+      "superAdminOnly": "Only the super admin can manage brands.",
+      "notFound": "Brand not found.",
+      "slugInvalid": "Use 2–32 lowercase letters, digits or dashes, starting with a letter or digit.",
+      "slugTaken": "Another brand already uses this key.",
+      "slugImmutable": "A brand's key cannot be changed once it is created.",
+      "reorderInvalid": "The brand order could not be saved. Refresh and try again.",
+      "inUseArchiveInstead": "This brand has products, categories or orders, so it can only be archived.",
+      "branchNeedsBrand": "Choose at least one brand for this branch.",
+      "unknownBrand": "One of the chosen brands does not exist or is archived.",
+      "branchStillSellsBrand": "This branch still has {count} product(s) under {brand}. Move or archive them before removing the brand.",
+      "branchHasNoBrand": "This branch serves no brand yet. Ask the super admin to assign one."
+    },
+    "hours": {
+      "invalid": "These hours could not be read. Refresh and try again.",
+      "tooManySlots": "A day can have at most 8 time slots.",
+      "badTime": "Each slot needs a valid start and last-order time.",
+      "overlap": "Two slots on the same day overlap. Adjust them so they don't.",
+      "notYourBranch": "You can only change the hours of your own branch.",
+      "brandNotServed": "This branch does not serve that brand.",
+      "useHoursPage": "Branch hours are now set per brand on the Hours page."
     }
   },
   "states": {
@@ -2262,6 +2284,10 @@
       },
       "delayedWithNote": {
         "body": "Your order needs about {minutes} more minutes. Reason: {note}"
+      },
+      "overridden": {
+        "title": "Order status changed",
+        "body": "The branch set order #{id} to {status}."
       }
     },
     "delivery": {
@@ -3383,8 +3409,6 @@
   },
   "bmExtras": {
     "settingsSaved": "Settings saved",
-    "slotAdded": "Time slot added",
-    "slotDeleted": "Time slot deleted",
     "attendanceMarked": "Attendance marked",
     "reservationRequested": "Reservation request sent",
     "reservationUpdated": "Reservation updated",
@@ -3402,16 +3426,7 @@
     "radiusN": "{km} km radius",
     "hoursTitle": "Delivery Hours",
     "hoursSub": "Opening/closing times and delivery slots",
-    "openingHours": "Opening hours",
-    "openingLabel": "Opens",
-    "closingLabel": "Closes",
-    "timeSlots": "Time slots",
-    "timeSlotsSub": "Add multiple delivery slots",
-    "noSlots": "No slots",
-    "slotLabel": "Label",
     "slotPlaceholder": "e.g. Lunch",
-    "fromLabel": "From",
-    "toLabel": "To",
     "addSlot": "Add slot",
     "errSlotTime": "Enter times",
     "errSlotOrder": "End must be after start",
@@ -3554,11 +3569,10 @@
     "thisWeek": "This week"
   },
   "brands": {
-    "cheez": "CHEEZ",
-    "madchef": "MADCHEF",
-    "combined": "Combined (CHEEZ + MADCHEF)",
-    "combinedOption": "COMBINED BRANCH (BOTH)",
-    "both": "Both (CHEEZ + MADCHEF)"
+    "noneAssigned": "No brand assigned",
+    "allBrandsOption": "All brands",
+    "allBrandsShort": "All brands",
+    "inactive": "Inactive"
   },
   "b1": {
     "namedZones": "Named delivery zones",
@@ -3921,7 +3935,6 @@
     "explainerNoLocation": "Set your delivery location to see which branch can serve you.",
     "setLocation": "Set location",
     "nearestBadge": "Nearest",
-    "opensAt": "Opens at {time}",
     "finding": "Finding restaurants near you…",
     "nearestServingBadge": "Nearest that delivers",
     "closestClosed": "Closest to you, but closed right now",
@@ -3996,7 +4009,7 @@
   },
   "branchInfo": {
     "branchName": "Branch name",
-    "branchType": "Branch type",
+    "branchType": "Brands",
     "deliveryAreas": "Delivery areas",
     "archived": "Archived"
   },
@@ -4191,7 +4204,6 @@
     "deliveryUnknown": "Set location to check delivery",
     "hoursUnknown": "Hours not set",
     "allClosedTitle": "Your nearest branch is closed right now",
-    "allClosedBody": "{branch} opens at {time}. You can browse the menu now and order once it reopens.",
     "pickupFinding": "Finding your nearest pickup point…",
     "pickupNone": "No pickup point is available near you right now.",
     "pickupTitle": "You can collect it yourself instead",
@@ -4199,7 +4211,8 @@
     "pickupDistance": "{km} km away",
     "pickupHours": "Open {from}–{to}",
     "pickupDirections": "Get directions",
-    "pickupCall": "Call: {phone}"
+    "pickupCall": "Call: {phone}",
+    "allClosedBodyOpens": "{branch} delivers here but is closed right now. {opens}."
   },
   "maps": {
     "directions": "Get directions",
@@ -4307,11 +4320,6 @@
     "viewMenu": "View menu",
     "freeDelivery": "Free delivery"
   },
-  "brandType": {
-    "cheez": "Cheez! Pizza",
-    "madchef": "Madchef",
-    "combined": "Cheez! & Madchef"
-  },
   "cartBranch": {
     "orderingFrom": "Ordering from",
     "switchTitle": "Switch order branch?",
@@ -4401,11 +4409,6 @@
       "shift": "Rest of this shift",
       "until_resumed": "Until I resume"
     }
-  },
-  "brandName": {
-    "cheez": "Cheez!",
-    "madchef": "Madchef",
-    "combined": "Cheez! + Madchef"
   },
   "branchRemoval": {
     "archive": "Archive",
@@ -4526,5 +4529,114 @@
     "turnOff": "Turn notification sounds off",
     "on": "Sound on",
     "off": "Sound off"
+  },
+  "brandsAdmin": {
+    "title": "Brands",
+    "subtitle": "The restaurant brands sold on the platform. Everything that shows a brand reads this list.",
+    "listTitle": "Live brands",
+    "listSub": "Shown to customers in this order. Use the arrows to reorder.",
+    "archivedTitle": "Archived brands",
+    "archivedSub": "Hidden everywhere. Their products and orders keep their history.",
+    "newBrand": "New brand",
+    "newBrandSub": "Add a brand. Branches can serve it as soon as it is saved.",
+    "editBrand": "Edit brand",
+    "create": "Create brand",
+    "emptyTitle": "No brands yet",
+    "emptyDesc": "Add the first brand to start building menus.",
+    "brand": "Brand",
+    "usage": "Used by",
+    "usageLine": "{branches} branches · {products} products · {orders} order lines",
+    "name": "Name",
+    "nameBn": "Name in Bangla",
+    "nameBnHint": "Leave empty to show the English name.",
+    "slug": "Key",
+    "slugHint": "A short permanent key, like cheez. It cannot be changed later.",
+    "slugLockedHint": "Products and orders refer to this key, so it is fixed.",
+    "accentColor": "Accent colour",
+    "colorPreview": "Button preview",
+    "description": "Short description",
+    "descriptionHint": "One line under the brand name on the homepage.",
+    "descriptionBn": "Short description in Bangla",
+    "tagline": "Tagline",
+    "taglineHint": "Two or three words, like “Pizza Specialist”.",
+    "taglineBn": "Tagline in Bangla",
+    "emoji": "Icon emoji",
+    "emojiHint": "Shown when there is no logo and beside the tagline.",
+    "logo": "Logo",
+    "logoHint": "Square image works best. JPG, PNG or WebP.",
+    "sortOrder": "Display order",
+    "sortOrderHint": "Lower numbers show first. Leave empty to add at the end.",
+    "activeLabel": "Active",
+    "activeHint": "Inactive brands are hidden from customers but can still be set up.",
+    "crustGuideLabel": "Show the crust & size guide",
+    "crustGuideHint": "The pizza crust guide above this brand's menu. Turn on for pizza brands.",
+    "crustGuideOn": "Crust guide on",
+    "archived": "Archived",
+    "activate": "Activate",
+    "deactivate": "Deactivate",
+    "archive": "Archive",
+    "restore": "Restore",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "archiveTitle": "Archive {name}?",
+    "archiveDesc": "The brand disappears from the storefront and every form. It is removed from the {branches} branch(es) serving it. Products and orders keep their history, and you can restore it later.",
+    "deleteTitle": "Delete {name}?",
+    "deleteDesc": "Nothing refers to this brand, so it will be removed permanently."
+  },
+  "hours": {
+    "opensAt": "Opens at {time}",
+    "opensTomorrowAt": "Opens tomorrow at {time}",
+    "opensOnDayAt": "Opens {day} at {time}",
+    "weekday": {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday"
+    },
+    "channel": {
+      "delivery": "delivery",
+      "pickup": "pickup"
+    },
+    "pageSub": "When each brand at this branch takes delivery and pickup orders. Times are Dhaka time.",
+    "editorIntro": "Set when each brand at {branch} takes orders. Add as many time slots as you need and tick Delivery and/or Pickup for each. A slot that ends after midnight belongs to the day it started.",
+    "brandSub": "Ordering hours for this brand at this branch",
+    "everyDay": "Same every day",
+    "perDayToggle": "Set different hours for specific days",
+    "useEveryDay": "Same as every day",
+    "closedAllDay": "Closed all day (no slots).",
+    "from": "From",
+    "until": "Until",
+    "lastOrder": "Last order",
+    "nextDay": "next day",
+    "addSlot": "Add time slot",
+    "removeSlot": "Remove",
+    "noChannelWarning": "Tick Delivery or Pickup, or this slot takes no orders.",
+    "notSetTitle": "Hours not set",
+    "notSetBody": "Until hours are set, this brand takes orders at any time. Set its hours so customers can only order when you are open.",
+    "setHours": "Set hours",
+    "clearHours": "Clear these hours (no time limit)",
+    "dineInTitle": "Dine-in hours",
+    "dineInSub": "Shown to customers only. The app does not take dine-in orders.",
+    "showDineIn": "Show dine-in hours",
+    "cloudKitchenNote": "This branch is a cloud kitchen; dine-in hours are usually left off.",
+    "save": "Save hours",
+    "saved": "Hours saved.",
+    "dhakaNote": "All times are Asia/Dhaka.",
+    "noBrands": "This branch serves no brand yet. Ask the super admin to assign one.",
+    "todayLabel": "Ordering hours today",
+    "notSetOrClosed": "Closed today or not set",
+    "openEditor": "Edit hours",
+    "formNoteEdit": "Opening hours are set per brand and per delivery/pickup on the branch's Hours page.",
+    "formNoteCreate": "After saving, set this branch's opening hours per brand on its Hours page (until then it has no time limit)."
+  },
+  "orderStatusPickup": {
+    "ready": "Ready for collection",
+    "delivered": "Collected"
+  },
+  "orderStatusDelivery": {
+    "ready": "Ready for rider"
   }
 }

@@ -5,14 +5,19 @@ import type { Order, User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { conflict, forbidden, sk, validationError } from "@/lib/http/errors";
 import {
-  ALLOWED_TRANSITIONS,
-  BRANCH_MANAGER_SETTABLE,
   CUSTOMER_SETTABLE,
   DELAY_MAX_MINUTES,
   DELAY_MIN_MINUTES,
+  MANAGER_TRANSITIONS,
+  OVERRIDE_REASON_MIN,
   PICKUP_MIN_LEAD_MINUTES,
-  RIDER_SETTABLE,
+  RIDER_ONLY_STATUSES,
+  RIDER_TRANSITIONS,
+  orderStatusLabelKey,
+  overrideTargets,
+  type Fulfillment,
 } from "@/lib/constants/orders";
+import { logAdminAction } from "@/lib/services/audit";
 import { createNotification, notifyBranchManagers } from "@/lib/services/notifications";
 import { recordCommissionForOrder } from "@/lib/services/wallet";
 import { awardOrderCoinsByRule } from "@/lib/services/reward-rules";
@@ -25,14 +30,15 @@ import { resolveDeliveryCoordinate } from "@/lib/services/customer-location";
 import { coverageForAddress, type AddressCoverage } from "@/lib/services/address-coverage";
 import { platformFeeFor } from "@/lib/services/settings";
 import { haversineKm } from "@/lib/services/geo";
-import { isBranchOpenNow } from "@/lib/services/branch-hours";
 import { formatClock } from "@/lib/i18n/format";
-import { isFullClosureWindow, isPastNightLastOrder } from "@/lib/services/coverage-window";
-import { isReceiveConfirmed } from "@/lib/services/rider-duty";
+import { channelStatus, opensAtMessage, type ChannelStatus } from "@/lib/hours/availability";
+import { dhakaMoment } from "@/lib/hours/clock";
 import { markChatEndedInTx, openChatInTx, recordRiderChangeInTx } from "@/lib/services/order-chat";
 import { nextOrderNumber } from "@/lib/services/order-number";
 import { customerProductWhere } from "@/lib/services/product-eligibility";
 import { resolveOrderDeliveryArea } from "@/lib/services/delivery-areas";
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
+import { productSaleBrands } from "@/lib/services/product-eligibility";
 import type { OrderStatus } from "@/types";
 
 export interface OrderItemInput {
@@ -42,6 +48,12 @@ export interface OrderItemInput {
   food_note?: string;
   /** req #4 — chosen crust ("THICK" | "THIN"); validated against the product. */
   variation_type?: string;
+  /**
+   * The brand tab the line was added from (a Brand.slug). Only a HINT, used to
+   * pick between the brands of a product sold under several; it is checked
+   * against what the product and its branch really sell, never trusted.
+   */
+  brand?: string;
 }
 
 /**
@@ -97,12 +109,32 @@ async function servingBranchForCart(productIds: number[]) {
   }
   const branch = await prisma.branch.findFirst({
     where: { id: servingBranchIds[0], isActive: true, isArchived: false },
+    include: BRANCH_BRANDS_INCLUDE,
   });
   if (!branch) throw validationError({ delivery_address: sk("errors.orders.noEligibleBranch") });
   return branch;
 }
 
-type PricedProduct = Prisma.ProductGetPayload<{ include: { variations: true } }>;
+/** What pricing needs: the sizes, plus the branch's brands for the line's brand. */
+const PRICED_PRODUCT_INCLUDE = {
+  variations: true,
+  branch: { include: BRANCH_BRANDS_INCLUDE },
+} satisfies Prisma.ProductInclude;
+type PricedProduct = Prisma.ProductGetPayload<{ include: typeof PRICED_PRODUCT_INCLUDE }>;
+
+/**
+ * The brand an order line is sold under, snapshotted onto the order item: the
+ * product's own brand, or — for a product sold under every brand of its branch
+ * — the brand tab it was added from when that is one of them, else the first.
+ * A product whose brand its branch no longer serves (or whose brand went
+ * inactive) cannot be sold at all: the object-level half of the shared brand
+ * rule (product-eligibility.ts), enforced at the last step before money moves.
+ */
+function lineBrand(product: PricedProduct, hint: string | undefined): string {
+  const sale = productSaleBrands(product);
+  if (sale.length === 0) throw validationError({ items: sk("errors.orders.someProductsUnavailable") });
+  return hint && sale.includes(hint) ? hint : sale[0];
+}
 
 /**
  * Resolve the purchasable variation for a line (shared by createOrder + quote).
@@ -202,6 +234,8 @@ interface PricedLine {
   lineTotal: Prisma.Decimal;
   /** The customer's per-item note, carried through verbatim. */
   foodNote: string;
+  /** The brand (slug) this line is sold under — see lineBrand. */
+  brand: string;
 }
 
 /**
@@ -226,6 +260,7 @@ function priceLines(items: OrderItemInput[], byId: Map<number, PricedProduct>): 
       unitPrice,
       lineTotal: unitPrice.times(quantity),
       foodNote: item.food_note ?? "",
+      brand: lineBrand(product, item.brand),
     };
   });
 }
@@ -261,11 +296,53 @@ function deliveryChargeFor(
  * here, so a held branch is refused ONCE, server-side, for all of them — the
  * dashboard control is a convenience, never the enforcement.
  */
-/** "Closed, opens at 10:45 PM" when the branch has an opening time to name. */
-function branchClosedMessage(opensAt: string | null): string {
-  return opensAt
-    ? sk("errors.orders.branchClosedOpensAt", { time: formatClock(opensAt) })
-    : sk("errors.orders.branchClosed");
+/**
+ * THE hours gate for a cart, run after its lines are priced (quote AND order):
+ * every brand in the cart must be open on the chosen channel right now, on the
+ * Asia/Dhaka clock, per its own schedule at this branch (lib/hours/availability).
+ * The message names the brand, the channel and when it opens, so a customer
+ * whose cart mixes an open brand and a closed one is told exactly which one is
+ * the problem instead of getting a generic error.
+ */
+function assertBrandsOpen(
+  branch: Parameters<typeof channelStatus>[0],
+  lines: PricedLine[],
+  channel: "delivery" | "pickup",
+  brandNames: Map<string, string>,
+): void {
+  const at = dhakaMoment();
+  for (const slug of [...new Set(lines.map((l) => l.brand))]) {
+    const status = channelStatus(branch, slug, channel, at);
+    if (status.open) continue;
+    throw validationError({ items: brandClosedMessage(brandNames.get(slug) ?? slug, channel, status) });
+  }
+}
+
+/** Brand display names for the cart's products, from the rows already loaded. */
+function brandNamesOf(products: PricedProduct[]): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const p of products) for (const bb of p.branch.brands) names.set(bb.brand.slug, bb.brand.name);
+  return names;
+}
+
+function brandClosedMessage(brand: string, channel: "delivery" | "pickup", status: ChannelStatus): string {
+  const ch = `@:hours.channel.${channel}`;
+  if (status.reason === "branch_on_hold") return sk("errors.orders.branchOnHold");
+  if (status.reason === "branch_inactive") return sk("errors.orders.branchNotFoundOrClosed");
+  if (status.reason === "brand_inactive" || status.reason === "brand_not_served") {
+    return sk("errors.orders.someProductsUnavailable");
+  }
+  if (status.reason === "delivery_paused") return sk("errors.orders.brandDeliveryPaused", { brand });
+  if (!status.opensAt) return sk("errors.orders.brandClosed", { brand, channel: ch });
+  const { key, dayKey } = opensAtMessage(status.opensAt);
+  const time = formatClock(status.opensAt.time);
+  const suffix = key === "hours.opensAt" ? "Today" : key === "hours.opensTomorrowAt" ? "Tomorrow" : "OnDay";
+  return sk(`errors.orders.brandClosedOpens${suffix}`, {
+    brand,
+    channel: ch,
+    time,
+    ...(dayKey ? { day: `@:${dayKey}` } : {}),
+  });
 }
 
 async function resolveBranchForCart(input: {
@@ -284,24 +361,17 @@ async function resolveBranchForCart(input: {
   lng: number | null;
   coverage: AddressCoverage | null;
 }> {
-  // ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery AND
-  // pickup, at every branch, whatever that branch's own hours say. Checked
-  // before anything branch-specific, so it applies uniformly to both rails.
-  if (isFullClosureWindow()) {
-    throw validationError({ branch_id: sk("errors.orders.platformClosed") });
-  }
   if (input.fulfillmentType === "pickup") {
     const picked = await prisma.branch.findFirst({
       where: { id: input.branchId, isActive: true, isArchived: false },
+      include: BRANCH_BRANDS_INCLUDE,
     });
     if (!picked) throw validationError({ branch_id: sk("errors.orders.branchNotFoundOrClosed") });
     // A branch its MANAGER has put on hold takes no new order on ANY rail —
     // pickup is an order too, so the gate lives here beside the hours check
     // rather than only on the delivery path.
     if (picked.isOnHold) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
-    // A branch outside its opening hours cannot take a pickup order either (§17).
-    const pickedHours = isBranchOpenNow(picked);
-    if (!pickedHours.orderable) throw validationError({ branch_id: branchClosedMessage(pickedHours.opensAt) });
+    // Hours are checked per brand once the lines are priced (assertBrandsOpen).
     if (!picked.pickupEnabled) throw validationError({ fulfillment_type: sk("errors.orders.pickupUnavailable") });
     return { branch: picked, lat: null, lng: null, coverage: null };
   }
@@ -330,17 +400,8 @@ async function resolveBranchForCart(input: {
     throw validationError({ delivery_address: sk("errors.orders.outsideDeliveryArea") });
   }
   // A manager's hold is a deliberate, current decision, so it is reported ahead
-  // of the hours gate — the same order the previous resolver used.
+  // of the hours gate (which runs per brand once the lines are priced).
   if (branch.isOnHold) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
-  const branchHours = isBranchOpenNow(branch);
-  if (!branchHours.orderable) {
-    throw validationError({ branch_id: branchClosedMessage(branchHours.opensAt) });
-  }
-  // PHASE 3 — the night shift accepts its last delivery order at 03:45, so the
-  // ride can finish by 04:00. Pickup has no ride and is governed by hours alone.
-  if (isPastNightLastOrder()) {
-    throw validationError({ branch_id: sk("errors.orders.nightLastOrderPassed") });
-  }
   return {
     branch,
     lat: coverage.point?.lat ?? null,
@@ -390,7 +451,7 @@ export async function quoteOrder(input: {
 
   const products = await prisma.product.findMany({
     where: orderableProductWhere(branch.id, productIds),
-    include: { variations: true },
+    include: PRICED_PRODUCT_INCLUDE,
   });
   const byId = new Map(products.map((p) => [p.id, p]));
   const missing = productIds.filter((id) => !byId.has(id));
@@ -402,11 +463,14 @@ export async function quoteOrder(input: {
   // converts an already-final 2dp figure for the response body, and nothing is
   // ever computed from the converted value.
   const lines = priceLines(input.items, byId);
+  // Same hours gate the order itself runs, so checkout says "closed" up front.
+  assertBrandsOpen(branch, lines, fulfillmentType, brandNamesOf(products));
   const items = lines.map((line) => ({
     product_id: line.product.id,
     variation_id: line.variation?.id ?? null,
     variation_name: line.variation?.name ?? "",
     variation_type: line.crust,
+    brand: line.brand,
     name: line.product.name,
     unit_price: line.unitPrice.toNumber(),
     quantity: line.quantity,
@@ -602,7 +666,7 @@ export async function createOrder(input: {
 
   const products = await prisma.product.findMany({
     where: orderableProductWhere(branch.id, productIds),
-    include: { variations: true },
+    include: PRICED_PRODUCT_INCLUDE,
   });
   const byId = new Map(products.map((p) => [p.id, p]));
   const missing = productIds.filter((id) => !byId.has(id));
@@ -615,6 +679,8 @@ export async function createOrder(input: {
   // disagree on price. Priced BEFORE the transaction opens: a bad crust or an
   // impossible quantity is a validation error, not a rolled-back write.
   const lines = priceLines(input.items, byId);
+  // The hours gate: every brand in the cart open on this channel right now.
+  assertBrandsOpen(branch, lines, fulfillmentType, brandNamesOf(products));
   const itemsSubtotal = sumLines(lines);
   // PHASE 4 — resolved once, before the transaction, from the same rule the quote
   // used, and snapshotted: a later change to the fee never rewrites this order.
@@ -667,6 +733,8 @@ export async function createOrder(input: {
           variationId: line.variation?.id ?? null,
           variationName: line.variation?.name ?? "",
           variationType: line.crust,
+          // The brand this line was sold under, frozen with the order.
+          brand: line.brand,
           quantity: line.quantity,
           // Already at paisa precision (priceLines) — stored as-is, so the
           // ledger's line and the customer's `unit × qty` are the same number.
@@ -762,7 +830,7 @@ export async function createOrder(input: {
   });
 }
 
-type OrderWithBranch = Order & { branch: { managerId: number | null } };
+export type OrderWithBranch = Order & { branch: { managerId: number | null } };
 
 /**
  * WS-5.2 — the extra minutes a rider announces with a `delayed` update.
@@ -790,62 +858,105 @@ function delayNote(note: string): string {
   return String(note ?? "").trim().replace(/^(?:@:)+/, "").trim().slice(0, 200);
 }
 
-/** Validate the transition and the acting role's right to make it. */
+/** The channel an order belongs to. */
+function fulfillmentOf(order: { fulfillmentType: string }): Fulfillment {
+  return order.fulfillmentType === "pickup" ? "pickup" : "delivery";
+}
+
+/** `@:` reference to the order's status label for its channel (notifications). */
+function statusParam(status: string, order: { fulfillmentType: string }): string {
+  return `@:${orderStatusLabelKey(status, order.fulfillmentType)}`;
+}
+
+/**
+ * Make sure the rider's physical-receipt record (C5) exists when they mark the
+ * order Picked up. Tapping Picked up IS the confirmation now, so the rider no
+ * longer needs a separate tap first; the record is still written for the audit
+ * trail and the branch manager's acceptance panel.
+ */
+async function ensureReceiveConfirmedInTx(
+  tx: Prisma.TransactionClient,
+  order: { id: number; branchId: number },
+  riderId: number,
+): Promise<void> {
+  const existing = await tx.orderReceiveConfirmation.findUnique({
+    where: { orderId_riderId: { orderId: order.id, riderId } },
+  });
+  if (existing) return;
+  const session = await tx.riderBranchDutySession.findFirst({
+    where: { riderId, status: "active", branchId: order.branchId },
+    select: { id: true },
+  });
+  await tx.orderReceiveConfirmation.create({
+    data: { orderId: order.id, riderId, branchId: order.branchId, sessionId: session?.id ?? null, status: "confirmed" },
+  });
+}
+
+/**
+ * Validate a status change and the acting role's right to make it, then apply
+ * it. See lib/constants/orders.ts for the flow and why the rider leg has one
+ * writer.
+ */
 export async function updateOrderStatus(input: {
   order: OrderWithBranch;
   newStatus: OrderStatus;
   user: User;
   /** PHASE J — required when rejecting/cancelling; stored EXACTLY as typed. */
   reason?: string;
-  /** WS-5.2 — extra delivery minutes; REQUIRED when newStatus is "delayed". */
+  /** WS-5.2 — extra delivery minutes; REQUIRED with a delay announcement. */
   delayMinutes?: number | null;
 }): Promise<Order> {
   const { order, newStatus, user, reason = "", delayMinutes = null } = input;
-  const allowed = ALLOWED_TRANSITIONS[order.status as OrderStatus] ?? [];
-  // ITEM 6 — a pickup order has no rider leg, so "ready" → "delivered" (the
-  // customer walked out with it) is a legal move directly for fulfillmentType
-  // "pickup" ONLY, skipping the delivery-only picked_up/on_the_way detour. The
-  // normal ready → picked_up edge is left untouched (still reachable, e.g. an
-  // order staged before this change), so nothing already at "picked_up" is
-  // stranded; "delivered" is what every report already keys a completed sale
-  // off, so this needs no change anywhere else.
-  const pickupSkipsToDelivered =
-    order.fulfillmentType === "pickup" && order.status === "ready" && newStatus === "delivered";
-  if (!allowed.includes(newStatus) && !pickupSkipsToDelivered) {
-    // PHASE J — an illegal move is a STATE CONFLICT, not a bad field: 409.
-    throw conflict(sk("errors.orders.cannotTransitionFromStatus", { status: `@:orderStatus.${order.status}` }));
+  const fulfillment = fulfillmentOf(order);
+  const current = order.status as OrderStatus;
+
+  // A delay is an announcement on the order, not a status (see announceDelay).
+  if (newStatus === "delayed") return announceDelay({ order, user, reason, delayMinutes });
+
+  // Repeating the order's CURRENT status is a no-op, never an error: a double
+  // tap, or a screen that had not refreshed yet when someone else moved it.
+  if (newStatus === current) {
+    await assertMayActOnOrder(order, user);
+    return prisma.order.findUniqueOrThrow({ where: { id: order.id } });
   }
 
-  if (user.role === "super_admin") {
-    // any valid transition
-  } else if (user.role === "branch_manager") {
-    if (order.branch.managerId !== user.id) throw forbidden(sk("errors.orders.notYourBranch"));
-    if (!BRANCH_MANAGER_SETTABLE.includes(newStatus)) {
-      throw forbidden(sk("errors.orders.branchManagerCannotSetStatus"));
+  let implicitReady = false;
+  if (user.role === "super_admin" || user.role === "branch_manager") {
+    if (user.role === "branch_manager" && order.branch.managerId !== user.id) {
+      throw forbidden(sk("errors.orders.notYourBranch"));
+    }
+    // The rider leg belongs to the assigned rider. Staff use the logged
+    // override for emergencies (overrideOrderStatus).
+    if (fulfillment === "delivery" && RIDER_ONLY_STATUSES.includes(newStatus)) {
+      throw forbidden(sk("errors.orders.riderStatusOnlyRider"));
+    }
+    const allowed = MANAGER_TRANSITIONS[fulfillment][current] ?? [];
+    if (!allowed.includes(newStatus)) {
+      // PHASE J — an illegal move is a STATE CONFLICT, not a bad field: 409.
+      throw conflict(sk("errors.orders.cannotTransitionFromStatus", { status: statusParam(current, order) }));
     }
   } else if (user.role === "rider") {
     if (order.riderId !== user.id) throw forbidden(sk("errors.orders.orderNotAssignedToYou"));
-    if (!RIDER_SETTABLE.includes(newStatus)) {
-      throw forbidden(sk("errors.orders.riderCannotSetStatus"));
+    if (fulfillment === "pickup") throw forbidden(sk("errors.orders.riderCannotSetStatus"));
+    const allowed = RIDER_TRANSITIONS[current] ?? [];
+    if (!allowed.includes(newStatus)) {
+      throw conflict(sk("errors.orders.cannotTransitionFromStatus", { status: statusParam(current, order) }));
     }
-    // C5: the rider must confirm physically receiving the order before the
-    // delivery workflow (pickup) can begin.
-    if (newStatus === "picked_up" && !(await isReceiveConfirmed(order.id, user.id))) {
-      throw conflict(sk("errors.rider.mustConfirmReceiveFirst"));
-    }
+    // Picked up before the manager tapped Ready counts as Ready: the rider is
+    // never blocked because a button was not pressed in the kitchen.
+    implicitReady = newStatus === "picked_up" && current !== "ready";
   } else if (user.role === "customer") {
     if (order.customerId !== user.id) throw forbidden(sk("errors.orders.notYourOrder"));
-    if (!CUSTOMER_SETTABLE.includes(newStatus) || order.status !== "pending") {
+    if (!CUSTOMER_SETTABLE.includes(newStatus) || current !== "pending") {
       throw forbidden(sk("errors.orders.onlyPendingCanBeCancelled"));
     }
   } else {
     throw forbidden(sk("errors.orders.noPermissionToChangeStatus"));
   }
 
-  // PHASE J / WS-5.1 — staff cancelling an order must state why (the reason is
-  // shown to the customer and kept verbatim in the audit trail). This covers the
-  // BRANCH MANAGER rejecting an order and the RIDER handing one back. A
-  // super-admin administrative cancellation is not forced to supply one.
+  // PHASE J / WS-5.1 — staff cancelling an order must state why (shown to the
+  // customer, kept verbatim in the audit trail): the branch manager rejecting an
+  // order, the rider handing one back. A super admin is not forced to.
   if (
     newStatus === "cancelled" &&
     (user.role === "branch_manager" || user.role === "rider") &&
@@ -854,64 +965,61 @@ export async function updateOrderStatus(input: {
     throw validationError({ reason: sk("errors.orders.rejectionReasonRequired") });
   }
 
-  // WS-5.2 — "delayed" exists so the rider can tell the customer that extra
-  // delivery time is needed, so the extra minutes are mandatory and bounded.
-  // A missing/garbage value is a validation error, never a silent default.
-  let extraMinutes = 0;
-  if (newStatus === "delayed") {
-    const submitted = Number(delayMinutes);
-    if (!Number.isFinite(submitted) || Math.trunc(submitted) <= 0) {
-      throw validationError({ delay_minutes: sk("errors.orders.delayMinutesRequired") });
-    }
-    extraMinutes = Math.trunc(submitted);
-    if (extraMinutes < DELAY_MIN_MINUTES || extraMinutes > DELAY_MAX_MINUTES) {
-      throw validationError({
-        delay_minutes: sk("errors.orders.delayMinutesInvalid", {
-          min: DELAY_MIN_MINUTES,
-          max: DELAY_MAX_MINUTES,
-        }),
+  const updated = await prisma.$transaction(async (tx) => {
+    if (implicitReady) {
+      await tx.orderStatusEvent.create({
+        data: { orderId: order.id, fromStatus: current, toStatus: "ready", actorId: user.id, reason: "auto: rider picked up" },
       });
     }
-  }
-
-  // The status change and its audit row are written together, so history can
-  // never drift from the order's actual state.
-  const previousStatus = order.status;
-  // A delay carries its minutes into the same `reason` trail (see
-  // formatDelayReason); every other transition stores the reason as typed.
-  const eventReason =
-    newStatus === "delayed" ? formatDelayReason(extraMinutes, reason) : String(reason ?? "");
-  const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.order.update({ where: { id: order.id }, data: { status: newStatus } });
-    await tx.orderStatusEvent.create({
-      data: {
-        orderId: order.id,
-        fromStatus: previousStatus,
-        toStatus: newStatus,
-        actorId: user.id,
-        reason: eventReason,
-      },
-    });
-    // Delivered/cancelled starts the chat's 2-hour read-only clock, stamped
-    // with the same commit as the status so the two can never disagree.
-    if (newStatus === "delivered" || newStatus === "cancelled") {
-      await markChatEndedInTx(tx, order.id, row.updatedAt);
-    }
-    return row;
+    if (user.role === "rider" && newStatus === "picked_up") await ensureReceiveConfirmedInTx(tx, order, user.id);
+    return writeStatusInTx(tx, order, implicitReady ? "ready" : current, newStatus, user.id, String(reason ?? ""));
   });
+  await afterStatusChange({ order, updated, newStatus, actor: user });
+  return updated;
+}
 
-  // Delivered → record the rider's commission exactly once (unique orderId
-  // in RiderCommission makes replays/no-ops safe) and notify the rider.
+/** May this user act on this order at all (for the no-op repeat)? */
+async function assertMayActOnOrder(order: OrderWithBranch, user: User): Promise<void> {
+  if (user.role === "super_admin") return;
+  if (user.role === "branch_manager" && order.branch.managerId === user.id) return;
+  if (user.role === "rider" && order.riderId === user.id) return;
+  if (user.role === "customer" && order.customerId === user.id) return;
+  throw forbidden(sk("errors.orders.noPermissionToChangeStatus"));
+}
+
+/** The status write + its audit row, in one transaction with the caller's. */
+async function writeStatusInTx(
+  tx: Prisma.TransactionClient,
+  order: { id: number },
+  from: OrderStatus,
+  to: OrderStatus,
+  actorId: number,
+  reason: string,
+): Promise<Order> {
+  const row = await tx.order.update({ where: { id: order.id }, data: { status: to } });
+  await tx.orderStatusEvent.create({
+    data: { orderId: order.id, fromStatus: from, toStatus: to, actorId, reason },
+  });
+  // Delivered (or Collected) / cancelled starts the chat's 2-hour read-only
+  // clock, stamped with the same commit as the status.
+  if (to === "delivered" || to === "cancelled") await markChatEndedInTx(tx, order.id, row.updatedAt);
+  return row;
+}
+
+/** Everything a status change triggers, shared by the normal flow and the override. */
+async function afterStatusChange(args: {
+  order: OrderWithBranch;
+  updated: Order;
+  newStatus: OrderStatus;
+  actor: User;
+  override?: boolean;
+}): Promise<void> {
+  const { order, updated, newStatus, actor, override = false } = args;
+  // Delivered → the assigned rider's commission, exactly once (unique orderId),
+  // and the customer's reward coins (idempotent per order). An override to
+  // Delivered still pays the rider who really carried it.
   if (newStatus === "delivered") {
-    await recordCommissionForOrder({
-      id: order.id,
-      riderId: order.riderId,
-      branchId: order.branchId,
-    });
-    // Customer earns reward coins (idempotent per order). PHASE H — a
-    // super-admin EARNING RULE prices the order when one matches; otherwise the
-    // legacy flat "order_delivered" rule still applies, so nothing that worked
-    // before stops working when no earning rule is configured.
+    await recordCommissionForOrder({ id: order.id, riderId: updated.riderId, branchId: order.branchId });
     const byRule = await awardOrderCoinsByRule({
       id: order.id,
       customerId: order.customerId,
@@ -922,67 +1030,135 @@ export async function updateOrderStatus(input: {
     });
     if (!byRule) await awardCoins(order.customerId, "order_delivered", `order:${order.id}`);
   }
-
-  // Cancelled → hand back everything the order consumed. WS-7.2 releases the
-  // coupon use (a cancelled order used to swallow it permanently) and WS-7.1
-  // restores the coin voucher to "active" so the customer's balance is not
-  // burned for an order that never happened. Both are idempotent, so a replayed
-  // cancellation cannot release the same value twice; both run AFTER the status
-  // transition has committed, so a failure here never blocks the cancellation.
+  // Cancelled → hand back the coupon use and the coin voucher (both idempotent).
   if (newStatus === "cancelled") {
     await releaseCouponForOrder(order.id);
     await restoreRedemptionForOrder(order.id);
   }
 
-  // Notify the customer of every status change (PDF: real-time order updates).
-  // WS-5.2 — a DELAY replaces that generic line with the one the customer
-  // actually needs: how much longer the food will take, plus the rider's note
-  // when they wrote one. Same createNotification path, no parallel mechanism,
-  // and only ONE notification per transition.
-  if (newStatus === "delayed") {
-    const note = delayNote(reason);
-    await createNotification(order.customerId, {
-      type: "order",
-      titleKey: "notifications.order.delayed.title",
-      bodyKey: note
-        ? "notifications.order.delayedWithNote.body"
-        : "notifications.order.delayed.body",
-      params: note
-        ? { id: order.id, minutes: extraMinutes, note }
-        : { id: order.id, minutes: extraMinutes },
-      link: `/customer/orders/${order.id}`,
-    });
-  } else {
-    await createNotification(order.customerId, {
-      type: "order",
-      titleKey: "notifications.order.statusUpdate.title",
-      bodyKey: "notifications.order.statusUpdate.body",
-      params: { id: order.id, status: `@:orderStatus.${newStatus}` },
-      link: `/customer/orders/${order.id}`,
-    });
-  }
+  // The customer hears about every status change, labelled for their channel.
+  await createNotification(order.customerId, {
+    type: "order",
+    titleKey: "notifications.order.statusUpdate.title",
+    bodyKey: "notifications.order.statusUpdate.body",
+    params: { id: order.id, status: statusParam(newStatus, order) },
+    link: `/customer/orders/${order.id}`,
+  });
 
-  // Keep the branch's managers in the loop when the rider drives the delivery.
-  if (user.role === "rider") {
+  // The branch's managers follow the rider leg live.
+  if (actor.role === "rider") {
     await notifyBranchManagers(order.branchId, {
       type: "order",
       titleKey: "notifications.delivery.riderUpdate.title",
       bodyKey: "notifications.delivery.riderUpdate.body",
-      params: { id: order.id, status: `@:orderStatus.${newStatus}` },
+      params: { id: order.id, status: statusParam(newStatus, order) },
       link: `/branch-manager/orders/${order.id}`,
     });
   }
 
-  // Tell the assigned rider when their order gets cancelled by someone else.
-  if (newStatus === "cancelled" && order.riderId && order.riderId !== user.id) {
-    await createNotification(order.riderId, {
+  // The rider is told when someone else cancels or overrides their order.
+  if (updated.riderId && updated.riderId !== actor.id && (newStatus === "cancelled" || override)) {
+    await createNotification(updated.riderId, {
       type: "order",
-      titleKey: "notifications.order.cancelled.title",
-      bodyKey: "notifications.order.cancelled.body",
-      params: { id: order.id },
+      titleKey: newStatus === "cancelled" ? "notifications.order.cancelled.title" : "notifications.order.overridden.title",
+      bodyKey: newStatus === "cancelled" ? "notifications.order.cancelled.body" : "notifications.order.overridden.body",
+      params: { id: order.id, status: statusParam(newStatus, order) },
       link: `/rider/orders/${order.id}`,
     });
   }
+}
+
+/**
+ * WS-5.2 — the assigned rider tells the customer that delivery needs extra
+ * time. NOT a status any more: the order stays Picked up / On the way, and the
+ * announcement rides on the status-event trail (same from/to, reason "+30m ·
+ * note") plus a notification to the customer.
+ */
+async function announceDelay(args: {
+  order: OrderWithBranch;
+  user: User;
+  reason: string;
+  delayMinutes: number | null;
+}): Promise<Order> {
+  const { order, user, reason, delayMinutes } = args;
+  if (user.role !== "rider") throw forbidden(sk("errors.orders.riderCannotSetStatus"));
+  if (order.riderId !== user.id) throw forbidden(sk("errors.orders.orderNotAssignedToYou"));
+  const current = order.status as OrderStatus;
+  if (current !== "picked_up" && current !== "on_the_way") {
+    throw conflict(sk("errors.orders.cannotTransitionFromStatus", { status: statusParam(current, order) }));
+  }
+  const submitted = Number(delayMinutes);
+  if (!Number.isFinite(submitted) || Math.trunc(submitted) <= 0) {
+    throw validationError({ delay_minutes: sk("errors.orders.delayMinutesRequired") });
+  }
+  const extraMinutes = Math.trunc(submitted);
+  if (extraMinutes < DELAY_MIN_MINUTES || extraMinutes > DELAY_MAX_MINUTES) {
+    throw validationError({
+      delay_minutes: sk("errors.orders.delayMinutesInvalid", { min: DELAY_MIN_MINUTES, max: DELAY_MAX_MINUTES }),
+    });
+  }
+  await prisma.orderStatusEvent.create({
+    data: {
+      orderId: order.id,
+      fromStatus: current,
+      toStatus: current,
+      actorId: user.id,
+      reason: formatDelayReason(extraMinutes, reason),
+    },
+  });
+  // Bump updatedAt so the live trackers pick the announcement up.
+  const row = await prisma.order.update({ where: { id: order.id }, data: { updatedAt: new Date() } });
+  const note = delayNote(reason);
+  await createNotification(order.customerId, {
+    type: "order",
+    titleKey: "notifications.order.delayed.title",
+    bodyKey: note ? "notifications.order.delayedWithNote.body" : "notifications.order.delayed.body",
+    params: note ? { id: order.id, minutes: extraMinutes, note } : { id: order.id, minutes: extraMinutes },
+    link: `/customer/orders/${order.id}`,
+  });
+  return row;
+}
+
+/**
+ * OVERRIDE — for emergencies (the rider's phone died, the rider forgot to tap
+ * Delivered). Branch manager (own branch) or super admin only, with a written
+ * reason, to any other status of the order's own flow (never back to Pending),
+ * or Cancelled. A delivered or cancelled order is final. Logged to Activity
+ * Logs with who did it, and on the order's own status trail.
+ */
+export async function overrideOrderStatus(input: {
+  order: OrderWithBranch;
+  newStatus: OrderStatus;
+  user: User;
+  reason: string;
+}): Promise<Order> {
+  const { order, newStatus, user } = input;
+  if (user.role !== "super_admin" && user.role !== "branch_manager") {
+    throw forbidden(sk("errors.orders.overrideStaffOnly"));
+  }
+  if (user.role === "branch_manager" && order.branch.managerId !== user.id) {
+    throw forbidden(sk("errors.orders.notYourBranch"));
+  }
+  const reason = String(input.reason ?? "").trim().slice(0, 500);
+  if (reason.length < OVERRIDE_REASON_MIN) {
+    throw validationError({ reason: sk("errors.orders.overrideReasonRequired", { min: OVERRIDE_REASON_MIN }) });
+  }
+  const current = order.status as OrderStatus;
+  if (!overrideTargets(current, fulfillmentOf(order)).includes(newStatus)) {
+    throw conflict(sk("errors.orders.overrideNotAllowed", { status: statusParam(current, order) }));
+  }
+  const number = order.orderNumber ?? `#${order.id}`;
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await writeStatusInTx(tx, order, current, newStatus, user.id, `Override: ${reason}`);
+    await logAdminAction(
+      user.id,
+      "action",
+      `Override on order ${number}: ${current} → ${newStatus}. Reason: ${reason}`,
+      { tx, branchId: order.branchId },
+    );
+    return row;
+  });
+  await afterStatusChange({ order, updated, newStatus, actor: user, override: true });
   return updated;
 }
 
@@ -1001,6 +1177,11 @@ export async function assignRiderToOrder(input: {
   // page already hid the card; this is the server-side guarantee.
   if (riderId !== null && order.fulfillmentType === "pickup") {
     throw validationError({ rider_id: sk("errors.orders.pickupHasNoRider") });
+  }
+  // A rider can be assigned any time after Accepted — so they can head to the
+  // branch while the food is being prepared — and until they pick it up.
+  if (riderId !== null && !["accepted", "preparing", "ready"].includes(order.status)) {
+    throw conflict(sk("errors.orders.riderAssignWindow"));
   }
   const previousRiderId = order.riderId;
   let assignSessionId: number | null = null;

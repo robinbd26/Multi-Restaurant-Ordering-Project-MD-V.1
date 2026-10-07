@@ -9,47 +9,38 @@ import type { TranslateFn } from "@/lib/i18n/dictionaries";
 import { mediaUrl } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/types";
 
-const FLOW: OrderStatus[] = [
-  "pending",
-  "accepted",
-  "preparing",
-  "ready",
-  "picked_up",
-  "on_the_way",
-  "delivered",
-];
+import { flowFor, orderStatusLabelKey } from "@/lib/constants/orders";
+/**
+ * The latest delay a rider announced on this order, if any: delays are events
+ * on the status trail (from == to, reason "+30m · note"), not a status.
+ */
+function latestDelay(order: Order): { minutes: number; note: string } | null {
+  const events = (order as Order & { status_events?: { from_status: string; to_status: string; reason: string }[] }).status_events ?? [];
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = events[i];
+    const m = /^\+(\d+)m(?: · (.*))?$/.exec(ev.reason);
+    if (ev.from_status === ev.to_status && m) return { minutes: Number(m[1]), note: m[2] ?? "" };
+  }
+  return null;
+}
 
 /**
- * ITEM 6 — a pickup order has no rider and no "on the way": the 7-step
- * delivery flow was built for a rail this order never travels. Five steps
- * instead, ending at "Picked Up (Done)" — the exact moment the customer walks
- * out with the food, which is what "delivered" already means for a pickup
- * order server-side (lib/services/orders.ts allows ready → delivered directly
- * for fulfillmentType "pickup", so a pickup order never actually sits at
- * "picked_up"/"on_the_way" going forward; PICKUP_STATUS_MAP only exists so an
- * order that reached one of those values before this change still renders
- * sensibly, at the final step).
+ * The status timeline for the order's own channel: delivery runs Pending →
+ * Accepted → Preparing → Ready for rider → Picked up → On the way → Delivered;
+ * pickup runs Pending → Accepted → Preparing → Ready for collection → Collected
+ * (lib/constants/orders.ts flowFor / orderStatusLabelKey).
  */
-const PICKUP_FLOW: OrderStatus[] = ["pending", "accepted", "preparing", "ready", "delivered"];
-const PICKUP_LABEL_KEY: Partial<Record<OrderStatus, string>> = {
-  ready: "orderStatus.readyForPickup",
-  delivered: "orderStatus.pickedUpDone",
-};
-const PICKUP_STATUS_MAP: Partial<Record<OrderStatus, OrderStatus>> = {
-  picked_up: "delivered",
-  on_the_way: "delivered",
-  delayed: "delivered",
-};
-
 function StatusTimeline({
   status,
   pickup,
+  delay,
   t,
   fmt,
 }: {
   status: OrderStatus;
-  /** ITEM 6 — order.fulfillment_type === "pickup". Picks which flow renders. */
+  /** order.fulfillment_type === "pickup". Picks which flow renders. */
   pickup: boolean;
+  delay: { minutes: number; note: string } | null;
   t: TranslateFn;
   fmt: Formatters;
 }) {
@@ -60,23 +51,17 @@ function StatusTimeline({
       </p>
     );
   }
-  const flow = pickup ? PICKUP_FLOW : FLOW;
-  // WS-5.2 — a delayed order has not gone backwards: it is still on its way,
-  // just later than promised. The timeline holds at the on-the-way step and an
-  // amber notice above it explains the hold-up. (Pickup orders never reach
-  // "delayed" — there is no rider to report one — but PICKUP_STATUS_MAP covers
-  // it defensively all the same.)
-  const effective: OrderStatus = pickup
-    ? (PICKUP_STATUS_MAP[status] ?? status)
-    : status === "delayed"
-      ? "on_the_way"
-      : status;
+  const flow = flowFor(pickup ? "pickup" : "delivery");
+  // A legacy "delayed" status (before delays became announcements) reads as
+  // its closest step; the migration moved those orders to on_the_way anyway.
+  const effective: OrderStatus = status === "delayed" ? "on_the_way" : status;
   const currentIndex = flow.indexOf(effective);
   return (
     <>
-      {!pickup && status === "delayed" ? (
-        <p className="mb-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/25">
-          {t("orders.orderDelayedNotice")}
+      {!pickup && delay && (effective === "picked_up" || effective === "on_the_way") ? (
+        <p className="mb-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/25" data-testid="order-delay-notice">
+          {t("orders.orderDelayedBy", { minutes: fmt.num(delay.minutes) })}
+          {delay.note ? ` — ${delay.note}` : ""}
         </p>
       ) : null}
       <ol className="flex flex-wrap items-center gap-y-3" data-testid="order-status-timeline">
@@ -98,7 +83,7 @@ function StatusTimeline({
                   : "mx-2 text-xs text-fg-subtle"
               }
             >
-              {t(pickup ? (PICKUP_LABEL_KEY[step] ?? `orderStatus.${step}`) : `orderStatus.${step}`)}
+              {t(orderStatusLabelKey(step, pickup ? "pickup" : "delivery"))}
             </span>
             {i < flow.length - 1 ? (
               <span
@@ -124,14 +109,20 @@ export async function OrderDetailCard({ order, children }: { order: Order; child
               <span data-testid="order-number">
                 {order.order_number ?? t("orders.orderNumber", { id: fmt.num(order.id) })}
               </span>
-              <OrderStatusBadge status={order.status} />
+              <OrderStatusBadge status={order.status} fulfillment={order.fulfillment_type} />
             </span>
           }
           subtitle={`${order.branch_name} • ${fmt.dateTime(order.created_at)}`}
           action={children}
         />
         <CardContent>
-          <StatusTimeline status={order.status} pickup={order.fulfillment_type === "pickup"} t={t} fmt={fmt} />
+          <StatusTimeline
+            status={order.status}
+            pickup={order.fulfillment_type === "pickup"}
+            delay={latestDelay(order)}
+            t={t}
+            fmt={fmt}
+          />
         </CardContent>
       </Card>
 

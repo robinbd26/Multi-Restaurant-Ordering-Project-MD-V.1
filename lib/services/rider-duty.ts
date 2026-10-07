@@ -6,6 +6,7 @@ import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/e
 import { createNotification, notifyBranchManagers } from "@/lib/services/notifications";
 import { daysAgo, dhakaDayKey, midnight } from "@/lib/utils/dates";
 
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
 // WS-5.5 — ONE DUTY SYSTEM.
 //
 // `RiderBranchDutySession` is the SOURCE OF TRUTH for "is this rider on duty,
@@ -35,14 +36,13 @@ const OPEN_DELIVERY_STATES = ["accepted", "preparing", "ready", "picked_up", "on
 // ── Serializers ─────────────────────────────────────────────────────────
 export function serializeDutySession(s: {
   id: number; riderId: number; branchId: number; status: string; startedAt: Date; endedAt: Date | null; endReason: string;
-  branch?: { name: string; brandType: string; address: string } | null;
+  branch?: { name: string; address: string } | null;
 }) {
   return {
     id: s.id,
     rider: s.riderId,
     branch: s.branchId,
     branch_name: s.branch?.name ?? "",
-    branch_brand_type: s.branch?.brandType ?? "",
     branch_address: s.branch?.address ?? "",
     status: s.status,
     started_at: s.startedAt.toISOString(),
@@ -54,7 +54,7 @@ export function serializeDutySession(s: {
 // ── C1: eligible branches + start duty ──────────────────────────────────
 export async function eligibleBranchesForRider() {
   // Eligible = active branches. (Riders are not locked to a home branch.)
-  return prisma.branch.findMany({ where: { isActive: true }, orderBy: { name: "asc" } });
+  return prisma.branch.findMany({ where: { isActive: true }, include: BRANCH_BRANDS_INCLUDE, orderBy: { name: "asc" } });
 }
 
 export async function activeDutySession(riderId: number) {
@@ -381,7 +381,8 @@ export async function confirmReceive(rider: User, orderId: number) {
   if (order.riderId !== rider.id) throw forbidden(sk("errors.rider.notAssignedRider"));
   const active = await activeDutySession(rider.id);
   if (!active || active.branchId !== order.branchId) throw forbidden(sk("errors.rider.notOnDutyForBranch"));
-  if (order.status !== "ready") throw conflict(sk("errors.rider.orderNotConfirmable"));
+  // From Accepted on: a rider may collect before the manager tapped Ready.
+  if (!["accepted", "preparing", "ready"].includes(order.status)) throw conflict(sk("errors.rider.orderNotConfirmable"));
 
   const { confirmation, created } = await prisma.$transaction(async (tx) => {
     // Idempotent: a repeat confirm by the same rider returns the existing row.

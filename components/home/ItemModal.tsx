@@ -10,6 +10,7 @@ import { SizeOptionCard } from "@/components/home/item-modal/size-option-card";
 import type { MenuItem } from "@/lib/home/types";
 import { useTranslation } from "@/lib/i18n/use-translation";
 
+import { brandName } from "@/lib/brands/shared";
 /** Badge tint per menu group (mirrors ProductCard / reference design). */
 /** Badge tint. Keyed by the product's DATABASE flags, so there are exactly two. */
 const CLASS_TONE: Record<string, { bg: string; color: string; border: string }> = {
@@ -26,10 +27,10 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [ta
  * chips + size cards; burgers: bun / sauce / add-ons; wings: size + flavour.
  */
 export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => void }) {
-  const { add } = useHomeCart();
-  const { t, fmt } = useTranslation();
-  const isMad = item.brand === "madchef";
-  const accent = isMad ? "#e8192c" : "#F5A623";
+  const { add, brandInfo } = useHomeCart();
+  const { t, fmt, locale } = useTranslation();
+  const info = brandInfo(item.brand);
+  const accent = info?.accent_color ?? "#e8192c";
 
   const defaultSize = item.sizes?.some((s) => s.key === "14in") ? "14in" : (item.sizes?.[0]?.key ?? "");
   const [sizeKey, setSizeKey] = useState(defaultSize);
@@ -149,7 +150,7 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
   // The category's own name from the database (`item.group`), not a lookup
   // against a fixed key set — an admin-created category has no translation key.
   const categoryLabel = (item.group ?? "").toUpperCase();
-  const eyebrow = `${item.emoji ?? "🍽️"} ${isMad ? "MADCHEF" : "CHEEZ!"} ${categoryLabel}`.trim();
+  const eyebrow = `${item.emoji ?? "🍽️"} ${info ? brandName(info, locale).toUpperCase() : ""} ${categoryLabel}`.trim();
   const badgeLabel = item.badgeKey ? t(`home.product.badge.${item.badgeKey}`) : null;
   const tone = item.badgeKey ? CLASS_TONE[item.badgeKey] : undefined;
   // Reference design: ingredient chips = about parts + the class chip.

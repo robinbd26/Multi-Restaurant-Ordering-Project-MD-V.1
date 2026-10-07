@@ -11,13 +11,15 @@ import {
   serializePublicBranch,
 } from "@/lib/serializers";
 import { roleDisplay } from "@/lib/constants/enums";
-import { ALLOWED_TRANSITIONS } from "@/lib/constants/orders";
+import { ORDER_FLOW_STATUSES } from "@/lib/constants/orders";
 import { periodFinancials } from "@/lib/services/financials";
 import { riderTravelDistanceKm } from "@/lib/services/rider-location";
 import { riderWalletSummary } from "@/lib/services/wallet";
 import { daysAgo, dhakaAddDays, endOfToday, isoDate, startOfToday, weekBounds } from "@/lib/utils/dates";
 import type { OrderStatus, Role } from "@/types";
 
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
+import { branchBrandSlugs } from "@/lib/services/brands";
 interface DashboardIdentity {
   id: number;
 }
@@ -30,9 +32,10 @@ interface RiderDashboardIdentity extends DashboardIdentity {
 // returns its result through an `as Record<OrderStatus, number>` cast, so a
 // status missing from this array is NOT caught by the compiler — it just goes
 // silently absent from every dashboard breakdown (this is how `delayed` was
-// dropped). Keying off ALLOWED_TRANSITIONS keeps the two in lockstep, and its
-// declaration order is already lifecycle order.
-const ORDER_STATUSES = Object.keys(ALLOWED_TRANSITIONS) as OrderStatus[];
+// dropped once). Keyed off ORDER_FLOW_STATUSES, the one list of statuses a
+// current order can hold, in lifecycle order. ("delayed" is no longer a status:
+// delays are announcements, and the migration moved delayed orders to on_the_way.)
+const ORDER_STATUSES = [...ORDER_FLOW_STATUSES] as OrderStatus[];
 
 const num = (d: Prisma.Decimal | null | undefined) => (d ? d.toNumber() : 0);
 
@@ -423,15 +426,15 @@ export async function branchManagerDashboard(user: DashboardIdentity) {
   return {
     // req #5 — the Branch Manager's OWN assigned branch identity. Resolved
     // server-side from the authenticated manager (never a client-supplied id).
-    // brand_type comes from the existing Branch.brandType enum-like column, so
-    // the dashboard never invents its own labels.
+    // `brands` are the slugs the branch serves (BranchBrand rows); labels come
+    // from the Brand table, so the dashboard never invents its own.
     branch: {
       id: branch.id,
       name: branch.name,
       address: branch.address,
       is_active: branch.isActive,
       is_archived: branch.isArchived,
-      brand_type: branch.brandType,
+      brands: await branchBrandSlugs(branch.id),
       // PHASE 11/15 — the delivery rules this outlet currently operates under.
       delivery_radius_km: Number(branch.deliveryRadiusKm),
       delivery_fee: Number(branch.deliveryFee),
@@ -552,7 +555,7 @@ export async function riderDashboard(user: RiderDashboardIdentity) {
 // ── Customer ──────────────────────────────────────────────────────────
 export async function customerDashboard(user: DashboardIdentity) {
   const [branches, recentOrders, activeCount, totalOrders] = await Promise.all([
-    prisma.branch.findMany({ where: { isActive: true }, orderBy: { createdAt: "desc" } }),
+    prisma.branch.findMany({ where: { isActive: true }, include: BRANCH_BRANDS_INCLUDE, orderBy: { createdAt: "desc" } }),
     prisma.order.findMany({ where: { customerId: user.id }, include: ORDER_INCLUDE, orderBy: { createdAt: "desc" }, take: 5 }),
     prisma.order.count({ where: { customerId: user.id, status: { notIn: ["delivered", "cancelled"] } } }),
     prisma.order.count({ where: { customerId: user.id } }),

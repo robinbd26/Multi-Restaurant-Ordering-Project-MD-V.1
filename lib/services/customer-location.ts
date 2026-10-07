@@ -8,6 +8,7 @@ import { validationError, sk } from "@/lib/http/errors";
 import { haversineKm, isValidLatLng, type LatLng } from "@/lib/services/geo";
 import { branchOptionsForPoint, coverageForPoint } from "@/lib/services/coverage";
 
+import type { NextOpening } from "@/lib/hours/schedule";
 /**
  * WS-4.9 — how a stored fix was obtained. A subset of the picker's
  * `PickerSource`: only these two can ever write `User.currentLat/currentLng`.
@@ -366,7 +367,7 @@ export interface BranchEligibility {
   /** Whether the branch can take an order RIGHT NOW (active + within hours). */
   open_now: boolean;
   /** The branch's opening time ("HH:MM") for the "Opens at …" note; null when unset. */
-  opens_at: string | null;
+  opens_at: NextOpening | null;
   is_nearest?: boolean;
 }
 

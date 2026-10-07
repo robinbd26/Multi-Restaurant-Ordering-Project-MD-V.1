@@ -5,7 +5,7 @@ import { OrderStatusBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { RIDER_NEXT_STATUS } from "@/lib/constants";
+import { riderNextStatuses } from "@/lib/constants/orders";
 import { getT } from "@/lib/i18n/server";
 import { directionsUrl } from "@/lib/services/geo";
 import type { Order } from "@/types";
@@ -52,14 +52,14 @@ export async function RiderCurrentOrder({ orders }: { orders: Order[] }) {
     current.delivery_lat != null && current.delivery_lng != null
       ? directionsUrl({ lat: current.delivery_lat, lng: current.delivery_lng })
       : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(current.delivery_address)}`;
-  const next = RIDER_NEXT_STATUS[current.status] ?? [];
+  const next = riderNextStatuses(current.status);
 
   return (
     <Card>
       <CardHeader
         title={t("rider.currentOrder")}
         subtitle={current.order_number ?? `#${fmt.num(current.id)}`}
-        action={<OrderStatusBadge status={current.status} />}
+        action={<OrderStatusBadge status={current.status} fulfillment={current.fulfillment_type} />}
       />
       <CardContent className="space-y-3">
         <Row icon="store" label={t("rider.pickupLocation")} value={current.branch_name} />
@@ -79,7 +79,7 @@ export async function RiderCurrentOrder({ orders }: { orders: Order[] }) {
         <Row icon="money" label={t("rider.orderPrice")} value={`${fmt.money(current.total_amount)} · ${t(`payment.${current.payment_method}`)}`} />
 
         <div className="pt-1">
-          <OrderStatusActions orderId={current.id} nextStatuses={next} />
+          <OrderStatusActions orderId={current.id} nextStatuses={next} fulfillment={current.fulfillment_type} />
         </div>
 
         <div className="grid grid-cols-2 gap-2">

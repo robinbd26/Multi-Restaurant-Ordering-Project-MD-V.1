@@ -32,8 +32,7 @@ interface Pickup {
   address: string;
   phone: string;
   distance_km: number | null;
-  opening_time: string | null;
-  closing_time: string | null;
+  pickup_hours_today?: { start: string; end: string } | null;
   directions_url: string | null;
 }
 
@@ -129,8 +128,14 @@ export function NearestPickupCallout({
         {pickup.distance_km != null ? (
           <span data-testid={`${testId}-distance`}>{t("outOfZone.pickupDistance", { km: fmt.num(pickup.distance_km) })}</span>
         ) : null}
-        {pickup.opening_time && pickup.closing_time ? (
-          <span>🕒 {t("outOfZone.pickupHours", { from: fmt.clock(pickup.opening_time), to: fmt.clock(pickup.closing_time) })}</span>
+        {pickup.pickup_hours_today ? (
+          <span>
+            🕒{" "}
+            {t("outOfZone.pickupHours", {
+              from: fmt.clock(pickup.pickup_hours_today.start),
+              to: fmt.clock(pickup.pickup_hours_today.end),
+            })}
+          </span>
         ) : null}
       </p>
       <span className="mt-2 flex flex-wrap gap-2">

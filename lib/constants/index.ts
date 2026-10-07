@@ -126,33 +126,9 @@ export const PAYMENT_LABELS: Record<PaymentMethod, string> = Object.fromEntries(
   PAYMENT_METHOD_DEFS.map((m) => [m.value, m.bnLabel]),
 ) as Record<PaymentMethod, string>;
 
-// Forward transitions each role can trigger from a given status. These are the
-// UI's view of ALLOWED_TRANSITIONS ∩ <role>_SETTABLE (lib/constants/orders.ts) —
-// the server re-derives and re-enforces both, so a forged status still fails.
-//
-// WS-5.1 — the manager reaches all seven of their statuses, including the
-// delivery leg, so an order whose rider abandoned it can still be completed or
-// cancelled from the branch dashboard. Cancel stays available from every open
-// state and always requires a reason.
-export const BM_NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus[]>> = {
-  pending: ["accepted", "cancelled"],
-  accepted: ["preparing", "cancelled"],
-  preparing: ["ready", "cancelled"],
-  ready: ["picked_up", "cancelled"],
-  picked_up: ["on_the_way", "cancelled"],
-  on_the_way: ["delivered", "cancelled"],
-  delayed: ["on_the_way", "delivered", "cancelled"],
-};
-
-// WS-5.2 — the rider can flag a DELAY (which notifies the customer of the extra
-// minutes) from either leg of the delivery, and can hand the order back with a
-// cancellation. `delayed` is non-terminal: it leads back to on_the_way/delivered.
-export const RIDER_NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus[]>> = {
-  ready: ["picked_up"],
-  picked_up: ["on_the_way", "delayed", "cancelled"],
-  on_the_way: ["delivered", "delayed", "cancelled"],
-  delayed: ["on_the_way", "delivered", "cancelled"],
-};
+// The status buttons each role sees come from lib/constants/orders.ts
+// (managerNextStatuses / riderNextStatuses), derived from the same transition
+// tables the server enforces.
 
 // ── Role → home dashboard path ────────────────────────────────────────
 export const ROLE_HOME: Record<Role, string> = {
@@ -228,6 +204,7 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
     { href: "/admin/users", label: "nav.users", icon: "users" , group: "navGroup.people" },
     { href: "/admin/customers", label: "nav.customers", icon: "user" , group: "navGroup.people" },
     { href: "/admin/staff", label: "nav.staff", icon: "users" , group: "navGroup.people" },
+    { href: "/admin/brands", label: "nav.brands", icon: "grid" , group: "navGroup.catalog" },
     { href: "/admin/branches", label: "nav.branches", icon: "store" , group: "navGroup.catalog" },
     { href: "/admin/delivery-areas", label: "nav.deliveryAreas", icon: "bike" , group: "navGroup.catalog" },
     { href: "/admin/delivery-zones", label: "nav.deliveryZones", icon: "pin" , group: "navGroup.catalog" },

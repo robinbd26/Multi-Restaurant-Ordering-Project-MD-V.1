@@ -1,12 +1,12 @@
 import "server-only";
 
-import { PRODUCT_BRANDS } from "@/lib/constants/enums";
 import { prisma } from "@/lib/db";
 import type { Brand, MenuItem, PublicCategory, SearchEntry, SizeOption } from "@/lib/home/types";
 import {
   CUSTOMER_PRODUCT_INCLUDE,
   customerProductWhere,
   productCategoryScopeOk,
+  productSaleBrands,
   type CustomerProduct,
 } from "@/lib/services/product-eligibility";
 import { mediaUrl } from "@/lib/utils";
@@ -60,23 +60,6 @@ export function categoryEmoji(name: string): string {
 const UNCATEGORIZED = "uncategorized";
 export function categoryKeyFor(categoryId: number | null): string {
   return categoryId == null ? UNCATEGORIZED : String(categoryId);
-}
-
-/**
- * The brand a product is sold under. `Product.brand` is written explicitly by
- * `resolveProductBrand` on every create, but legacy rows may still be null, in
- * which case the branch's sole brand applies. A null brand on a "combined"
- * branch is genuinely indeterminate — such a product is listed under BOTH brand
- * tabs rather than silently vanishing from the storefront.
- */
-function brandsOf(product: CustomerProduct): Brand[] {
-  const explicit = product.brand;
-  if (explicit && (PRODUCT_BRANDS as readonly string[]).includes(explicit)) {
-    return [explicit as Brand];
-  }
-  const branchBrand = product.branch.brandType;
-  if ((PRODUCT_BRANDS as readonly string[]).includes(branchBrand)) return [branchBrand as Brand];
-  return [...PRODUCT_BRANDS];
 }
 
 /** Percentage discount applied to a price, rounded to 2dp like the order pipeline. */
@@ -177,7 +160,9 @@ async function buildMenu(branchId?: number): Promise<PublicMenu> {
   for (const product of products) {
     const label = product.category?.name ?? "";
     const key = categoryKeyFor(product.categoryId);
-    for (const brand of brandsOf(product)) {
+    // Listed once per brand it is sold under (its own, or every live brand of
+    // its branch); a product whose brand its branch no longer serves is skipped.
+    for (const brand of productSaleBrands(product)) {
       items.push(toMenuItem(product, brand, label));
       const dedupe = `${brand}:${key}`;
       if (product.categoryId != null && !seenCategory.has(dedupe)) {

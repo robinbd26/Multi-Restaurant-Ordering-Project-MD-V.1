@@ -28,7 +28,6 @@ export interface DeliveryAreaRow {
   branch: number;
   branch_name: string | null;
   branch_address: string | null;
-  branch_brand_type: string | null;
   name: string;
   is_active: boolean;
   is_held: boolean;

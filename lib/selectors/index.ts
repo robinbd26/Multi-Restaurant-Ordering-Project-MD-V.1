@@ -1,5 +1,16 @@
 // Role-scoped query helpers — ported from the previous app selectors.
 import type { Prisma, User } from "@prisma/client";
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
+import { isDeliveryPaused } from "@/lib/coverage/pause";
+import {
+  BRANCH_HOURS_INCLUDE,
+  branchBrandStatuses,
+  branchNextOpening,
+  branchTodaySpan,
+  liveBrandSlugs,
+} from "@/lib/hours/availability";
+import { dhakaMoment } from "@/lib/hours/clock";
+import { parseBrandHours, parseDineInHours, slotsForDay, type NextOpening } from "@/lib/hours/schedule";
 
 import { ROLES } from "@/lib/constants/enums";
 import { looksLikePhoneQuery, normalizeBdPhoneForSearch } from "@/lib/validation/server";
@@ -169,24 +180,52 @@ export interface PublicHomeBranch {
   id: number;
   name: string;
   address: string;
-  brandType: string;
+  /** Live brand slugs the branch serves, in brand display order. */
+  brands: string[];
   isActive: boolean;
-  openingTime: string | null;
-  closingTime: string | null;
+  /** "dine_in" | "cloud_kitchen" — display only. */
+  businessType: string;
   coverage: string[];
+  /**
+   * Server-computed, Asia/Dhaka. Display only: placing an order re-checks the
+   * same rules (lib/hours/availability) per brand and channel.
+   */
+  status: {
+    deliveryOpen: boolean;
+    pickupOpen: boolean;
+    /** When the branch next opens on either channel, if it is closed now. */
+    opensAt: NextOpening | null;
+    /** Minutes until the last delivery order of the slot running now. */
+    deliveryClosesIn: number | null;
+    deliveryPaused: boolean;
+    /** Per live brand, right now. */
+    brands: {
+      slug: string;
+      delivery: boolean;
+      pickup: boolean;
+      deliveryClosesIn: number | null;
+      /** Next opening per channel when that channel is closed. */
+      deliveryOpensAt: NextOpening | null;
+      pickupOpensAt: NextOpening | null;
+    }[];
+  };
+  /** Today's windows (Dhaka weekday), "HH:MM"; null when nothing / not set. */
+  today: {
+    delivery: { start: string; end: string } | null;
+    pickup: { start: string; end: string } | null;
+    dineIn: { start: string; end: string } | null;
+    /** Per live brand, in display order. */
+    brands: { slug: string; delivery: { start: string; end: string } | null; pickup: { start: string; end: string } | null }[];
+  };
+  /** True when at least one live brand has no schedule (no time limit applies). */
+  hasUnconfiguredBrand: boolean;
 }
 
 export async function publicHomeBranches(): Promise<PublicHomeBranch[]> {
   const branches = await prisma.branch.findMany({
     where: { isActive: true, isArchived: false },
-    select: {
-      id: true,
-      name: true,
-      address: true,
-      brandType: true,
-      isActive: true,
-      openingTime: true,
-      closingTime: true,
+    include: {
+      ...BRANCH_HOURS_INCLUDE,
       deliveryAreas: {
         where: { isActive: true },
         select: { name: true },
@@ -195,16 +234,55 @@ export async function publicHomeBranches(): Promise<PublicHomeBranch[]> {
     },
     orderBy: { name: "asc" },
   });
-  return branches.map((b) => ({
-    id: b.id,
-    name: b.name,
-    address: b.address,
-    brandType: b.brandType,
-    isActive: b.isActive,
-    openingTime: b.openingTime,
-    closingTime: b.closingTime,
-    coverage: b.deliveryAreas.map((a) => a.name),
-  }));
+  const at = dhakaMoment();
+  const now = new Date();
+  return branches.map((b) => {
+    const live = liveBrandSlugs(b);
+    const statuses = branchBrandStatuses(b, at, now);
+    const dineIn = parseDineInHours(b.dineInHours);
+    const dineInSlots = dineIn ? slotsForDay(dineIn, at.day) : [];
+    const brandRow = (slug: string) => ({ brands: b.brands.filter((r) => r.brand.slug === slug) });
+    return {
+      id: b.id,
+      name: b.name,
+      address: b.address,
+      brands: live,
+      isActive: b.isActive,
+      businessType: b.businessType,
+      coverage: b.deliveryAreas.map((a) => a.name),
+      status: {
+        deliveryOpen: statuses.some((s) => s.delivery.open),
+        pickupOpen: statuses.some((s) => s.pickup.open),
+        opensAt: statuses.some((s) => s.delivery.open || s.pickup.open) ? null : branchNextOpening(b, "any", at, now),
+        deliveryClosesIn: statuses.reduce<number | null>((max, s) => {
+          const m = s.delivery.closesInMinutes;
+          return m == null ? max : Math.max(max ?? 0, m);
+        }, null),
+        deliveryPaused: isDeliveryPaused(b, now),
+        brands: statuses.map((x) => ({
+          slug: x.slug,
+          delivery: x.delivery.open,
+          pickup: x.pickup.open,
+          deliveryClosesIn: x.delivery.closesInMinutes,
+          deliveryOpensAt: x.delivery.opensAt,
+          pickupOpensAt: x.pickup.opensAt,
+        })),
+      },
+      today: {
+        delivery: branchTodaySpan(b, "delivery", at.day),
+        pickup: branchTodaySpan(b, "pickup", at.day),
+        dineIn: dineInSlots.length
+          ? { start: dineInSlots[0].start, end: dineInSlots[dineInSlots.length - 1].end }
+          : null,
+        brands: live.map((slug) => ({
+          slug,
+          delivery: branchTodaySpan(brandRow(slug), "delivery", at.day),
+          pickup: branchTodaySpan(brandRow(slug), "pickup", at.day),
+        })),
+      },
+      hasUnconfiguredBrand: b.brands.some((r) => live.includes(r.brand.slug) && !parseBrandHours(r.hours)),
+    };
+  });
 }
 
 export async function categoriesForUser(user: User, branchId?: number, search?: string) {
@@ -274,7 +352,7 @@ export async function productsForUser(
   }
   const finalWhere = { AND: [where, searchFilter, categoryFilter] };
   const include = {
-    branch: true,
+    branch: { include: BRANCH_BRANDS_INCLUDE },
     category: true,
     variations: { orderBy: { sortOrder: "asc" as const } },
   };

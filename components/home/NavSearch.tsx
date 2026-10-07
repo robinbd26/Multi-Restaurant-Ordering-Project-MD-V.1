@@ -7,6 +7,7 @@ import type { SearchEntry } from "@/lib/home/types";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
 
+import { brandName } from "@/lib/brands/shared";
 function SearchIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -35,7 +36,9 @@ function useSearch(index: SearchEntry[]) {
 }
 
 function ResultRow({ entry, onPick }: { entry: SearchEntry; onPick: (entry: SearchEntry) => void }) {
-  const { t, fmt } = useTranslation();
+  const { t, fmt, locale } = useTranslation();
+  const { brandInfo } = useHomeCart();
+  const info = brandInfo(entry.brand);
   return (
     <button
       onClick={() => onPick(entry)}
@@ -45,7 +48,7 @@ function ResultRow({ entry, onPick }: { entry: SearchEntry; onPick: (entry: Sear
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold text-white">{entry.name}</span>
         <span className="block text-xs text-[#a0a0b0]">
-          {entry.brand === "cheez" ? "Cheez! Pizza" : "Madchef"}
+          {info ? brandName(info, locale) : entry.brand}
         </span>
       </span>
       <span className="whitespace-nowrap font-display text-base font-bold text-brand-500">

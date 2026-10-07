@@ -1,29 +1,31 @@
 import Image from "next/image";
 
+import { brandName, withAlpha, type BrandInfo } from "@/lib/brands/shared";
+import { crossesMidnight, earliness, widest, type Span } from "@/lib/hours/spans";
 import { getT } from "@/lib/i18n/server";
 import type { PublicHomeBranch } from "@/lib/selectors";
 
 /**
- * req #8 — no hardcoded demo branches. Branch names and opening groupings come
- * from the database (publicHomeBranches); late-night delivery is decided by the
- * branch's own brand type, not by a hand-written name list.
+ * The homepage hours section, drawn from data: every live branch and each live
+ * brand's own schedule at it (BranchBrand.hours), on today's Asia/Dhaka weekday.
+ * Nothing here names a brand or a time — a brand the super admin adds, or an
+ * hour a branch manager changes, shows up with no code change.
  */
-function lateNightBranches(branches: PublicHomeBranch[]): string[] {
-  return branches
-    .filter((b) => b.brandType === "cheez" || b.brandType === "combined")
-    .map((b) => b.name);
-}
 
-/** Group real branches by their configured opening time ("HH:MM" → label). */
-function groupByOpening(branches: PublicHomeBranch[]): { time: string; branches: string[] }[] {
-  const groups = new Map<string, string[]>();
+/** Group branches by today's first opening time ("HH:MM" → names + brands). */
+function groupByOpening(branches: PublicHomeBranch[]) {
+  const groups = new Map<string, { names: string[]; brands: Set<string> }>();
   for (const b of branches) {
-    const key = (b.openingTime ?? "").trim() || "11:00";
-    groups.set(key, [...(groups.get(key) ?? []), b.name]);
+    const span = widest([b.today.delivery, b.today.pickup]);
+    if (!span) continue;
+    const g = groups.get(span.start) ?? { names: [], brands: new Set<string>() };
+    g.names.push(b.name);
+    b.brands.forEach((slug) => g.brands.add(slug));
+    groups.set(span.start, g);
   }
   return [...groups.entries()]
-    .sort(([a], [z]) => a.localeCompare(z))
-    .map(([time, names]) => ({ time, branches: names }));
+    .sort(([a], [z]) => earliness(a) - earliness(z))
+    .map(([time, g]) => ({ time, names: g.names, brands: [...g.brands] }));
 }
 
 function DividerLabel({ label }: { label: string }) {
@@ -37,17 +39,7 @@ function DividerLabel({ label }: { label: string }) {
   );
 }
 
-function ScheduleRow({
-  icon,
-  label,
-  detail,
-  color,
-}: {
-  icon: string;
-  label: string;
-  detail: string;
-  color: string;
-}) {
+function ScheduleRow({ icon, label, detail, color }: { icon: string; label: string; detail: string; color: string }) {
   return (
     <div className="flex items-start gap-2.5 py-1.5">
       <span className="mt-px shrink-0 text-[0.9rem]">{icon}</span>
@@ -74,40 +66,35 @@ function StatBlock({ label, time }: { label: string; time: string }) {
   );
 }
 
-function openingRows(branches: PublicHomeBranch[]) {
-  return groupByOpening(branches).map((g) => ({
-    time: g.time,
-    who: "Cheez! & Madchef",
-    cloud: false,
-    branches: g.branches,
-  }));
-}
+export async function OperatingHours({ branches, brands }: { branches: PublicHomeBranch[]; brands: BrandInfo[] }) {
+  const { t, fmt, locale } = await getT();
+  const range = (s: Span | null) =>
+    s ? t("home.hours.range", { from: fmt.clock(s.start), to: fmt.clock(s.end) }) : t("home.hours.notToday");
+  const namesOf = (slugs: string[]) =>
+    slugs
+      .map((slug) => brands.find((b) => b.slug === slug))
+      .filter((b): b is BrandInfo => b !== undefined)
+      .map((b) => brandName(b, locale))
+      .join(" & ");
 
-export async function OperatingHours({ branches }: { branches: PublicHomeBranch[] }) {
-  const { t, fmt } = await getT();
+  // One card per live brand: its dine-in, delivery and pickup windows today,
+  // widest across the branches that serve it.
+  const schedule = brands.map((brand) => {
+    const serving = branches.filter((b) => b.brands.includes(brand.slug));
+    const perBranch = serving.map((b) => b.today.brands.find((x) => x.slug === brand.slug));
+    return {
+      brand,
+      branchCount: serving.length,
+      dineIn: widest(serving.map((b) => b.today.dineIn)),
+      delivery: widest(perBranch.map((x) => x?.delivery ?? null)),
+      pickup: widest(perBranch.map((x) => x?.pickup ?? null)),
+    };
+  });
 
-  const SCHEDULE = [
-    {
-      name: "Cheez!",
-      logo: "/images/brand/cheez-logo.webp",
-      color: "#e8192c",
-      bg: "rgba(232,25,44,0.08)",
-      border: "rgba(232,25,44,0.25)",
-      dinein: t("home.hours.dineInDetail"),
-      delivery: t("home.hours.cheezDeliveryDetail"),
-      note: t("home.hours.cheezNote"),
-    },
-    {
-      name: "Madchef",
-      logo: "/images/brand/madchef-logo.webp",
-      color: "#f97316",
-      bg: "rgba(249,115,22,0.08)",
-      border: "rgba(249,115,22,0.25)",
-      dinein: t("home.hours.dineInDetail"),
-      delivery: t("home.hours.madchefDeliveryDetail"),
-      note: t("home.hours.madchefNote"),
-    },
-  ];
+  // Late-night service: branches whose delivery runs on past midnight today.
+  const lateNight = branches.filter((b) => b.today.delivery && crossesMidnight(b.today.delivery));
+  const lateLast = widest(lateNight.map((b) => b.today.delivery))?.end ?? null;
+  const groups = groupByOpening(branches);
 
   const PICKUP = [
     { area: "Mirpur DOHS", place: t("home.hours.pickupMainGate") },
@@ -118,11 +105,11 @@ export async function OperatingHours({ branches }: { branches: PublicHomeBranch[
   ];
 
   return (
-    <section className="border-t border-white/8 bg-[#0a0a0c] px-5 pb-20 pt-18">
+    <section className="border-t border-white/8 bg-[#0a0a0c] px-5 pb-20 pt-18" data-testid="home-operating-hours">
       <div className="mx-auto max-w-275">
         <div className="mb-13 text-center">
           <span className="mb-2.5 inline-block text-[0.7rem] font-bold uppercase text-brand-500" style={{ letterSpacing: "2.5px" }}>
-            {t("home.hours.eyebrow", { n: fmt.num(10) })}
+            {t("home.hours.eyebrow", { n: fmt.num(branches.length) })}
           </span>
           <h2
             className="font-display font-black text-[#f0f0f2]"
@@ -130,108 +117,102 @@ export async function OperatingHours({ branches }: { branches: PublicHomeBranch[
           >
             {t("home.hours.titlePre")} <span className="text-brand-500">{t("home.hours.titleAccent")}</span>
           </h2>
-          <p className="mx-auto mt-3 max-w-120 text-[0.88rem] leading-6 text-[#a0a0b0]">{t("home.hours.subtitle")}</p>
+          <p className="mx-auto mt-3 max-w-120 text-[0.88rem] leading-6 text-[#a0a0b0]">{t("home.hours.subtitleToday")}</p>
         </div>
 
-        {/* Opening times by branch */}
-        <div className="mb-12">
-          <DividerLabel label={t("home.hours.openingTimesTitle")} />
-          <div className="mt-4 grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
-            {openingRows(branches).map((row) => (
-              <div
-                key={row.time}
-                className="flex flex-col gap-2.5 rounded-[14px] border p-4.5"
-                style={{
-                  background: row.cloud ? "rgba(129,140,248,0.06)" : "#1c1c24",
-                  borderColor: row.cloud ? "rgba(129,140,248,0.2)" : "rgba(255,255,255,0.07)",
-                }}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className="font-display text-[1.6rem] font-black leading-none"
-                    style={{ color: row.cloud ? "#818cf8" : "#e8192c", letterSpacing: "0.5px" }}
-                  >
-                    {fmt.clock(row.time)}
-                  </span>
-                  <span
-                    className="whitespace-nowrap rounded-full border px-2.25 py-0.75 text-[0.62rem] font-bold uppercase"
-                    style={{
-                      letterSpacing: "0.8px",
-                      color: row.cloud ? "#818cf8" : "#a0a0b0",
-                      background: row.cloud ? "rgba(129,140,248,0.12)" : "rgba(255,255,255,0.05)",
-                      borderColor: row.cloud ? "rgba(129,140,248,0.25)" : "rgba(255,255,255,0.08)",
-                    }}
-                  >
-                    {row.who}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {row.branches.map((b) => (
-                    <span key={b} className="rounded-full border border-white/8 bg-white/4 px-2.5 py-0.75 text-[0.74rem] text-[#a0a0b0]">
-                      {b}
+        {/* Opening times by branch (today) */}
+        {groups.length ? (
+          <div className="mb-12">
+            <DividerLabel label={t("home.hours.openingTimesTitle")} />
+            <div className="mt-4 grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+              {groups.map((row) => (
+                <div key={row.time} className="flex flex-col gap-2.5 rounded-[14px] border border-white/7 bg-[#1c1c24] p-4.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-display text-[1.6rem] font-black leading-none text-brand-500" style={{ letterSpacing: "0.5px" }}>
+                      {fmt.clock(row.time)}
                     </span>
-                  ))}
+                    <span
+                      className="whitespace-nowrap rounded-full border border-white/8 bg-white/5 px-2.25 py-0.75 text-[0.62rem] font-bold uppercase text-[#a0a0b0]"
+                      style={{ letterSpacing: "0.8px" }}
+                    >
+                      {namesOf(row.brands)}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {row.names.map((n) => (
+                      <span key={n} className="rounded-full border border-white/8 bg-white/4 px-2.5 py-0.75 text-[0.74rem] text-[#a0a0b0]">
+                        {n}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Dine-in & delivery schedule */}
-        <div className="mb-12">
-          <DividerLabel label={t("home.hours.scheduleTitle")} />
-          <div className="mt-4 grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
-            {SCHEDULE.map((brand) => (
-              <div key={brand.name} className="overflow-hidden rounded-[14px] border" style={{ background: brand.bg, borderColor: brand.border }}>
-                <div className="flex items-center gap-2.5 border-b px-4.5 pb-3 pt-3.5" style={{ borderColor: brand.border }}>
-                  <span className="relative size-7 shrink-0 overflow-hidden rounded-md">
-                    <Image src={brand.logo} alt={brand.name} fill sizes="28px" className="object-cover" />
-                  </span>
-                  <span className="font-display text-[1.15rem] font-extrabold" style={{ color: brand.color, letterSpacing: "0.5px" }}>
-                    {brand.name}
-                  </span>
-                </div>
-                <div className="px-4.5 pb-1.5 pt-3">
-                  <ScheduleRow icon="🍽️" label={t("home.hours.dineIn")} detail={brand.dinein} color={brand.color} />
-                  <div className="my-2 h-px bg-white/5" />
-                  <ScheduleRow icon="🛵" label={t("home.hours.delivery")} detail={brand.delivery} color={brand.color} />
-                </div>
-                <div className="mx-3 mb-3 mt-2 rounded-lg bg-black/20 px-3 py-2 text-[0.71rem] leading-5 text-[#a0a0b0]">
-                  ℹ️ {brand.note}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Late-night Cheez! delivery */}
-        <div className="mb-4 flex flex-wrap items-start gap-x-8 gap-y-4.5 rounded-2xl border border-brand-500/20 bg-brand-500/6 px-7 py-6">
-          <div className="min-w-0 flex-auto">
-            <div className="mb-1.5 flex items-center gap-2.5">
-              <span className="text-[1.4rem]">🌙</span>
-              <h3 className="font-display text-[1.2rem] font-extrabold text-brand-500" style={{ letterSpacing: "0.5px" }}>
-                {t("home.hours.lateNightTitle")}
-              </h3>
-            </div>
-            <p className="mb-3.5 max-w-120 text-[0.8rem] leading-6 text-[#a0a0b0]">
-              {t("home.hours.lateNightPre")} <strong className="text-[#fca5a5]">3:45 AM</strong>
-              {t("home.hours.lateNightMid")} <strong className="text-[#fca5a5]">4:00 AM</strong>.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {lateNightBranches(branches).map((b) => (
-                <span key={b} className="rounded-full border border-brand-500/25 bg-brand-500/12 px-2.5 py-0.75 text-[0.74rem] text-[#fca5a5]">
-                  {b}
-                </span>
               ))}
             </div>
           </div>
-          <div className="ml-auto flex flex-wrap gap-2.5">
-            <StatBlock label={t("home.hours.lastOrder")} time="3:45 AM" />
-            <StatBlock label={t("home.hours.serviceEnds")} time="4:00 AM" />
+        ) : null}
+
+        {/* Dine-in, delivery & pickup by brand (today) */}
+        <div className="mb-12">
+          <DividerLabel label={t("home.hours.scheduleTitle")} />
+          <div className="mt-4 grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
+            {schedule.map(({ brand, branchCount, dineIn, delivery, pickup }) => (
+              <div
+                key={brand.slug}
+                className="overflow-hidden rounded-[14px] border"
+                style={{ background: withAlpha(brand.accent_color, 0.08), borderColor: withAlpha(brand.accent_color, 0.25) }}
+                data-testid={`hours-brand-${brand.slug}`}
+              >
+                <div className="flex items-center gap-2.5 border-b px-4.5 pb-3 pt-3.5" style={{ borderColor: withAlpha(brand.accent_color, 0.25) }}>
+                  <span className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md">
+                    {brand.logo ? <Image src={brand.logo} alt={brandName(brand, locale)} fill sizes="28px" className="object-cover" /> : brand.emoji}
+                  </span>
+                  <span className="font-display text-[1.15rem] font-extrabold" style={{ color: brand.accent_color, letterSpacing: "0.5px" }}>
+                    {brandName(brand, locale)}
+                  </span>
+                </div>
+                <div className="px-4.5 pb-1.5 pt-3">
+                  <ScheduleRow icon="🍽️" label={t("home.hours.dineIn")} detail={range(dineIn)} color={brand.accent_color} />
+                  <div className="my-2 h-px bg-white/5" />
+                  <ScheduleRow icon="🛵" label={t("home.hours.delivery")} detail={range(delivery)} color={brand.accent_color} />
+                  <div className="my-2 h-px bg-white/5" />
+                  <ScheduleRow icon="🏬" label={t("home.hours.pickup")} detail={range(pickup)} color={brand.accent_color} />
+                </div>
+                <div className="mx-3 mb-3 mt-2 rounded-lg bg-black/20 px-3 py-2 text-[0.71rem] leading-5 text-[#a0a0b0]">
+                  ℹ️ {t("home.hours.brandNote", { n: fmt.num(branchCount) })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Night pickup points */}
+        {/* Late-night delivery — branches whose delivery runs past midnight today */}
+        {lateNight.length && lateLast ? (
+          <div className="mb-4 flex flex-wrap items-start gap-x-8 gap-y-4.5 rounded-2xl border border-brand-500/20 bg-brand-500/6 px-7 py-6" data-testid="hours-late-night">
+            <div className="min-w-0 flex-auto">
+              <div className="mb-1.5 flex items-center gap-2.5">
+                <span className="text-[1.4rem]">🌙</span>
+                <h3 className="font-display text-[1.2rem] font-extrabold text-brand-500" style={{ letterSpacing: "0.5px" }}>
+                  {t("home.hours.lateNightTitleGeneric")}
+                </h3>
+              </div>
+              <p className="mb-3.5 max-w-120 text-[0.8rem] leading-6 text-[#a0a0b0]">
+                {t("home.hours.lateNightBody", { time: fmt.clock(lateLast) })}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {lateNight.map((b) => (
+                  <span key={b.id} className="rounded-full border border-brand-500/25 bg-brand-500/12 px-2.5 py-0.75 text-[0.74rem] text-[#fca5a5]">
+                    {b.name} · {fmt.clock(b.today.delivery!.end)}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="ml-auto flex flex-wrap gap-2.5">
+              <StatBlock label={t("home.hours.lastOrder")} time={fmt.clock(lateLast)} />
+            </div>
+          </div>
+        ) : null}
+
+        {/* Night pickup points — static marketing copy (not driven by the schedules). */}
         <div className="rounded-2xl border px-7 py-6" style={{ background: "rgba(15,12,5,0.9)", borderColor: "rgba(251,191,36,0.4)" }}>
           <div className="mb-2.5 flex items-center gap-2.5">
             <span className="text-[1.25rem]">📍</span>
@@ -250,11 +231,7 @@ export async function OperatingHours({ branches }: { branches: PublicHomeBranch[
           </p>
           <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}>
             {PICKUP.map((p) => (
-              <div
-                key={p.area}
-                className="rounded-xl border bg-white/4 px-3.5 py-3"
-                style={{ borderColor: "rgba(251,191,36,0.28)" }}
-              >
+              <div key={p.area} className="rounded-xl border bg-white/4 px-3.5 py-3" style={{ borderColor: "rgba(251,191,36,0.28)" }}>
                 <p className="mb-1 font-display text-[0.95rem] font-extrabold text-[#fbbf24]">{p.area}</p>
                 <p className="text-[0.74rem] leading-5 text-[#d6cebc]">📍 {p.place}</p>
                 {p.note ? (
