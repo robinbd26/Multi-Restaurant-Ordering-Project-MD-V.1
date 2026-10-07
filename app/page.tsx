@@ -16,7 +16,8 @@ import { MenuSection } from "@/components/home/MenuSection";
 import { OperatingHours } from "@/components/home/OperatingHours";
 import { getOptionalUser } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
-import { ALL_BRANDS, brandsServedBy } from "@/lib/home/brands";
+import { brandsForStorefront } from "@/lib/home/brands";
+import { activeBrands } from "@/lib/services/brands";
 import type { Brand } from "@/lib/home/types";
 import { getCompanyLogoUrl } from "@/lib/services/settings";
 import { BranchBar, type BranchBarContext } from "@/components/home/BranchBar";
@@ -31,9 +32,23 @@ import { siteOrigin } from "@/lib/seo/site";
 
 const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "700", "800", "900"] });
 
-const HOME_TITLE = "MAD Delivery — Cheez! & Madchef | Dhaka";
-const HOME_DESCRIPTION =
-  "Order from Cheez! Pizza and Madchef in Dhaka. Pizza, pasta, boats, burgers & more — one platform, one helpline.";
+/** "A, B and C" — the live brand names for the page title and description. */
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
+}
+
+/** Title + description built from the live brands, so a new brand is indexed too. */
+async function homeMeta() {
+  const names = (await activeBrands()).map((b) => b.name);
+  const list = joinNames(names);
+  return {
+    title: list ? `MAD Delivery — ${list} | Dhaka` : "MAD Delivery | Dhaka",
+    description: list
+      ? `Order from ${list} in Dhaka — one platform, one helpline.`
+      : "Order food in Dhaka — one platform, one helpline.",
+  };
+}
 
 /**
  * PHASE B — the storefront is the one page meant to be found. It declares its
@@ -42,18 +57,19 @@ const HOME_DESCRIPTION =
  */
 export async function generateMetadata(): Promise<Metadata> {
   const origin = await siteOrigin();
+  const { title, description } = await homeMeta();
   return {
-    title: HOME_TITLE,
-    description: HOME_DESCRIPTION,
+    title,
+    description,
     alternates: { canonical: "/" },
     openGraph: {
       type: "website",
       url: origin,
-      title: HOME_TITLE,
-      description: HOME_DESCRIPTION,
+      title,
+      description,
       siteName: "MAD DELIVERY HQ",
     },
-    twitter: { card: "summary_large_image", title: HOME_TITLE, description: HOME_DESCRIPTION },
+    twitter: { card: "summary_large_image", title, description },
     robots: { index: true, follow: true },
   };
 }
@@ -122,21 +138,24 @@ export default async function HomePage() {
           : { categories: [], items: [], search: [] }
       : await publicMenu();
 
-  // Which brand tab opens. Hardcoding "cheez" meant a catalogue holding only
-  // Madchef products opened on an empty tab and reported "No items found" while
-  // the products were loaded and eligible all along — the exact defect this
-  // round fixes. Prefer the first brand that actually has products.
+  // Which brand tab opens. Hardcoding a first brand meant a catalogue holding
+  // only another brand's products opened on an empty tab and reported "No items
+  // found" while the products were loaded and eligible all along. Prefer the
+  // first brand that actually has products.
   const brandsWithItems = new Set(menu.items.map((item) => item.brand));
   //
-  // A browsed branch only shows the tab(s) it serves: one brand → that tab
-  // alone; both → the first one opens and the customer can switch. Guests and
-  // the all-branches view keep both.
-  const servedBrands: Brand[] =
-    branchContext?.state === "ok" && branchContext.branch
-      ? brandsServedBy(branchContext.branch.brandType)
-      : [...ALL_BRANDS];
+  // A browsed branch only shows the tab(s) of the live brands it serves: one
+  // brand → that tab alone; several → the first opens and the customer can
+  // switch. Guests and the all-branches view get every live brand. Brands and
+  // their order come from the Brand table (/admin/brands).
+  const liveBrands = await activeBrands();
+  const storefrontBrands = brandsForStorefront(
+    liveBrands,
+    branchContext?.state === "ok" && branchContext.branch ? branchContext.branch.brands : null,
+  );
+  const servedBrands: Brand[] = storefrontBrands.map((b) => b.slug);
   const initialBrand: Brand =
-    servedBrands.find((b) => brandsWithItems.has(b)) ?? servedBrands[0];
+    servedBrands.find((b) => brandsWithItems.has(b)) ?? servedBrands[0] ?? "";
 
   // Why the grid is empty, in the customer's terms — never a hint that another
   // branch's products exist somewhere. The no-location customer now sees the
@@ -155,7 +174,7 @@ export default async function HomePage() {
         state: branchContext.state,
         branchName: branchContext.branch?.name ?? null,
         branchId: branchContext.branchId,
-        brandType: branchContext.branch?.brandType ?? null,
+        brands: branchContext.branch?.brands ?? [],
         businessType: branchContext.branch?.businessType ?? null,
         distanceKm: branchContext.distanceKm,
         deliveryFee: branchContext.deliveryFee,
@@ -186,8 +205,8 @@ export default async function HomePage() {
   const pickerBranches = branches.map((b) => ({
     id: b.id,
     name: b.name,
-    brandType: b.brandType,
-    open: isBranchOpenNow(b).orderable,
+    brands: b.brands,
+    open: isBranchOpenNow({ ...b, brandSlugs: b.brands }).orderable,
   }));
   const origin = await siteOrigin();
 
@@ -199,12 +218,14 @@ export default async function HomePage() {
     "@type": "Organization",
     name: "MAD DELIVERY HQ",
     url: origin,
-    description: HOME_DESCRIPTION,
+    description: (await homeMeta()).description,
     department: branches.map((b) => ({
       "@type": "Restaurant",
       name: b.name,
       address: { "@type": "PostalAddress", streetAddress: b.address, addressCountry: "BD" },
-      servesCuisine: b.brandType,
+      servesCuisine: b.brands
+        .map((slug) => liveBrands.find((x) => x.slug === slug)?.name ?? slug)
+        .join(", "),
       ...(b.openingTime && b.closingTime
         ? { openingHours: `Mo-Su ${b.openingTime}-${b.closingTime}` }
         : {}),
@@ -224,12 +245,18 @@ export default async function HomePage() {
       <HomeCartProvider
         initialBrand={initialBrand}
         servedBrands={servedBrands}
+        brandList={liveBrands}
         activeBranchId={branchContext?.branchId ?? null}
         activeBranchName={branchContext?.branch?.name ?? null}
       >
         <Header user={user} logoUrl={logoUrl} searchIndex={menu.search} />
         <main>
-          <HeroSection signedIn={Boolean(user)} />
+          <HeroSection
+            signedIn={Boolean(user)}
+            brands={liveBrands}
+            branchCount={branches.length}
+            menuItemCount={new Set(menu.items.map((i) => i.id)).size}
+          />
           {/* One slim band, in the storefront's own palette — branch context for
               a signed-in customer without a new dashboard section. */}
           {branchBar ? (
@@ -245,7 +272,7 @@ export default async function HomePage() {
           <OperatingHours branches={branches} />
           <BranchesCoverage branches={branches} />
         </main>
-        <Footer signedIn={Boolean(user)} />
+        <Footer signedIn={Boolean(user)} brands={liveBrands} branchCount={branches.length} />
         <FloatingActions />
         <CartDrawer
           signedIn={Boolean(user)}

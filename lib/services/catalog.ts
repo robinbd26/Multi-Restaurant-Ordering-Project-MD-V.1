@@ -7,14 +7,12 @@ import { prisma } from "@/lib/db";
 import { logAdminAction } from "@/lib/services/audit";
 import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import {
-  branchAllowsBrand,
+  ALL_BRANDS_CHOICE,
   categoryBrandMatchesProductBrand,
-  isCategoryBrand,
-  isProductBrandChoice,
   isProductVariationType,
   PRODUCT_VARIATION_TYPE_DEFAULT,
-  soleBrandOfBranch,
 } from "@/lib/constants/enums";
+import { branchBrandSlugs } from "@/lib/services/brands";
 import { branchForManager } from "@/lib/selectors";
 
 // ── Branch resolution + permissions ─────────────────────────────────────
@@ -149,27 +147,23 @@ export async function setCrossBranchProductHold(
 }
 
 /**
- * Resolve + validate the brand a product carries against its branch:
- * - single-brand branch → forced to that brand (submission ignored).
- * - combined branch → an explicit valid brand is required; it may be one of the
- *   two real brands, or `combined` ("sold under BOTH brands").
+ * Resolve + validate the brand a product carries against its branch. Returns
+ * the slug to store, or NULL for "sold under every brand this branch serves".
  *
- * A single-brand branch keeps forcing its own brand: `combined` there would be
- * meaningless (the storefront never shows that branch under two brand tabs), so
- * the choice is only ever offered on a combined branch.
+ * - a branch serving ONE brand → forced to that brand (submission ignored), so
+ *   adding a second brand to the branch later never re-lists its products;
+ * - a branch serving several → an explicit choice is required: one of the
+ *   branch's own brands, or ALL_BRANDS_CHOICE ("all", legacy "combined");
+ * - a branch serving none cannot carry products until a brand is assigned.
  */
-export function resolveProductBrand(branch: Branch, submitted?: string | null): string {
-  const sole = soleBrandOfBranch(branch.brandType);
-  if (sole) return sole;
-  const brand = (submitted ?? "").trim();
-  if (!brand || !isProductBrandChoice(brand)) {
-    throw validationError({ brand: sk("errors.catalog.selectBrand") });
-  }
-  // `combined` is the explicit "both brands" choice — legal on a combined
-  // branch, which is the only branch type that reaches this point.
-  if (brand !== "combined" && !branchAllowsBrand(branch.brandType, brand)) {
-    throw validationError({ brand: sk("errors.catalog.brandNotAllowedForBranch") });
-  }
+export async function resolveProductBrand(branch: Branch, submitted?: string | null): Promise<string | null> {
+  const served = await branchBrandSlugs(branch.id);
+  if (served.length === 0) throw validationError({ brand: sk("errors.brands.branchHasNoBrand") });
+  if (served.length === 1) return served[0];
+  const brand = (submitted ?? "").trim().toLowerCase();
+  if (!brand) throw validationError({ brand: sk("errors.catalog.selectBrand") });
+  if (brand === ALL_BRANDS_CHOICE || brand === "combined") return null;
+  if (!served.includes(brand)) throw validationError({ brand: sk("errors.catalog.brandNotAllowedForBranch") });
   return brand;
 }
 
@@ -200,10 +194,10 @@ export async function assertCategoryUsableInBranch(
   if (!category.isActive) {
     throw validationError({ category: sk("errors.catalog.categoryInactive") });
   }
-  // Brand scope (req #3) — a CHEEZ-only category can never be attached to a
-  // MADCHEF product. Only checked when the caller knows the resolved product
-  // brand; a NULL category brand serves both, so legacy rows stay usable.
-  if (productBrand && !categoryBrandMatchesProductBrand(category.brand, productBrand)) {
+  // Brand scope (req #3) — a category tagged with one brand can never be
+  // attached to a product of another. A NULL category brand serves every
+  // brand; a NULL product brand (sold under all) may use any category.
+  if (productBrand !== undefined && !categoryBrandMatchesProductBrand(category.brand, productBrand)) {
     throw validationError({ category: sk("errors.catalog.categoryBrandMismatch") });
   }
   return category;
@@ -288,17 +282,17 @@ async function assertUniqueCategoryName(
 
 /**
  * req #3 — resolve the brand scope a super admin assigned to a category.
- * "" / absent → null ("serves BOTH brands" — the legacy default, so every
- * pre-existing category keeps working). Anything else must be a real product
- * brand (cheez | madchef). `combined` is a BRANCH type, not a category scope,
- * and is deliberately rejected here — a category is either brand-tagged or both.
+ * "" / absent → null ("serves EVERY brand" — the default, so every
+ * pre-existing category keeps working). Anything else must be a real,
+ * non-archived brand slug.
  */
-function resolveCategoryBrand(submitted: unknown): string | null {
+async function resolveCategoryBrand(submitted: unknown): Promise<string | null> {
   if (submitted === undefined || submitted === null) return null;
   const raw = String(submitted).trim().toLowerCase();
-  if (!raw) return null;
-  if (!isCategoryBrand(raw)) throw validationError({ brand: sk("errors.catalog.selectBrand") });
-  return raw;
+  if (!raw || raw === ALL_BRANDS_CHOICE) return null;
+  const brand = await prisma.brand.findFirst({ where: { slug: raw, isArchived: false } });
+  if (!brand) throw validationError({ brand: sk("errors.catalog.selectBrand") });
+  return brand.slug;
 }
 
 export async function createCategory(
@@ -309,7 +303,7 @@ export async function createCategory(
   const name = String(input.name ?? "").trim();
   if (!name) throw validationError({ name: sk("errors.catalog.categoryNameRequired") });
   const branchId = await resolveCategoryScope(input.branchId);
-  const brand = resolveCategoryBrand(input.brand);
+  const brand = await resolveCategoryBrand(input.brand);
   const normalizedName = normalizeCategoryName(name);
   await assertUniqueCategoryName(normalizedName, branchId);
   const created = await prisma.category.create({
@@ -358,7 +352,10 @@ export async function updateCategory(
   if (input.isActive !== undefined) data.isActive = Boolean(input.isActive);
   // req #3 — re-scoping a category's brand moves products in/out of storefront
   // brand tabs, so it participates in the same revalidate below.
-  if (input.brand !== undefined) data.brand = resolveCategoryBrand(input.brand);
+  if (input.brand !== undefined) {
+    const brand = await resolveCategoryBrand(input.brand);
+    data.brandRef = brand ? { connect: { slug: brand } } : { disconnect: true };
+  }
 
   const updated = await prisma.category.update({
     where: { id: categoryId },
@@ -596,7 +593,7 @@ export async function createProduct(user: User, input: ProductWriteInput): Promi
   const branch = await resolveCatalogBranch(user, input.branchId);
   const name = input.name.trim();
   if (!name) throw validationError({ name: sk("errors.catalog.productNameRequired") });
-  const brand = resolveProductBrand(branch, input.brand);
+  const brand = await resolveProductBrand(branch, input.brand);
   const variations = normalizeVariations(input.variations);
   // req #3 — the category must ALSO match the resolved brand (a CHEEZ-only
   // category can never be attached to a MADCHEF product; NULL-brand categories
@@ -615,7 +612,7 @@ export async function createProduct(user: User, input: ProductWriteInput): Promi
         branch: { connect: { id: branch.id } },
         name,
         description: input.description ?? "",
-        brand,
+        ...(brand ? { brandRef: { connect: { slug: brand } } } : {}),
         price: basePrice, // the product's own price, or the default variation's mirror
         discount: new Prisma.Decimal((input.discount ?? 0).toFixed(2)),
         isAvailable: input.isAvailable ?? true,
@@ -669,14 +666,16 @@ export async function updateProduct(
   // The brand the product carries AFTER this update — the category-brand check
   // must validate against the would-be brand, not the stored one (req #3).
   const effectiveBrand =
-    input.brand !== undefined ? resolveProductBrand(branch, input.brand) : existing.brand;
+    input.brand !== undefined ? await resolveProductBrand(branch, input.brand) : existing.brand;
   if (input.name !== undefined) {
     const name = input.name.trim();
     if (!name) throw validationError({ name: sk("errors.catalog.productNameRequired") });
     data.name = name;
   }
   if (input.description !== undefined) data.description = input.description;
-  if (input.brand !== undefined) data.brand = effectiveBrand;
+  if (input.brand !== undefined) {
+    data.brandRef = effectiveBrand ? { connect: { slug: effectiveBrand } } : { disconnect: true };
+  }
   if (input.discount !== undefined) data.discount = new Prisma.Decimal(Number(input.discount).toFixed(2));
   if (input.isAvailable !== undefined) data.isAvailable = input.isAvailable;
   if (input.preparationTime !== undefined) data.preparationTime = input.preparationTime;

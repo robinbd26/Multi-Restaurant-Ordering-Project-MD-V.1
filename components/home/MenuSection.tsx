@@ -7,20 +7,22 @@ import { CategoryTabs } from "@/components/home/CategoryTabs";
 import { useHomeCart } from "@/components/home/home-cart-context";
 import { ItemModal } from "@/components/home/ItemModal";
 import { ProductCard } from "@/components/home/ProductCard";
+import { brandDescription, brandName, brandTagline, withAlpha, type BrandInfo } from "@/lib/brands/shared";
 import type { Brand, CategoryKey, MenuItem, PublicCategory } from "@/lib/home/types";
 import { useTranslation } from "@/lib/i18n/use-translation";
-import { cn } from "@/lib/utils";
 
 function BrandTab({
   label,
   logo,
+  emoji,
   count,
   active,
   activeColor,
   onClick,
 }: {
   label: string;
-  logo: string;
+  logo: string | null;
+  emoji: string;
   count: string;
   active: boolean;
   activeColor: string;
@@ -35,18 +37,22 @@ function BrandTab({
         borderBottom: `3px solid ${active ? activeColor : "transparent"}`,
       }}
     >
-      <Image
-        src={logo}
-        alt={label}
-        width={26}
-        height={26}
-        className="size-6.5 shrink-0 rounded object-contain"
-      />
+      {logo ? (
+        <Image
+          src={logo}
+          alt={label}
+          width={26}
+          height={26}
+          className="size-6.5 shrink-0 rounded object-contain"
+        />
+      ) : (
+        <span aria-hidden className="text-lg leading-none">{emoji}</span>
+      )}
       {label}
       <span
         className="rounded-full border border-white/10 px-1.75 py-0.5 text-[0.7rem] font-bold"
         style={{
-          background: active ? "rgba(232,25,44,0.12)" : "#1c1c24",
+          background: active ? withAlpha(activeColor, 0.12) : "#1c1c24",
           color: active ? activeColor : "#606070",
         }}
       >
@@ -80,8 +86,8 @@ export function MenuSection({
    */
   emptyMessage?: string;
 }) {
-  const { t, fmt } = useTranslation();
-  const { brand, setBrand: setBrandState, servedBrands } = useHomeCart();
+  const { t, fmt, locale } = useTranslation();
+  const { brand, setBrand: setBrandState, servedBrands, brandInfo } = useHomeCart();
   const [active, setActive] = useState<CategoryKey | "all">("all");
   const [query, setQuery] = useState("");
   // The active brand can change from outside this component — a hero brand
@@ -102,33 +108,24 @@ export function MenuSection({
   ];
 
   const branchesChip = t("home.menu.branchesCount", { n: fmt.num(branchCount) });
-  const BRAND_META: Record<Brand, {
-    logo: string;
-    name: string;
-    tagline: string;
-    chips: string[];
-    placeholder: string;
-  }> = {
-    cheez: {
-      logo: "/images/brand/cheez-logo.webp",
-      name: "Cheez! Pizza",
-      tagline: t("home.menu.cheezTagline"),
-      chips: [`🍕 ${t("home.menu.pizzaSpecialist")}`, `🏪 ${branchesChip}`, "📞 09638-050505", `⏰ ${t("home.menu.openDaily")}`],
-      placeholder: t("home.menu.cheezPlaceholder"),
-    },
-    madchef: {
-      logo: "/images/brand/madchef-logo.webp",
-      name: "Madchef",
-      tagline: t("home.menu.madchefTagline"),
-      chips: [`🔥 ${t("home.menu.gourmetKitchen")}`, `🏪 ${branchesChip}`, "📞 09638-050505", `⏰ ${t("home.menu.openDaily")}`],
-      placeholder: t("home.menu.madchefPlaceholder"),
-    },
+  // Everything about the active brand comes from its Brand row: name, logo,
+  // colour, tagline, emoji and whether it carries the crust guide.
+  const info: BrandInfo | undefined = brandInfo(brand);
+  const brandTag = info ? brandTagline(info, locale) : "";
+  const meta = {
+    logo: info?.logo ?? null,
+    emoji: info?.emoji ?? "🍽️",
+    name: info ? brandName(info, locale) : "",
+    tagline: info ? brandDescription(info, locale) : "",
+    chips: [
+      ...(info && brandTag ? [`${info.emoji} ${brandTag}`] : []),
+      `🏪 ${branchesChip}`,
+      "📞 09638-050505",
+      `⏰ ${t("home.menu.openDaily")}`,
+    ],
+    placeholder: t("home.menu.searchBrandPlaceholder", { brand: info ? brandName(info, locale) : "" }),
   };
-
-  const isMad = brand === "madchef";
-  const accent = isMad ? "#e8192c" : "#f5a623";
-  const accentText = isMad ? "text-brand-500" : "text-cheez-gold";
-  const meta = BRAND_META[brand];
+  const accent = info?.accent_color ?? "#e8192c";
   const categories = useMemo(
     () => allCategories.filter((c) => c.brand === brand),
     [allCategories, brand],
@@ -138,10 +135,13 @@ export function MenuSection({
   // Counted from the same `items` the grid renders, so the number can never
   // disagree with what a click reveals.
   const brandCounts = useMemo(() => {
-    const counts: Record<Brand, number> = { cheez: 0, madchef: 0 };
-    for (const item of items) counts[item.brand] += 1;
+    const counts: Record<Brand, number> = {};
+    for (const item of items) counts[item.brand] = (counts[item.brand] ?? 0) + 1;
     return counts;
   }, [items]);
+  // Another served brand that has products, for the empty-tab hint.
+  const otherBrandWithItems = servedBrands.find((b) => b !== brand && (brandCounts[b] ?? 0) > 0);
+  const otherBrandInfo = brandInfo(otherBrandWithItems);
 
   // True when the catalogue spans more than one branch — i.e. a super admin
   // browsing every branch. A customer's catalogue is always one branch.
@@ -201,36 +201,38 @@ export function MenuSection({
             measure, and the horizontal swipe on a narrow phone still works,
             just without a visible bar. */}
         <div className="scrollbar-none mx-auto flex max-w-300 items-center overflow-x-auto overflow-y-hidden px-4 pb-px">
-          {/* Only the brands the browsed branch serves get a tab. */}
-          {servedBrands.includes("cheez") ? (
-            <BrandTab
-              label="Cheez! Pizza"
-              logo="/images/brand/cheez-logo.webp"
-              count={t("home.menu.itemsCount", { n: fmt.num(brandCounts.cheez) })}
-              active={brand === "cheez"}
-              activeColor="#f5a623"
-              onClick={() => setBrand("cheez")}
-            />
-          ) : null}
-          {servedBrands.length > 1 ? <span className="mx-1 h-5 w-px shrink-0 bg-white/10" /> : null}
-          {servedBrands.includes("madchef") ? (
-            <BrandTab
-              label="Madchef"
-              logo="/images/brand/madchef-logo.webp"
-              count={t("home.menu.itemsCount", { n: fmt.num(brandCounts.madchef) })}
-              active={brand === "madchef"}
-              activeColor="#e8192c"
-              onClick={() => setBrand("madchef")}
-            />
-          ) : null}
+          {/* Only the live brands the browsed branch serves get a tab, in the
+              display order set at /admin/brands. */}
+          {servedBrands.map((slug, i) => {
+            const b = brandInfo(slug);
+            if (!b) return null;
+            return (
+              <span key={slug} className="flex items-center" data-testid={`menu-brand-tab-${slug}`}>
+                {i > 0 ? <span className="mx-1 h-5 w-px shrink-0 bg-white/10" /> : null}
+                <BrandTab
+                  label={brandName(b, locale)}
+                  logo={b.logo}
+                  emoji={b.emoji}
+                  count={t("home.menu.itemsCount", { n: fmt.num(brandCounts[slug] ?? 0) })}
+                  active={brand === slug}
+                  activeColor={b.accent_color}
+                  onClick={() => setBrand(slug)}
+                />
+              </span>
+            );
+          })}
         </div>
       </div>
 
       {/* Brand header band */}
       <div className="border-b border-white/8 bg-[#111115] px-4 pt-8">
         <div className="mx-auto flex max-w-300 flex-wrap items-end gap-3 sm:gap-6 sm:px-2">
-          <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-white/12 bg-[#23232e] sm:size-20">
-            <Image src={meta.logo} alt={meta.name} width={80} height={80} className="size-full object-cover" />
+          <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-white/12 bg-[#23232e] text-3xl sm:size-20">
+            {meta.logo ? (
+              <Image src={meta.logo} alt={meta.name} width={80} height={80} className="size-full object-cover" />
+            ) : (
+              <span aria-hidden>{meta.emoji}</span>
+            )}
           </div>
           <div className="min-w-0 flex-1 pb-5">
             {/* PHASE B — this brand name IS the menu section's heading, so it
@@ -306,13 +308,14 @@ export function MenuSection({
 
         {/* Category tabs */}
         <div className="mt-4">
-          <CategoryTabs categories={categories} brand={brand} active={active} onChange={setActive} />
+          <CategoryTabs categories={categories} accent={accent} active={active} onChange={setActive} />
         </div>
 
-        {/* Crust guide (Cheez pizza only). Category keys are database ids now,
-            so "is this the pizza tab?" is answered from the selected category's
-            NAME rather than a hardcoded key. */}
-        {brand === "cheez" && (active === "all" || activeIsPizza) && !query ? (
+        {/* Crust guide — brand-specific content: shown only for a brand whose
+            row has "show crust guide" switched on (/admin/brands). Category
+            keys are database ids, so "is this the pizza tab?" is answered from
+            the selected category's NAME rather than a hardcoded key. */}
+        {info?.show_crust_guide && (active === "all" || activeIsPizza) && !query ? (
           <div className="mt-6 rounded-xl border border-white/8 bg-surface-dark p-5">
             <p className="mb-3 text-xs font-bold uppercase tracking-widest text-white/50">
               ◺ {t("home.menu.crustGuideTitle")}
@@ -343,11 +346,11 @@ export function MenuSection({
           <p className="py-16 text-center text-white/50" data-testid="home-menu-empty">
             {query
               ? t("home.menu.noItems")
-              : brandCounts[isMad ? "cheez" : "madchef"] > 0
-                ? // This brand is empty but the other one is not — point at it
+              : otherBrandWithItems
+                ? // This brand is empty but another one is not — point at it
                   // instead of implying the catalogue is empty.
                   t("home.menu.emptyBrandOtherHasItems", {
-                    brand: isMad ? "Cheez! Pizza" : "Madchef",
+                    brand: otherBrandInfo ? brandName(otherBrandInfo, locale) : otherBrandWithItems,
                   })
                 : (emptyMessage ?? t("home.menu.noItems"))}
           </p>
@@ -355,7 +358,7 @@ export function MenuSection({
           grouped.map((group) => (
             <div key={group.key} className="mt-7">
               <div className="mb-4 flex items-center gap-2.5 border-b border-white/8 pb-2.5">
-                <span className={cn("text-base", accentText)}>★</span>
+                <span className="text-base" style={{ color: accent }}>★</span>
                 {/* The category's own name from the database, rendered as-is.
                     It was a translation lookup while the group names were a
                     fixed hardcoded set; an admin-created category has no key,

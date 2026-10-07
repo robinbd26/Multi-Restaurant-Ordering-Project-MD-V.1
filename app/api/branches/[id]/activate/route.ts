@@ -4,6 +4,7 @@ import { json } from "@/lib/http/respond";
 import { revalidateCatalog } from "@/lib/cache/catalog";
 import { prisma } from "@/lib/db";
 import { serializeBranch } from "@/lib/serializers";
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -13,7 +14,7 @@ async function setActive(id: number, isActive: boolean) {
   const updated = await prisma.branch.update({
     where: { id },
     data: { isActive, holdReason: isActive ? "" : branch.holdReason },
-    include: { manager: true },
+    include: { manager: true, ...BRANCH_BRANDS_INCLUDE },
   });
   // A branch going inactive removes ALL of its products from customer surfaces
   // (LIVE_BRANCH in the shared eligibility rules); reactivating restores them.

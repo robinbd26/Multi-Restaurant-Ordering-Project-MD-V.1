@@ -4,10 +4,10 @@ import type { Branch } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { validationError, sk } from "@/lib/http/errors";
-import { branchAllowsBrand, isProductBrand } from "@/lib/constants/enums";
 import { branchPoint, coverageForPoint, type BranchCoverage } from "@/lib/services/coverage";
 import { directionsUrl, haversineKm, roundKm, type LatLng } from "@/lib/services/geo";
 
+import { BRANCH_BRANDS_INCLUDE, branchLiveBrandSlugsOf } from "@/lib/brands/branch";
 /**
  * Delivery pricing + pickup, on top of the ONE coverage answer.
  *
@@ -102,12 +102,13 @@ export async function nearestPickupBranch(
       latitude: { not: null },
       longitude: { not: null },
     },
+    include: BRANCH_BRANDS_INCLUDE,
   });
   let best: { branch: Branch; d: number } | null = null;
   for (const b of branches) {
     if (opts.excludeBranchId && b.id === opts.excludeBranchId) continue;
-    // Only filter by brand when a real PRODUCT brand is supplied (cheez/madchef).
-    if (opts.brand && isProductBrand(opts.brand) && !branchAllowsBrand(b.brandType, opts.brand)) continue;
+    // When a product brand is in play, only branches serving that brand qualify.
+    if (opts.brand && !branchLiveBrandSlugsOf(b).includes(opts.brand)) continue;
     const bp = branchPoint(b);
     if (!bp) continue;
     const d = haversineKm(bp, point);
@@ -148,8 +149,7 @@ export async function checkCoverage(
     branch_name: branch.name,
     distance_km: coverage.distanceKm,
     delivery_fee: Number(coverage.charge.toFixed(2)),
-    // Nearest pickup respects the product brand when one is in play; the branch's
-    // own brandType is NOT a product brand and must not filter pickup options.
+    // Nearest pickup respects the product brand when one is in play.
     nearest_pickup: coverage.covered ? null : await nearestPickupBranch(point, { brand: opts.brand ?? null }),
     pricing: serializeCoverage(coverage),
   };

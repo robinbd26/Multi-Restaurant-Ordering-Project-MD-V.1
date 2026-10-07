@@ -12,6 +12,7 @@ import { serializeCategory, serializeProduct } from "@/lib/serializers";
 import { categoriesForBranchManager } from "@/lib/services/catalog";
 import type { Category, Product } from "@/types";
 
+import { assignableBrands, branchBrandSlugs } from "@/lib/services/brands";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("catalog.editProductMetaTitle") };
@@ -56,7 +57,8 @@ export default async function ProductEditPage({ params }: { params: Promise<{ id
         showCategoryScope={false}
         basePath="/branch-manager/catalog"
         categoryCreateHref="/branch-manager/catalog/categories/create"
-        fixedBranch={{ id: branch.id, name: branch.name, brand_type: branch.brandType }}
+        fixedBranch={{ id: branch.id, name: branch.name, brands: await branchBrandSlugs(branch.id) }}
+        brands={await assignableBrands()}
       />
     </>
   );

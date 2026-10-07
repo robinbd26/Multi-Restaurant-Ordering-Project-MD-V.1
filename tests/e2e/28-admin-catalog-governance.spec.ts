@@ -237,11 +237,12 @@ test.describe("#2/#3 category delete + activate/deactivate", () => {
 
 // ── REQ #5 — Branch Manager dashboard branch information ──────────────────
 test.describe("#5 branch manager dashboard branch info", () => {
-  test("shows the manager's OWN branch name + brand type (server-resolved)", async ({ browser }) => {
+  test("shows the manager's OWN branch name + brands (server-resolved)", async ({ browser }) => {
     const bm = await newSession(browser, "branch_manager");
     const payload = await (await bm.req.get(`${API_BASE}/api/dashboard/branch-manager/`)).json();
     expect(payload.branch, "assigned branch resolved").toBeTruthy();
-    expect(payload.branch.brand_type, "brand type present").toBeTruthy();
+    // Brands are data now: the payload lists the slugs the branch serves.
+    expect(payload.branch.brands?.length, "brands present").toBeGreaterThan(0);
 
     await bm.page.goto("/branch-manager/dashboard");
     await expect(bm.page.getByTestId("bm-branch-name")).toHaveText(payload.branch.name);

@@ -17,6 +17,8 @@ import { BranchesLocationGate } from "@/components/customer/branches-location-ga
 import { BrowseBranchButton, BrowseBranchLink } from "@/components/customer/browse-branch-link";
 import type { Branch, Paginated } from "@/types";
 
+import { BrandPills } from "@/components/brands/brand-pills";
+import { activeBrands } from "@/lib/services/brands";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("customer.restaurantsTitle") };
@@ -57,10 +59,11 @@ export default async function CustomerBranchesPage({
   const query = new URLSearchParams({ page_size: "100" });
   if (search) query.set("search", search);
   const target = await resolveDeliverTo(me.id, (await readBrowseScope()).deliverTo);
-  const [data, nearest, locationStatus] = await Promise.all([
+  const [data, nearest, locationStatus, brandList] = await Promise.all([
     getJSON<Paginated<Branch>>(`/branches/?${query.toString()}`),
     nearestEligibleBranch(me.id, target.point),
     customerLocationStatus(me.id),
+    activeBrands(),
   ]);
   // The badge means "nearest branch that is OPEN and DELIVERS here", which is
   // not always the branch physically closest to the customer. When the two
@@ -184,9 +187,6 @@ export default async function CustomerBranchesPage({
             const orderable = (covered && open) || noLocation;
             const isNearest = branch.id === badgeBranch?.id;
             const isClosestNotPicked = closestDiffers && branch.id === closest?.id;
-            const brandKey = ["cheez", "madchef", "combined"].includes(branch.brand_type ?? "")
-              ? (branch.brand_type as string)
-              : "combined";
             // We know where they are and this branch cannot reach it.
             const browseOnly = !noLocation && !covered;
             const closedNow = covered && !open;
@@ -220,7 +220,11 @@ export default async function CustomerBranchesPage({
                   </p>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-fg-subtle">
                     <span data-testid="branch-brand">
-                      {t(`brandName.${brandKey}`)}
+                      {/* Only brands a customer can order from (active ones). */}
+                      <BrandPills
+                        slugs={(branch.brands ?? []).filter((slug) => brandList.some((b) => b.slug === slug))}
+                        brands={brandList}
+                      />
                       <span
                         className="ml-2 rounded-full border border-border-base px-2 py-0.5 text-[10px] font-semibold"
                         data-testid="branch-business-type"

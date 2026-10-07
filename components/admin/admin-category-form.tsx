@@ -12,6 +12,7 @@ import { useTranslation } from "@/lib/i18n/use-translation";
 import { LIMITS } from "@/lib/validation/limits";
 import { maxLength, minLength, required, selectRequired } from "@/lib/validation/rules";
 import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-validation";
+import { brandName, type BrandInfo } from "@/lib/brands/shared";
 
 const RULES: FieldRules = {
   branch_id: [selectRequired],
@@ -20,8 +21,15 @@ const RULES: FieldRules = {
 };
 
 /** Super admin creates a product category for any branch. */
-export function AdminCategoryForm({ branches }: { branches: { id: number; name: string }[] }) {
-  const { t } = useTranslation();
+export function AdminCategoryForm({
+  branches,
+  brands,
+}: {
+  branches: { id: number; name: string }[];
+  /** Every non-archived brand, offered as the category's brand scope. */
+  brands: BrandInfo[];
+}) {
+  const { t, locale } = useTranslation();
   const router = useRouter();
   const [state, action, pending] = useActionState(adminCreateCategoryAction, initialActionState);
   const formRef = useRef<HTMLFormElement>(null);
@@ -61,14 +69,17 @@ export function AdminCategoryForm({ branches }: { branches: { id: number; name: 
       <Field label={t("adminExtras.categoryName")} name="name" required error={errors.name}>
         <Input name="name" maxLength={80} />
       </Field>
-      {/* req #3 — the super admin assigns a category to a brand: CHEEZ, MADCHEF,
-          or "Both" (the default — stored as NULL, which serves every brand and
-          keeps every pre-existing category working unchanged). */}
+      {/* req #3 — the super admin scopes a category to one brand, or to every
+          brand (the default — stored as NULL, which keeps every pre-existing
+          category working unchanged). Brands come from the Brand table. */}
       <Field label={t("catalog.categoryBrand")} name="brand" hint={t("catalog.categoryBrandHint")}>
         <Select name="brand" defaultValue="" data-testid="category-brand-select">
-          <option value="">{t("brands.both")}</option>
-          <option value="cheez">{t("brands.cheez")}</option>
-          <option value="madchef">{t("brands.madchef")}</option>
+          <option value="">{t("brands.allBrandsOption")}</option>
+          {brands.map((b) => (
+            <option key={b.slug} value={b.slug}>
+              {brandName(b, locale)}
+            </option>
+          ))}
         </Select>
       </Field>
       <Field label={t("adminExtras.categoryDesc")} name="description" error={errors.description}>

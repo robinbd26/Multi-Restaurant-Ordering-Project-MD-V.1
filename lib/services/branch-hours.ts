@@ -28,16 +28,21 @@ export function parseMinutes(value: string | null | undefined): number | null {
   return h * 60 + min;
 }
 
-/** Cheez! carries the late-night delivery window (brand-driven, not name-driven). */
-export function isLateNight(brandType: string): boolean {
-  return brandType === "cheez" || brandType === "combined";
+/**
+ * Cheez! carries the late-night delivery window (brand-driven, not name-driven).
+ * STOPGAP while brands became data: the per-brand schedule that replaces this
+ * whole module lands in the next commit, and with it this slug check goes.
+ */
+export function isLateNight(brandSlugs: readonly string[]): boolean {
+  return brandSlugs.includes("cheez");
 }
 
 /** The minimal branch shape the open-now decision needs. */
 export interface BranchHoursInput {
   openingTime: string | null;
   closingTime: string | null;
-  brandType: string;
+  /** Slugs of the brands the branch serves (branchBrandSlugsOf). */
+  brandSlugs: readonly string[];
   isActive: boolean;
 }
 
@@ -53,7 +58,7 @@ export function branchOpenStatus(branch: BranchHoursInput, minutesSinceMidnight:
   if (!branch.isActive) return "closed";
 
   const minutes = minutesSinceMidnight;
-  const late = isLateNight(branch.brandType);
+  const late = isLateNight(branch.brandSlugs);
   const open = parseMinutes(branch.openingTime) ?? 660; // 11:00 AM default
   const close = parseMinutes(branch.closingTime) ?? 1380; // 11:00 PM default
 

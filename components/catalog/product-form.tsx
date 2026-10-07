@@ -14,7 +14,8 @@ import { cn, mediaUrl } from "@/lib/utils";
 import { FormError } from "@/components/ui/field-error";
 import { FormSection } from "@/components/catalog/form-section";
 import { LIMITS, MAX_IMAGE_MB } from "@/lib/validation/limits";
-import { PRODUCT_BRAND_CHOICES, categoryBrandMatchesProductBrand } from "@/lib/constants/enums";
+import { ALL_BRANDS_CHOICE, categoryBrandMatchesProductBrand } from "@/lib/constants/enums";
+import { brandBySlug, brandName, type BrandInfo } from "@/lib/brands/shared";
 import {
   integer,
   max,
@@ -48,7 +49,8 @@ const FILES = { image: false };
 export interface BranchOption {
   id: number;
   name: string;
-  brand_type: string;
+  /** Slugs of the (non-archived) brands this branch serves. */
+  brands: string[];
 }
 
 interface VariationRow {
@@ -103,7 +105,10 @@ export function ProductForm({
   branches,
   fixedBranch,
   showCategoryScope = true,
+  brands,
 }: {
+  /** Every non-archived brand, for labels (lib/services/brands assignableBrands). */
+  brands: BrandInfo[];
   product?: Product;
   categories: Category[];
   basePath: string;
@@ -124,7 +129,7 @@ export function ProductForm({
    */
   showCategoryScope?: boolean;
 }) {
-  const { t, fmt } = useTranslation();
+  const { t, fmt, locale } = useTranslation();
   const action = saveProductAction.bind(null, product?.id ?? null, basePath);
   const [state, formAction, pending] = useActionState(action, initialActionState);
   const [preview, setPreview] = useState<string | null>(mediaUrl(product?.image ?? null));
@@ -140,7 +145,8 @@ export function ProductForm({
   const [basePrice, setBasePrice] = useState<string>(
     product && !product.variations.length ? String(product.price ?? "") : "",
   );
-  const [brand, setBrand] = useState<string>(product?.brand ?? "");
+  // An existing product with no brand is sold under every brand of its branch.
+  const [brand, setBrand] = useState<string>(product ? (product.brand ?? ALL_BRANDS_CHOICE) : "");
   // Controlled category: changing Brand/Branch must be able to CLEAR it (req #3)
   // — an uncontrolled select could never be reset.
   const [categoryId, setCategoryId] = useState<string>(
@@ -158,16 +164,18 @@ export function ProductForm({
     return branches?.find((b) => b.id === branchId);
   }, [fixedBranch, branches, branchId]);
 
-  const brandType = activeBranch?.brand_type ?? "combined";
-  const soleBrand = brandType === "cheez" ? "cheez" : brandType === "madchef" ? "madchef" : null;
+  // A branch serving ONE brand forces it; several → the manager chooses one,
+  // or "all brands" (stored as no brand). Mirrors resolveProductBrand.
+  const servedBrands = activeBranch?.brands ?? [];
+  const soleBrand = servedBrands.length === 1 ? servedBrands[0] : null;
   // req #8/#10 — a branch's eligible categories = its own PLUS every global
   // (branch === null) category. Categories assigned to OTHER branches are hidden.
   const branchCategories = useMemo(
     () => categories.filter((c) => c.branch === null || (branchId != null && c.branch === branchId)),
     [categories, branchId],
   );
-  // req #3 — the Brand → Category filter. A NULL category brand serves BOTH
-  // brands; a "combined" product may use any category; otherwise the tags must
+  // req #3 — the Brand → Category filter. A NULL category brand serves EVERY
+  // brand; an "all brands" product may use any category; otherwise the tags must
   // match. With no brand chosen yet, every branch category stays visible (the
   // server still rejects a mismatched pair on submit).
   const visibleCategories = useMemo(() => {
@@ -561,8 +569,8 @@ export function ProductForm({
             {soleBrand ? (
               <input type="hidden" name="brand" value={soleBrand} />
             ) : (
-              // req #3 — exactly three choices, offered only on a COMBINED branch
-              // (a single-brand branch silently forces its own brand above).
+              // req #3 — offered only on a branch serving several brands (a
+              // single-brand branch silently forces its own brand above).
               <Field label={t("catalog.brand")} name="brand" required error={errors.brand}>
                 <Select
                   name="brand"
@@ -575,11 +583,15 @@ export function ProductForm({
                   }}
                 >
                   <option value="">{t("catalog.selectBrand")}</option>
-                  {PRODUCT_BRAND_CHOICES.map((b) => (
-                    <option key={b} value={b}>
-                      {b === "combined" ? t("brands.combinedOption") : t(`brands.${b}`)}
-                    </option>
-                  ))}
+                  {servedBrands.map((slug) => {
+                    const b = brandBySlug(brands, slug);
+                    return (
+                      <option key={slug} value={slug}>
+                        {b ? brandName(b, locale) : slug}
+                      </option>
+                    );
+                  })}
+                  <option value={ALL_BRANDS_CHOICE}>{t("brands.allBrandsOption")}</option>
                 </Select>
               </Field>
             )}

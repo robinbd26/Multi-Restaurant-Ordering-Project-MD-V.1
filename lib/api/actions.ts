@@ -457,7 +457,7 @@ export async function adminCreateCategoryAction(
       description: String(formData.get("description") ?? ""),
       branch_id: branchValue === "" ? "global" : branchValue,
       is_active: true,
-      // req #3 — "cheez" | "madchef" | "" ("" = serves BOTH brands).
+      // req #3 — a Brand.slug, or "" for "serves every brand".
       brand: String(formData.get("brand") ?? ""),
     });
     revalidatePath("/admin/categories");
@@ -477,7 +477,7 @@ export interface CheckoutPayload {
   coupon_code?: string;
   /** WS-7.1 — reward voucher code; the server reads its value from the DB row. */
   reward_code?: string;
-  items: { product_id: number; variation_id?: number; variation_type?: string; quantity: number; food_note: string }[];
+  items: { product_id: number; variation_id?: number; variation_type?: string; brand?: string; quantity: number; food_note: string }[];
   fulfillment_type?: string;
   /** Self Pickup — the customer's requested pickup time (ISO string). */
   pickup_time?: string;

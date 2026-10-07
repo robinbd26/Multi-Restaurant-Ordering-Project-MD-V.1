@@ -11,6 +11,8 @@ import { categoriesForUser } from "@/lib/selectors";
 import { serializeCategory, serializeProduct } from "@/lib/serializers";
 import type { Category, Product } from "@/types";
 
+import { BRANCH_BRANDS_INCLUDE, branchBrandSlugsOf } from "@/lib/brands/branch";
+import { assignableBrands } from "@/lib/services/brands";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("catalog.editProductMetaTitle") };
@@ -27,7 +29,7 @@ export default async function AdminProductEditPage({ params }: { params: Promise
 
   const product = await prisma.product.findUnique({
     where: { id },
-    include: { branch: true, category: true, variations: { orderBy: { sortOrder: "asc" } } },
+    include: { branch: { include: BRANCH_BRANDS_INCLUDE }, category: true, variations: { orderBy: { sortOrder: "asc" } } },
   });
   if (!product) notFound();
 
@@ -48,7 +50,8 @@ export default async function AdminProductEditPage({ params }: { params: Promise
         categories={categories}
         basePath="/admin/products"
         categoryCreateHref="/admin/categories"
-        fixedBranch={{ id: product.branch.id, name: product.branch.name, brand_type: product.branch.brandType }}
+        fixedBranch={{ id: product.branch.id, name: product.branch.name, brands: branchBrandSlugsOf(product.branch) }}
+        brands={await assignableBrands()}
       />
     </>
   );

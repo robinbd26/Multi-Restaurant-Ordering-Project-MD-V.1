@@ -35,6 +35,8 @@ import { customerProductWhere } from "@/lib/services/product-eligibility";
 import { resolveOrderDeliveryArea } from "@/lib/services/delivery-areas";
 import type { OrderStatus } from "@/types";
 
+import { BRANCH_BRANDS_INCLUDE, branchBrandSlugsOf } from "@/lib/brands/branch";
+import { productSaleBrands } from "@/lib/services/product-eligibility";
 export interface OrderItemInput {
   product_id: number;
   variation_id?: number;
@@ -42,6 +44,12 @@ export interface OrderItemInput {
   food_note?: string;
   /** req #4 — chosen crust ("THICK" | "THIN"); validated against the product. */
   variation_type?: string;
+  /**
+   * The brand tab the line was added from (a Brand.slug). Only a HINT, used to
+   * pick between the brands of a product sold under several; it is checked
+   * against what the product and its branch really sell, never trusted.
+   */
+  brand?: string;
 }
 
 /**
@@ -97,12 +105,32 @@ async function servingBranchForCart(productIds: number[]) {
   }
   const branch = await prisma.branch.findFirst({
     where: { id: servingBranchIds[0], isActive: true, isArchived: false },
+    include: BRANCH_BRANDS_INCLUDE,
   });
   if (!branch) throw validationError({ delivery_address: sk("errors.orders.noEligibleBranch") });
   return branch;
 }
 
-type PricedProduct = Prisma.ProductGetPayload<{ include: { variations: true } }>;
+/** What pricing needs: the sizes, plus the branch's brands for the line's brand. */
+const PRICED_PRODUCT_INCLUDE = {
+  variations: true,
+  branch: { include: BRANCH_BRANDS_INCLUDE },
+} satisfies Prisma.ProductInclude;
+type PricedProduct = Prisma.ProductGetPayload<{ include: typeof PRICED_PRODUCT_INCLUDE }>;
+
+/**
+ * The brand an order line is sold under, snapshotted onto the order item: the
+ * product's own brand, or — for a product sold under every brand of its branch
+ * — the brand tab it was added from when that is one of them, else the first.
+ * A product whose brand its branch no longer serves (or whose brand went
+ * inactive) cannot be sold at all: the object-level half of the shared brand
+ * rule (product-eligibility.ts), enforced at the last step before money moves.
+ */
+function lineBrand(product: PricedProduct, hint: string | undefined): string {
+  const sale = productSaleBrands(product);
+  if (sale.length === 0) throw validationError({ items: sk("errors.orders.someProductsUnavailable") });
+  return hint && sale.includes(hint) ? hint : sale[0];
+}
 
 /**
  * Resolve the purchasable variation for a line (shared by createOrder + quote).
@@ -202,6 +230,8 @@ interface PricedLine {
   lineTotal: Prisma.Decimal;
   /** The customer's per-item note, carried through verbatim. */
   foodNote: string;
+  /** The brand (slug) this line is sold under — see lineBrand. */
+  brand: string;
 }
 
 /**
@@ -226,6 +256,7 @@ function priceLines(items: OrderItemInput[], byId: Map<number, PricedProduct>): 
       unitPrice,
       lineTotal: unitPrice.times(quantity),
       foodNote: item.food_note ?? "",
+      brand: lineBrand(product, item.brand),
     };
   });
 }
@@ -293,6 +324,7 @@ async function resolveBranchForCart(input: {
   if (input.fulfillmentType === "pickup") {
     const picked = await prisma.branch.findFirst({
       where: { id: input.branchId, isActive: true, isArchived: false },
+      include: BRANCH_BRANDS_INCLUDE,
     });
     if (!picked) throw validationError({ branch_id: sk("errors.orders.branchNotFoundOrClosed") });
     // A branch its MANAGER has put on hold takes no new order on ANY rail —
@@ -300,7 +332,7 @@ async function resolveBranchForCart(input: {
     // rather than only on the delivery path.
     if (picked.isOnHold) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
     // A branch outside its opening hours cannot take a pickup order either (§17).
-    const pickedHours = isBranchOpenNow(picked);
+    const pickedHours = isBranchOpenNow({ ...picked, brandSlugs: branchBrandSlugsOf(picked) });
     if (!pickedHours.orderable) throw validationError({ branch_id: branchClosedMessage(pickedHours.opensAt) });
     if (!picked.pickupEnabled) throw validationError({ fulfillment_type: sk("errors.orders.pickupUnavailable") });
     return { branch: picked, lat: null, lng: null, coverage: null };
@@ -332,7 +364,7 @@ async function resolveBranchForCart(input: {
   // A manager's hold is a deliberate, current decision, so it is reported ahead
   // of the hours gate — the same order the previous resolver used.
   if (branch.isOnHold) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
-  const branchHours = isBranchOpenNow(branch);
+  const branchHours = isBranchOpenNow({ ...branch, brandSlugs: branchBrandSlugsOf(branch) });
   if (!branchHours.orderable) {
     throw validationError({ branch_id: branchClosedMessage(branchHours.opensAt) });
   }
@@ -390,7 +422,7 @@ export async function quoteOrder(input: {
 
   const products = await prisma.product.findMany({
     where: orderableProductWhere(branch.id, productIds),
-    include: { variations: true },
+    include: PRICED_PRODUCT_INCLUDE,
   });
   const byId = new Map(products.map((p) => [p.id, p]));
   const missing = productIds.filter((id) => !byId.has(id));
@@ -407,6 +439,7 @@ export async function quoteOrder(input: {
     variation_id: line.variation?.id ?? null,
     variation_name: line.variation?.name ?? "",
     variation_type: line.crust,
+    brand: line.brand,
     name: line.product.name,
     unit_price: line.unitPrice.toNumber(),
     quantity: line.quantity,
@@ -602,7 +635,7 @@ export async function createOrder(input: {
 
   const products = await prisma.product.findMany({
     where: orderableProductWhere(branch.id, productIds),
-    include: { variations: true },
+    include: PRICED_PRODUCT_INCLUDE,
   });
   const byId = new Map(products.map((p) => [p.id, p]));
   const missing = productIds.filter((id) => !byId.has(id));
@@ -667,6 +700,8 @@ export async function createOrder(input: {
           variationId: line.variation?.id ?? null,
           variationName: line.variation?.name ?? "",
           variationType: line.crust,
+          // The brand this line was sold under, frozen with the order.
+          brand: line.brand,
           quantity: line.quantity,
           // Already at paisa precision (priceLines) — stored as-is, so the
           // ledger's line and the customer's `unit × qty` are the same number.

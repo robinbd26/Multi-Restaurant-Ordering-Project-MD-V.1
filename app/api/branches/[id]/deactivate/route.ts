@@ -4,6 +4,7 @@ import { json } from "@/lib/http/respond";
 import { revalidateCatalog } from "@/lib/cache/catalog";
 import { prisma } from "@/lib/db";
 import { serializeBranch } from "@/lib/serializers";
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -18,7 +19,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
   const updated = await prisma.branch.update({
     where: { id: Number(id) },
     data: { isActive: false, holdReason: String(body.reason ?? "").trim() },
-    include: { manager: true },
+    include: { manager: true, ...BRANCH_BRANDS_INCLUDE },
   });
   // Holding a branch removes all of its products from customer surfaces.
   revalidateCatalog({ branchId: updated.id });

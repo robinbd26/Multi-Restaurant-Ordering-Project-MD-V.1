@@ -20,6 +20,7 @@ import type {
   RiderWithdrawal,
   User,
 } from "@prisma/client";
+import { branchBrandSlugsOf, branchLiveBrandSlugsOf, legacyBrandType, type BranchWithBrandRows } from "@/lib/brands/branch";
 import { Prisma } from "@prisma/client";
 
 import {
@@ -96,7 +97,7 @@ export function serializeUser(u: UserWithApprover) {
 }
 
 // ── Branch ────────────────────────────────────────────────────────────
-type BranchWithManager = Branch & {
+type BranchWithManager = Branch & BranchWithBrandRows & {
   manager?: Pick<User, "firstName" | "lastName" | "username"> | null;
   zone?: { name: string } | null;
 };
@@ -117,7 +118,10 @@ export function serializeBranch(b: BranchWithManager) {
     zone_id: b.zoneId ?? null,
     zone_name: b.zone?.name ?? null,
     delivery_radius_km: decOr0(b.deliveryRadiusKm, 1),
-    brand_type: b.brandType,
+    // Slugs of the brands this branch serves (load with BRANCH_BRANDS_INCLUDE).
+    brands: branchBrandSlugsOf(b),
+    // Deprecated: derived from `brands` for callers written against the old field.
+    brand_type: legacyBrandType(branchBrandSlugsOf(b)),
     business_type: b.businessType,
     prep_time_minutes: b.prepTimeMinutes,
     pickup_enabled: b.pickupEnabled,
@@ -146,13 +150,14 @@ export function serializeBranch(b: BranchWithManager) {
 }
 
 /** Customer-facing branch (no internal fields). */
-export function serializePublicBranch(b: Branch) {
+export function serializePublicBranch(b: Branch & BranchWithBrandRows) {
   return {
     id: b.id,
     name: b.name,
     address: b.address,
     phone: b.phone,
-    brand_type: b.brandType,
+    brands: branchLiveBrandSlugsOf(b),
+    brand_type: legacyBrandType(branchLiveBrandSlugsOf(b)),
     business_type: b.businessType,
     delivery_radius_km: decOr0(b.deliveryRadiusKm, 1),
     opening_time: b.openingTime ?? null,
@@ -170,7 +175,7 @@ export function serializeCategory(
     branch: c.branchId, // null = global ("Main Branch")
     branch_name: c.branch?.name ?? null,
     is_global: c.branchId === null,
-    // null = serves both brands. Drives the Brand → Category filter in the
+    // null = serves every brand. Drives the Brand → Category filter in the
     // product form (lib/constants/enums.ts#categoryBrandMatchesProductBrand).
     brand: c.brand,
     name: c.name,
@@ -207,7 +212,7 @@ export function serializeVariation(v: ProductVariation) {
 
 type ProductRel = Product & {
   category?: Pick<Category, "name"> | null;
-  branch?: Pick<Branch, "name" | "brandType"> | null;
+  branch?: Pick<Branch, "name"> | null;
   variations?: ProductVariation[];
 };
 
@@ -273,6 +278,9 @@ function serializeOrderItem(i: OrderItemRel) {
     variation_name: i.variationName,
     // req #4 — immutable crust snapshot for this order line.
     variation_type: i.variationType,
+    // Brand (slug) this line was sold under, frozen at order time; "" = legacy
+    // line of a product sold under several brands.
+    brand: i.brand,
     quantity: i.quantity,
     unit_price: unit.toFixed(2),
     food_note: i.foodNote,

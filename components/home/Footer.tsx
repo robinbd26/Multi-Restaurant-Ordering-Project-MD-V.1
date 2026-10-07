@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { BrandCardLink } from "@/components/home/BrandCardLink";
+import { brandName, type BrandInfo } from "@/lib/brands/shared";
 import { getT } from "@/lib/i18n/server";
 
 const LOCATIONS = ["Dhanmondi", "Banani", "Uttara", "Bashundhara", "Mirpur"];
@@ -7,9 +9,18 @@ const LOCATIONS = ["Dhanmondi", "Banani", "Uttara", "Bashundhara", "Mirpur"];
 /**
  * `signedIn` drops the "Staff login" and "Create account" links, which are
  * noise to someone already logged in (the header carries their dashboard link).
+ * Brands (names, emoji) and the branch count come from data.
  */
-export async function Footer({ signedIn = false }: { signedIn?: boolean }) {
-  const { t, fmt } = await getT();
+export async function Footer({
+  signedIn = false,
+  brands,
+  branchCount,
+}: {
+  signedIn?: boolean;
+  brands: BrandInfo[];
+  branchCount: number;
+}) {
+  const { t, fmt, locale } = await getT();
 
   const colTitle = "mb-3.5 text-[0.75rem] font-bold uppercase tracking-wide text-[#606070]";
   const colLink = "text-[0.85rem] text-[#a0a0b0] transition-colors hover:text-white";
@@ -23,12 +34,12 @@ export async function Footer({ signedIn = false }: { signedIn?: boolean }) {
               MAD <span className="text-brand-500">DELIVERY</span>
             </h3>
             <p className="mt-2 max-w-65 text-[0.85rem] leading-7 text-[#a0a0b0]">
-              {t("home.footer.aboutText", { n: fmt.num(10) })}
+              {t("home.footer.aboutText", { n: fmt.num(branchCount) })}
             </p>
             <div className="mt-4 flex gap-2.5">
-              {["🍕", "🔥"].map((emoji) => (
+              {brands.map(({ slug, emoji }) => (
                 <span
-                  key={emoji}
+                  key={slug}
                   className="flex size-9 items-center justify-center rounded-lg border border-white/8 bg-surface-dark text-[1.1rem]"
                 >
                   {emoji}
@@ -40,8 +51,13 @@ export async function Footer({ signedIn = false }: { signedIn?: boolean }) {
           <div>
             <h4 className={colTitle}>{t("home.footer.brands")}</h4>
             <ul className="space-y-2">
-              <li><a href="#menu-section" className={colLink}>Cheez! Pizza</a></li>
-              <li><a href="#menu-section" className={colLink}>Madchef</a></li>
+              {brands.map((b) => (
+                <li key={b.slug}>
+                  <BrandCardLink brand={b.slug} className={colLink} testId={`footer-brand-${b.slug}`}>
+                    {brandName(b, locale)}
+                  </BrandCardLink>
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -81,7 +97,7 @@ export async function Footer({ signedIn = false }: { signedIn?: boolean }) {
               Robin Security
             </a>
           </p>
-          <p>Cheez! • Madchef — Dhaka, Bangladesh</p>
+          <p>{[...brands.map((b) => brandName(b, locale)), "Dhaka, Bangladesh"].join(" • ")}</p>
         </div>
       </div>
     </footer>

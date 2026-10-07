@@ -18,6 +18,8 @@ import { riderWalletSummary } from "@/lib/services/wallet";
 import { daysAgo, dhakaAddDays, endOfToday, isoDate, startOfToday, weekBounds } from "@/lib/utils/dates";
 import type { OrderStatus, Role } from "@/types";
 
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
+import { branchBrandSlugs } from "@/lib/services/brands";
 interface DashboardIdentity {
   id: number;
 }
@@ -423,15 +425,15 @@ export async function branchManagerDashboard(user: DashboardIdentity) {
   return {
     // req #5 — the Branch Manager's OWN assigned branch identity. Resolved
     // server-side from the authenticated manager (never a client-supplied id).
-    // brand_type comes from the existing Branch.brandType enum-like column, so
-    // the dashboard never invents its own labels.
+    // `brands` are the slugs the branch serves (BranchBrand rows); labels come
+    // from the Brand table, so the dashboard never invents its own.
     branch: {
       id: branch.id,
       name: branch.name,
       address: branch.address,
       is_active: branch.isActive,
       is_archived: branch.isArchived,
-      brand_type: branch.brandType,
+      brands: await branchBrandSlugs(branch.id),
       // PHASE 11/15 — the delivery rules this outlet currently operates under.
       delivery_radius_km: Number(branch.deliveryRadiusKm),
       delivery_fee: Number(branch.deliveryFee),
@@ -552,7 +554,7 @@ export async function riderDashboard(user: RiderDashboardIdentity) {
 // ── Customer ──────────────────────────────────────────────────────────
 export async function customerDashboard(user: DashboardIdentity) {
   const [branches, recentOrders, activeCount, totalOrders] = await Promise.all([
-    prisma.branch.findMany({ where: { isActive: true }, orderBy: { createdAt: "desc" } }),
+    prisma.branch.findMany({ where: { isActive: true }, include: BRANCH_BRANDS_INCLUDE, orderBy: { createdAt: "desc" } }),
     prisma.order.findMany({ where: { customerId: user.id }, include: ORDER_INCLUDE, orderBy: { createdAt: "desc" }, take: 5 }),
     prisma.order.count({ where: { customerId: user.id, status: { notIn: ["delivered", "cancelled"] } } }),
     prisma.order.count({ where: { customerId: user.id } }),

@@ -2,7 +2,8 @@
 # MAD DELIVERY HQ
 
 A **Next.js-only full-stack** multi-branch food-delivery and restaurant-operations platform
-built for Bangladesh. Two restaurant brands (**Cheez!** and **Madchef**) across multiple
+built for Bangladesh. Several restaurant brands (launched with **Cheez!** and **Madchef**; brands are data,
+managed by the super admin at `/admin/brands`) across multiple
 branches, seven user roles, Bangla-first, Taka-only.
 
 The public storefront, authentication, every role dashboard and the entire API are served by

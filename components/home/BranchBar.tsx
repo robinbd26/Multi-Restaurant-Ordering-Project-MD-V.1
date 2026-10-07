@@ -13,12 +13,14 @@ import { accuracyKm } from "@/lib/constants/location";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { useLocationRequest } from "@/lib/hooks/use-location-request";
 
+import { useBrandNames } from "@/components/home/use-brand-names";
 export interface BranchBarContext {
   state: "ok" | "no-location" | "out-of-zone";
   branchName: string | null;
   /** The branch on screen (explicit or resolved nearest); null outside "ok". */
   branchId: number | null;
-  brandType: string | null;
+  /** Live brand slugs the branch serves, in display order. */
+  brands: string[];
   /** "dine_in" | "cloud_kitchen" — a display badge only. */
   businessType: string | null;
   distanceKm: number | null;
@@ -68,6 +70,7 @@ export function BranchBar({
   addresses: DeliverToAddress[];
   branches: BrowseBranchOption[];
 }) {
+  const brandNames = useBrandNames();
   const { t, fmt } = useTranslation();
   const router = useRouter();
   // Same shared live-location flow the location card uses — no second location
@@ -148,9 +151,12 @@ export function BranchBar({
                 {context.branchName}
               </span>
             </span>
-            {context.brandType ? (
-              <span className="rounded-full border border-white/10 bg-[#1c1c24] px-2.5 py-0.5 text-[0.72rem] font-semibold text-[#a0a0b0]">
-                {t(`brandType.${context.brandType}`)}
+            {context.brands.length ? (
+              <span
+                className="rounded-full border border-white/10 bg-[#1c1c24] px-2.5 py-0.5 text-[0.72rem] font-semibold text-[#a0a0b0]"
+                data-testid="home-branch-brands"
+              >
+                {brandNames(context.brands)}
               </span>
             ) : null}
             {context.businessType ? (

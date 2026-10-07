@@ -77,6 +77,41 @@ const PRODUCTS: {
 
 const BRANCH_NAME = "Main Branch";
 
+/**
+ * The brands the platform launched with — the same rows the
+ * 20261007120000_brands_as_data migration creates on an existing database.
+ */
+const SEED_BRANDS = [
+  {
+    slug: "cheez",
+    name: "Cheez! Pizza",
+    nameBn: "চিজ! পিৎজা",
+    logo: "/images/brand/cheez-logo.webp",
+    accentColor: "#f5a623",
+    description: "Thick crust, thin crust, pasta, boats & more",
+    descriptionBn: "থিক ক্রাস্ট, থিন ক্রাস্ট, পাস্তা, বোট ও আরও অনেক কিছু",
+    tagline: "Pizza Specialist",
+    taglineBn: "পিৎজা স্পেশালিস্ট",
+    emoji: "🍕",
+    showCrustGuide: true,
+    sortOrder: 0,
+  },
+  {
+    slug: "madchef",
+    name: "Madchef",
+    nameBn: "ম্যাডশেফ",
+    logo: "/images/brand/madchef-logo.webp",
+    accentColor: "#e8192c",
+    description: "Burgers, wraps, rice meals, poutines & more",
+    descriptionBn: "বার্গার, র‍্যাপ, রাইস মিল, পুটিন ও আরও অনেক কিছু",
+    tagline: "Gourmet Kitchen",
+    taglineBn: "গুরমে কিচেন",
+    emoji: "🔥",
+    showCrustGuide: false,
+    sortOrder: 1,
+  },
+];
+
 /** Idempotently replace a product's variations with the given set. Exactly one
  * enabled default is guaranteed. Safe to run repeatedly (delete + recreate). */
 async function seedVariations(
@@ -214,12 +249,35 @@ async function main() {
   }
   const gulshanZoneId = await zoneIdByName("Gulshan");
 
+  // ── Brands ──────────────────────────────────────────────────────────
+  // Brands are data (/admin/brands). The seed creates the two the platform
+  // launched with, but never overwrites one that already exists: a super admin's
+  // edits (logo, colour, copy, order) survive re-seeding.
+  for (const b of SEED_BRANDS) {
+    await prisma.brand.upsert({ where: { slug: b.slug }, update: {}, create: b });
+  }
+  console.log(`✔ Brands: ${SEED_BRANDS.map((b) => b.slug).join(", ")}`);
+  /** Make a branch serve exactly these brand slugs (idempotent). */
+  async function setSeedBranchBrands(branchId: number, slugs: string[]): Promise<void> {
+    const brands = await prisma.brand.findMany({ where: { slug: { in: slugs } } });
+    await prisma.branchBrand.deleteMany({ where: { branchId, brandId: { notIn: brands.map((b) => b.id) } } });
+    for (const brand of brands) {
+      await prisma.branchBrand.upsert({
+        where: { branchId_brandId: { branchId, brandId: brand.id } },
+        update: {},
+        create: { branchId, brandId: brand.id },
+      });
+    }
+  }
+
   // ── Branch ──────────────────────────────────────────────────────────
   let branch = await prisma.branch.findFirst({ where: { name: BRANCH_NAME } });
   branch = branch
-    ? await prisma.branch.update({ where: { id: branch.id }, data: { address: "Dhaka, Bangladesh", phone: "01000000000", email: "branch@example.com", isActive: true, brandType: "combined", zoneId: gulshanZoneId } })
-    : await prisma.branch.create({ data: { name: BRANCH_NAME, address: "Dhaka, Bangladesh", phone: "01000000000", email: "branch@example.com", isActive: true, brandType: "combined", zoneId: gulshanZoneId } });
-  console.log(`✔ Branch: ${branch.name} (${branch.brandType})`);
+    ? await prisma.branch.update({ where: { id: branch.id }, data: { address: "Dhaka, Bangladesh", phone: "01000000000", email: "branch@example.com", isActive: true, zoneId: gulshanZoneId } })
+    : await prisma.branch.create({ data: { name: BRANCH_NAME, address: "Dhaka, Bangladesh", phone: "01000000000", email: "branch@example.com", isActive: true, zoneId: gulshanZoneId } });
+  // The main demo branch serves both launch brands.
+  await setSeedBranchBrands(branch.id, SEED_BRANDS.map((b) => b.slug));
+  console.log(`✔ Branch: ${branch.name} (${SEED_BRANDS.map((b) => b.slug).join(" + ")})`);
 
   // ── Assign branch manager (history-preserving, idempotent) ─────────
   const manager = users["branch_manager"];
@@ -297,8 +355,9 @@ async function main() {
     const geo = { latitude: new Prisma.Decimal("23.7800000"), longitude: new Prisma.Decimal("90.4050000"), deliveryRadiusKm: new Prisma.Decimal("8.0"), pickupEnabled: true };
     const zoneId = await zoneIdByName(b.zoneName);
     const br = existingB
-      ? await prisma.branch.update({ where: { id: existingB.id }, data: { brandType: b.brand, isActive: true, zoneId, ...geo } })
-      : await prisma.branch.create({ data: { name: b.name, address: "Dhaka, Bangladesh", phone: "01000000000", email: "branch@example.com", isActive: true, brandType: b.brand, zoneId, ...geo } });
+      ? await prisma.branch.update({ where: { id: existingB.id }, data: { isActive: true, zoneId, ...geo } })
+      : await prisma.branch.create({ data: { name: b.name, address: "Dhaka, Bangladesh", phone: "01000000000", email: "branch@example.com", isActive: true, zoneId, ...geo } });
+    await setSeedBranchBrands(br.id, [b.brand]);
     const existingCat = await prisma.category.findFirst({ where: { branchId: br.id, name: b.category } });
     const cat = existingCat ?? (await prisma.category.create({ data: { branchId: br.id, name: b.category, normalizedName: b.category.trim().toLowerCase(), description: b.category } }));
     const defPrice = b.product.variations.find((v) => v.isDefault)?.price ?? b.product.variations[0].price;
@@ -307,7 +366,7 @@ async function main() {
       ? await prisma.product.update({ where: { id: existingP.id }, data: { categoryId: cat.id, brand: b.brand, description: b.product.description, price: new Prisma.Decimal(defPrice), isAvailable: true } })
       : await prisma.product.create({ data: { branchId: br.id, categoryId: cat.id, name: b.product.name, brand: b.brand, description: b.product.description, price: new Prisma.Decimal(defPrice), isAvailable: true } });
     await seedVariations(prod.id, b.product.variations);
-    console.log(`✔ Brand branch: ${br.name} (${br.brandType})`);
+    console.log(`✔ Brand branch: ${br.name} (${b.brand})`);
   }
 
   // ── Phase B demo data: coverage, prep time, pickup, tables, employees, attendance ──

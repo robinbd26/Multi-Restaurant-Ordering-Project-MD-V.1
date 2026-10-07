@@ -13,6 +13,8 @@ import { categoriesForUser } from "@/lib/selectors";
 import { serializeCategory } from "@/lib/serializers";
 import type { Category } from "@/types";
 
+import { BRANCH_BRANDS_INCLUDE, branchBrandSlugsOf } from "@/lib/brands/branch";
+import { assignableBrands } from "@/lib/services/brands";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("catalog.newProduct") };
@@ -27,7 +29,7 @@ export default async function AdminProductCreatePage() {
   const branches = await prisma.branch.findMany({
     where: { isActive: true },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, brandType: true },
+    select: { id: true, name: true, ...BRANCH_BRANDS_INCLUDE },
   });
   const categories = (await categoriesForUser(me)).map(serializeCategory) as Category[];
 
@@ -55,7 +57,8 @@ export default async function AdminProductCreatePage() {
           categories={categories}
           basePath="/admin/products"
           categoryCreateHref="/admin/categories"
-          branches={branches.map((b) => ({ id: b.id, name: b.name, brand_type: b.brandType }))}
+          branches={branches.map((b) => ({ id: b.id, name: b.name, brands: branchBrandSlugsOf(b) }))}
+          brands={await assignableBrands()}
         />
       )}
     </>

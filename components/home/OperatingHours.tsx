@@ -3,6 +3,7 @@ import Image from "next/image";
 import { getT } from "@/lib/i18n/server";
 import type { PublicHomeBranch } from "@/lib/selectors";
 
+import { isLateNight } from "@/lib/services/branch-hours";
 /**
  * req #8 — no hardcoded demo branches. Branch names and opening groupings come
  * from the database (publicHomeBranches); late-night delivery is decided by the
@@ -10,7 +11,7 @@ import type { PublicHomeBranch } from "@/lib/selectors";
  */
 function lateNightBranches(branches: PublicHomeBranch[]): string[] {
   return branches
-    .filter((b) => b.brandType === "cheez" || b.brandType === "combined")
+    .filter((b) => isLateNight(b.brands))
     .map((b) => b.name);
 }
 

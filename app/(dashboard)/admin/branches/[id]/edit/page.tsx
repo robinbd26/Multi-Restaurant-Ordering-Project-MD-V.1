@@ -10,6 +10,7 @@ import { getT } from "@/lib/i18n/server";
 import { activeZones } from "@/lib/services/area-master";
 import type { Branch } from "@/types";
 
+import { assignableBrands } from "@/lib/services/brands";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("branches.editMetaTitle") };
@@ -42,7 +43,7 @@ export default async function BranchEditPage({ params }: { params: Promise<{ id:
       />
       <Card className="max-w-3xl">
         <CardContent className="py-6">
-          <BranchForm branch={branch} zones={zones} />
+          <BranchForm branch={branch} zones={zones} brands={await assignableBrands()} />
         </CardContent>
       </Card>
     </>

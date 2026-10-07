@@ -20,6 +20,7 @@ import { branchHoldStateById } from "@/lib/services/branch-ops";
 import { branchManagerDashboard } from "@/lib/services/dashboards";
 import type { BranchManagerDashboard } from "@/types";
 
+import { BrandBadges } from "@/components/brands/brand-badges";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("branchManager.dashboardTitle") };
@@ -122,8 +123,8 @@ export default async function BranchManagerDashboardPage() {
         </CardContent>
       </Card>
 
-      {/* req #5 — the manager's assigned branch identity: name + brand type (from
-          the Branch.brandType column) + status. Server-resolved from the session. */}
+      {/* req #5 — the manager's assigned branch identity: name + the brands it
+          serves (BranchBrand rows) + status. Server-resolved from the session. */}
       <Card className="mb-4.5">
         <CardContent className="flex flex-wrap items-center gap-x-8 gap-y-3">
           <div className="min-w-0">
@@ -133,7 +134,7 @@ export default async function BranchManagerDashboardPage() {
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{t("branchInfo.branchType")}</p>
             <p className="mt-0.5" data-testid="bm-branch-type">
-              <Badge tone="blue">{t(`brands.${data.branch.brand_type ?? "combined"}`)}</Badge>
+              <BrandBadges slugs={data.branch.brands ?? []} emptyLabel={t("brands.noneAssigned")} />
             </p>
           </div>
           <div className="min-w-0">

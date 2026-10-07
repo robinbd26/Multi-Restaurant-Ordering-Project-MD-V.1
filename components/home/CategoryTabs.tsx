@@ -1,25 +1,24 @@
 "use client";
 
-import type { Brand, Category, CategoryKey } from "@/lib/home/types";
+import { accentForeground } from "@/lib/brands/shared";
+import type { Category, CategoryKey } from "@/lib/home/types";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
 
 export function CategoryTabs({
   categories,
-  brand,
+  accent,
   active,
   onChange,
 }: {
   categories: Category[];
-  brand: Brand;
+  /** The active brand's accent colour (Brand.accentColor). */
+  accent: string;
   active: CategoryKey | "all";
   onChange: (key: CategoryKey | "all") => void;
 }) {
   const { t } = useTranslation();
-  const isMad = brand === "madchef";
-  const activeCls = isMad
-    ? "border-brand-500 bg-brand-500 text-white"
-    : "border-cheez-gold bg-cheez-gold text-black";
+  const activeStyle = { borderColor: accent, background: accent, color: accentForeground(accent) };
 
   const tabs: { key: CategoryKey | "all"; label: string; emoji: string }[] = [
     { key: "all", label: t("home.categoryTabs.all"), emoji: "🍽️" },
@@ -38,9 +37,10 @@ export function CategoryTabs({
           className={cn(
             "flex shrink-0 items-center gap-1.5 rounded-full border px-4 py-2 text-[0.82rem] font-semibold transition-colors",
             active === tab.key
-              ? activeCls
+              ? ""
               : "border-white/10 bg-transparent text-white/60 hover:border-white/25 hover:text-white",
           )}
+          style={active === tab.key ? activeStyle : undefined}
         >
           <span>{tab.emoji}</span>
           {tab.label}

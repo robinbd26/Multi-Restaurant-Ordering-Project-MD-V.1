@@ -7,6 +7,7 @@ import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
 import { activeZones } from "@/lib/services/area-master";
 
+import { assignableBrands } from "@/lib/services/brands";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("branches.createTitle") };
@@ -30,7 +31,7 @@ export default async function BranchCreatePage() {
       />
       <Card className="max-w-3xl">
         <CardContent className="py-6">
-          <BranchForm zones={zones} />
+          <BranchForm zones={zones} brands={await assignableBrands()} />
         </CardContent>
       </Card>
     </>

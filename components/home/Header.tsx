@@ -16,6 +16,7 @@ import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
 import type { User } from "@/types";
 
+import { brandName } from "@/lib/brands/shared";
 const PHONE = SUPPORT_PHONE;
 
 function PhoneIcon({ className }: { className?: string }) {
@@ -36,8 +37,8 @@ export function Header({
   /** DB-built product search index, threaded down to <NavSearch>. */
   searchIndex: SearchEntry[];
 }) {
-  const { count, openCart } = useHomeCart();
-  const { t, fmt } = useTranslation();
+  const { count, openCart, brandList } = useHomeCart();
+  const { t, fmt, locale } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -86,7 +87,7 @@ export function Header({
       >
         <span className="topbar-pulse">{t("home.header.nowTakingOrders")}</span>
         <span className="topbar-sep opacity-50">|</span>
-        <span className="topbar-brand-txt">Cheez!&nbsp;&nbsp;•&nbsp;&nbsp;Madchef</span>
+        <span className="topbar-brand-txt">{brandList.map((b) => brandName(b, locale)).join("\u00a0\u00a0•\u00a0\u00a0")}</span>
         <span className="topbar-sep opacity-50">|</span>
         <a href={`tel:${PHONE.replace("-", "")}`} className="inline-flex items-center gap-1.5 hover:underline">
           <PhoneIcon className="size-3.5" /> {PHONE}

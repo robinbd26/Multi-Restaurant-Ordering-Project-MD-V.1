@@ -25,15 +25,14 @@ import {
   time,
 } from "@/lib/validation/rules";
 import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-validation";
+import { brandName, type BrandInfo } from "@/lib/brands/shared";
 import type { Branch } from "@/types";
 
-const BRAND_TYPES = ["cheez", "madchef", "combined"];
 const BUSINESS_TYPES = ["dine_in", "cloud_kitchen"];
 
 const RULES: FieldRules = {
   name: [required],
   phone: [required, phone],
-  brand_type: [required, oneOf(BRAND_TYPES)],
   business_type: [required, oneOf(BUSINESS_TYPES)],
   zone_id: [selectRequired], // Zone / Area is mandatory — it groups branches for filters and reports
   // The branch PIN anchors every delivery area drawn for this branch, so it is
@@ -57,12 +56,20 @@ const FILES = { logo: false };
 export function BranchForm({
   branch,
   zones = [],
+  brands,
 }: {
   branch?: Branch;
+  /** Every non-archived brand (assignableBrands), offered as checkboxes. */
+  brands: BrandInfo[];
   /** ITEM 7 — the master zone list, for the branch's location-tag field. */
   zones?: { id: number; name: string }[];
 }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  // Brands served: a new branch starts with every ACTIVE brand ticked (the old
+  // "combined" default); an existing one with exactly what it serves now.
+  const [servedBrands, setServedBrands] = useState<string[]>(
+    () => branch?.brands ?? brands.filter((b) => b.is_active).map((b) => b.slug),
+  );
   // The pin lives in state so the picker and the form's hidden inputs stay in
   // step; the values are plain decimal strings, exactly as the server expects.
   const [pin, setPin] = useState({
@@ -92,18 +99,28 @@ export function BranchForm({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field
-          label={t("branches.brandType")}
-          name="brand_type"
-          required
-          hint={t("branches.brandTypeHint")}
-          error={errors.brand_type}
-        >
-          <Select name="brand_type" defaultValue={branch?.brand_type ?? "combined"}>
-            <option value="cheez">{t("brands.cheez")}</option>
-            <option value="madchef">{t("brands.madchef")}</option>
-            <option value="combined">{t("brands.combined")}</option>
-          </Select>
+        {/* Which brands this branch serves — one or several. The list is the
+            Brand table, so a brand the super admin adds appears here at once.
+            Posted as one comma-separated field (repeated form keys collapse). */}
+        <Field label={t("branches.brandsServed")} required hint={t("branches.brandsServedHint")} error={errors.brands}>
+          <input type="hidden" name="brands" value={servedBrands.join(",")} />
+          <div className="flex flex-wrap gap-x-5 gap-y-2 pt-1.5" data-testid="branch-brands">
+            {brands.map((b) => (
+              <Checkbox
+                key={b.slug}
+                label={brandName(b, locale) + (b.is_active ? "" : ` (${t("brands.inactive")})`)}
+                value={b.slug}
+                checked={servedBrands.includes(b.slug)}
+                onChange={(e) =>
+                  setServedBrands((cur) =>
+                    e.target.checked
+                      ? brands.map((x) => x.slug).filter((s) => s === b.slug || cur.includes(s))
+                      : cur.filter((s) => s !== b.slug),
+                  )
+                }
+              />
+            ))}
+          </div>
         </Field>
         {/* Which master zone this branch sits in (Gulshan, Banani, …). A
             GROUPING TAG for filtering and reports — never a coverage grant.

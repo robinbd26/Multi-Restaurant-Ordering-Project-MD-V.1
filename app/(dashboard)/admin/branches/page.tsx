@@ -28,6 +28,8 @@ import { getAdminBranchSummary } from "@/lib/services/page-summaries";
 import { looksLikePhoneQuery, normalizeBdPhoneForSearch } from "@/lib/validation/server";
 import type { Prisma } from "@prisma/client";
 
+import { BRANCH_BRANDS_INCLUDE, branchBrandSlugsOf } from "@/lib/brands/branch";
+import { BrandBadges } from "@/components/brands/brand-badges";
 const BASE = "/admin/branches";
 const SORTABLE = ["name", "createdAt"] as const;
 const STATES = ["active", "inactive", "archived", "unassigned"] as const;
@@ -83,7 +85,7 @@ export default async function BranchListPage({
     prisma.branch.count({ where }),
     prisma.branch.findMany({
       where,
-      include: { manager: true },
+      include: { manager: true, ...BRANCH_BRANDS_INCLUDE },
       orderBy: sort === "createdAt" ? { createdAt: direction } : { name: direction },
       skip,
       take,
@@ -100,7 +102,7 @@ export default async function BranchListPage({
       name: b.name,
       address: b.address,
       phone: b.phone,
-      brand_type: b.brandType,
+      brands: branchBrandSlugsOf(b),
       is_active: b.isActive,
       is_archived: b.isArchived,
       delivery_radius_km: String(b.deliveryRadiusKm),
@@ -181,7 +183,7 @@ export default async function BranchListPage({
                     {branch.name}
                   </Link>
                   <span className="mt-0.5 block">
-                    <Badge tone="blue">{t(`brands.${branch.brand_type ?? "combined"}`)}</Badge>
+                    <BrandBadges slugs={branch.brands} emptyLabel={t("brands.noneAssigned")} />
                   </span>
                   <span className="block max-w-56 truncate text-xs text-fg-subtle">{branch.address}</span>
                 </Td>

@@ -130,7 +130,8 @@
     "commissions": "Commissions",
     "deductions": "Deductions",
     "inventory": "Inventory",
-    "deliveryZones": "Delivery Zones"
+    "deliveryZones": "Delivery Zones",
+    "brands": "Brands"
   },
   "navGroup": {
     "people": "People",
@@ -359,13 +360,9 @@
       "badge": "Dhaka's #1 Food Delivery Platform",
       "blurbPre": "Order from",
       "blurbAnd": "and",
-      "blurbPost": "— two of Dhaka's most loved restaurants — all in one place. {n} branches, one helpline.",
+      "blurbPost": "— Dhaka's most loved restaurants, all in one place. {n} branches, one helpline.",
       "browseMenu": "Browse Menu",
       "callToOrder": "Call to Order",
-      "cheezDesc": "Thick crust, thin crust, pasta, boats & more",
-      "cheezTag": "Pizza Specialist",
-      "madchefDesc": "Burgers, wraps, rice meals, poutines & more",
-      "madchefTag": "Gourmet Kitchen",
       "newHere": "New here?",
       "createAccount": "Create an account",
       "toPlaceOrders": "to place & track orders."
@@ -377,14 +374,8 @@
       "crust3Desc": "Crispier, lighter base",
       "availableForDelivery": "Available for delivery",
       "crustGuideTitle": "Crust & Size Guide",
-      "cheezTagline": "Dhaka's favourite pizza destination — thick, thin, pasta & more",
-      "madchefTagline": "Gourmet burgers, wraps, rice meals & more — made with mad love",
-      "pizzaSpecialist": "Pizza Specialist",
-      "gourmetKitchen": "Gourmet Kitchen",
       "branchesCount": "{n} Branches",
       "openDaily": "Open Daily",
-      "cheezPlaceholder": "Search pizzas, pasta, drinks…",
-      "madchefPlaceholder": "Search burgers, wraps, rice meals…",
       "branchesLower": "{n} branches",
       "noItems": "No items found — try searching for something else.",
       "itemsCount": "{n} items",
@@ -431,7 +422,8 @@
         "Canned Drinks": "Canned Drinks",
         "Desserts": "Desserts"
       },
-      "emptyBrandOtherHasItems": "No items in this brand right now — {brand} has products available."
+      "emptyBrandOtherHasItems": "No items in this brand right now — {brand} has products available.",
+      "searchBrandPlaceholder": "Search the {brand} menu…"
     },
     "categoryTabs": {
       "all": "All"
@@ -1040,8 +1032,6 @@
     "notePlaceholder": "Note (optional)",
     "saving": "Saving…",
     "updateManager": "Update Manager",
-    "brandType": "Brand Type",
-    "brandTypeHint": "Which brand(s) this branch serves.",
     "deliveryRadiusHint": "Coverage radius used for delivery checks.",
     "archivedResult": "The branch was archived — all history is preserved and it no longer accepts new orders.",
     "deletedResult": "The branch was deleted.",
@@ -1056,7 +1046,9 @@
     "businessType": "Branch Type",
     "businessTypeHint": "Shown to customers as a badge. It does not change how orders work.",
     "businessTypeDineIn": "Dine-in restaurant",
-    "businessTypeCloudKitchen": "Cloud kitchen"
+    "businessTypeCloudKitchen": "Cloud kitchen",
+    "brandsServed": "Brands served",
+    "brandsServedHint": "Tick every brand this branch serves. Manage the brand list under Brands."
   },
   "catalog": {
     "title": "Products",
@@ -1819,7 +1811,6 @@
       "selectBrand": "Please select a brand.",
       "brandNotAllowedForBranch": "This brand is not allowed for the selected branch.",
       "categoryBrandMismatch": "The selected category belongs to a different brand. Choose a category of the same brand, or one that serves both brands.",
-      "invalidBrandType": "Invalid brand type.",
       "invalidBusinessType": "Invalid branch type.",
       "zoneRequired": "Select a Zone / Area for this branch.",
       "variationsInvalid": "Variation data is invalid.",
@@ -2125,6 +2116,22 @@
       "messageRequired": "Type a message or attach a photo.",
       "photoTooLarge": "A photo can be at most {mb} MB.",
       "quickReplyInvalid": "That quick reply is not available."
+    },
+    "brands": {
+      "nameRequired": "Brand name is required.",
+      "colorInvalid": "Pick a colour as a 6-digit hex code, like #e8192c.",
+      "sortOrderInvalid": "Display order must be a whole number from 0 to 9999.",
+      "superAdminOnly": "Only the super admin can manage brands.",
+      "notFound": "Brand not found.",
+      "slugInvalid": "Use 2–32 lowercase letters, digits or dashes, starting with a letter or digit.",
+      "slugTaken": "Another brand already uses this key.",
+      "slugImmutable": "A brand's key cannot be changed once it is created.",
+      "reorderInvalid": "The brand order could not be saved. Refresh and try again.",
+      "inUseArchiveInstead": "This brand has products, categories or orders, so it can only be archived.",
+      "branchNeedsBrand": "Choose at least one brand for this branch.",
+      "unknownBrand": "One of the chosen brands does not exist or is archived.",
+      "branchStillSellsBrand": "This branch still has {count} product(s) under {brand}. Move or archive them before removing the brand.",
+      "branchHasNoBrand": "This branch serves no brand yet. Ask the super admin to assign one."
     }
   },
   "states": {
@@ -3554,11 +3561,10 @@
     "thisWeek": "This week"
   },
   "brands": {
-    "cheez": "CHEEZ",
-    "madchef": "MADCHEF",
-    "combined": "Combined (CHEEZ + MADCHEF)",
-    "combinedOption": "COMBINED BRANCH (BOTH)",
-    "both": "Both (CHEEZ + MADCHEF)"
+    "noneAssigned": "No brand assigned",
+    "allBrandsOption": "All brands",
+    "allBrandsShort": "All brands",
+    "inactive": "Inactive"
   },
   "b1": {
     "namedZones": "Named delivery zones",
@@ -3996,7 +4002,7 @@
   },
   "branchInfo": {
     "branchName": "Branch name",
-    "branchType": "Branch type",
+    "branchType": "Brands",
     "deliveryAreas": "Delivery areas",
     "archived": "Archived"
   },
@@ -4307,11 +4313,6 @@
     "viewMenu": "View menu",
     "freeDelivery": "Free delivery"
   },
-  "brandType": {
-    "cheez": "Cheez! Pizza",
-    "madchef": "Madchef",
-    "combined": "Cheez! & Madchef"
-  },
   "cartBranch": {
     "orderingFrom": "Ordering from",
     "switchTitle": "Switch order branch?",
@@ -4401,11 +4402,6 @@
       "shift": "Rest of this shift",
       "until_resumed": "Until I resume"
     }
-  },
-  "brandName": {
-    "cheez": "Cheez!",
-    "madchef": "Madchef",
-    "combined": "Cheez! + Madchef"
   },
   "branchRemoval": {
     "archive": "Archive",
@@ -4526,5 +4522,58 @@
     "turnOff": "Turn notification sounds off",
     "on": "Sound on",
     "off": "Sound off"
+  },
+  "brandsAdmin": {
+    "title": "Brands",
+    "subtitle": "The restaurant brands sold on the platform. Everything that shows a brand reads this list.",
+    "listTitle": "Live brands",
+    "listSub": "Shown to customers in this order. Use the arrows to reorder.",
+    "archivedTitle": "Archived brands",
+    "archivedSub": "Hidden everywhere. Their products and orders keep their history.",
+    "newBrand": "New brand",
+    "newBrandSub": "Add a brand. Branches can serve it as soon as it is saved.",
+    "editBrand": "Edit brand",
+    "create": "Create brand",
+    "emptyTitle": "No brands yet",
+    "emptyDesc": "Add the first brand to start building menus.",
+    "brand": "Brand",
+    "usage": "Used by",
+    "usageLine": "{branches} branches · {products} products · {orders} order lines",
+    "name": "Name",
+    "nameBn": "Name in Bangla",
+    "nameBnHint": "Leave empty to show the English name.",
+    "slug": "Key",
+    "slugHint": "A short permanent key, like cheez. It cannot be changed later.",
+    "slugLockedHint": "Products and orders refer to this key, so it is fixed.",
+    "accentColor": "Accent colour",
+    "colorPreview": "Button preview",
+    "description": "Short description",
+    "descriptionHint": "One line under the brand name on the homepage.",
+    "descriptionBn": "Short description in Bangla",
+    "tagline": "Tagline",
+    "taglineHint": "Two or three words, like “Pizza Specialist”.",
+    "taglineBn": "Tagline in Bangla",
+    "emoji": "Icon emoji",
+    "emojiHint": "Shown when there is no logo and beside the tagline.",
+    "logo": "Logo",
+    "logoHint": "Square image works best. JPG, PNG or WebP.",
+    "sortOrder": "Display order",
+    "sortOrderHint": "Lower numbers show first. Leave empty to add at the end.",
+    "activeLabel": "Active",
+    "activeHint": "Inactive brands are hidden from customers but can still be set up.",
+    "crustGuideLabel": "Show the crust & size guide",
+    "crustGuideHint": "The pizza crust guide above this brand's menu. Turn on for pizza brands.",
+    "crustGuideOn": "Crust guide on",
+    "archived": "Archived",
+    "activate": "Activate",
+    "deactivate": "Deactivate",
+    "archive": "Archive",
+    "restore": "Restore",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "archiveTitle": "Archive {name}?",
+    "archiveDesc": "The brand disappears from the storefront and every form. It is removed from the {branches} branch(es) serving it. Products and orders keep their history, and you can restore it later.",
+    "deleteTitle": "Delete {name}?",
+    "deleteDesc": "Nothing refers to this brand, so it will be removed permanently."
   }
 }

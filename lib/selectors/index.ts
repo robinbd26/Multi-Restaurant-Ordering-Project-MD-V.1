@@ -1,5 +1,6 @@
 // Role-scoped query helpers — ported from the previous app selectors.
 import type { Prisma, User } from "@prisma/client";
+import { BRANCH_BRANDS_INCLUDE, branchLiveBrandSlugsOf } from "@/lib/brands/branch";
 
 import { ROLES } from "@/lib/constants/enums";
 import { looksLikePhoneQuery, normalizeBdPhoneForSearch } from "@/lib/validation/server";
@@ -169,7 +170,8 @@ export interface PublicHomeBranch {
   id: number;
   name: string;
   address: string;
-  brandType: string;
+  /** Live brand slugs the branch serves, in brand display order. */
+  brands: string[];
   isActive: boolean;
   openingTime: string | null;
   closingTime: string | null;
@@ -183,7 +185,7 @@ export async function publicHomeBranches(): Promise<PublicHomeBranch[]> {
       id: true,
       name: true,
       address: true,
-      brandType: true,
+      brands: { select: { brand: true } },
       isActive: true,
       openingTime: true,
       closingTime: true,
@@ -199,7 +201,7 @@ export async function publicHomeBranches(): Promise<PublicHomeBranch[]> {
     id: b.id,
     name: b.name,
     address: b.address,
-    brandType: b.brandType,
+    brands: branchLiveBrandSlugsOf(b),
     isActive: b.isActive,
     openingTime: b.openingTime,
     closingTime: b.closingTime,
@@ -274,7 +276,7 @@ export async function productsForUser(
   }
   const finalWhere = { AND: [where, searchFilter, categoryFilter] };
   const include = {
-    branch: true,
+    branch: { include: BRANCH_BRANDS_INCLUDE },
     category: true,
     variations: { orderBy: { sortOrder: "asc" as const } },
   };

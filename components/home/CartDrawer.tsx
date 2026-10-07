@@ -238,6 +238,9 @@ export function CartDrawer({
       product_id: Number(l.itemId),
       ...(l.variationId != null ? { variation_id: l.variationId } : {}),
       ...(l.variationType ? { variation_type: l.variationType } : {}),
+      // The brand tab it came from: a hint the server checks, so a product sold
+      // under several brands is recorded under the one the customer chose.
+      ...(l.brand ? { brand: l.brand } : {}),
       quantity: l.qty,
       food_note: l.foodNote ?? "",
     }));

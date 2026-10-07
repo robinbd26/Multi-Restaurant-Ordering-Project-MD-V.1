@@ -14,6 +14,7 @@ import { requireRole } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
 import type { Branch, ManagerAssignment, Paginated, User } from "@/types";
 
+import { BrandBadges } from "@/components/brands/brand-badges";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("branches.branchInfo") };
@@ -77,7 +78,7 @@ export default async function BranchDetailPage({ params }: { params: Promise<{ i
             action={branch.is_active ? <Badge tone="green">{t("common.active")}</Badge> : <Badge tone="red">{t("common.inactive")}</Badge>}
           />
           <CardContent className="grid gap-x-8 sm:grid-cols-2">
-            <InfoRow label={t("branches.brandType")} value={t(`brands.${branch.brand_type ?? "combined"}`)} />
+            <InfoRow label={t("branches.brandsServed")} value={<BrandBadges slugs={branch.brands ?? []} emptyLabel={t("brands.noneAssigned")} />} />
             <InfoRow label={t("branches.businessType")} value={t(`branches.businessType${branch.business_type === "cloud_kitchen" ? "CloudKitchen" : "DineIn"}`)} />
             <InfoRow label={t("common.phone")} value={branch.phone} />
             <InfoRow label={t("common.email")} value={branch.email} />

@@ -7,6 +7,7 @@ import { useTranslation } from "@/lib/i18n/use-translation";
 import { branchOpenStatus, parseMinutes, type BranchOpenStatus } from "@/lib/services/branch-hours";
 import { cn } from "@/lib/utils";
 
+import { useBrandNames } from "@/components/home/use-brand-names";
 /**
  * req #8 — this section is now driven ENTIRELY by the database (see
  * `publicHomeBranches`). The previous implementation rendered a hardcoded array
@@ -51,7 +52,7 @@ function liveStatus(
   t: (key: string, vars?: Record<string, string | number>) => string,
 ): LiveStatus {
   const minutes = now.getHours() * 60 + now.getMinutes();
-  const status = branchOpenStatus(branch, minutes);
+  const status = branchOpenStatus({ ...branch, brandSlugs: branch.brands }, minutes);
   const open = parseMinutes(branch.openingTime) ?? 660; // 11:00 AM default
   const close = parseMinutes(branch.closingTime) ?? 1380; // 11:00 PM default
   const lastEntry = Math.max(open, close - 30);
@@ -108,6 +109,7 @@ function StatusChip({ live }: { live: LiveStatus }) {
 
 export function BranchesCoverage({ branches }: { branches: PublicHomeBranch[] }) {
   const { t, fmt } = useTranslation();
+  const brandNames = useBrandNames();
   const [open, setOpen] = useState<number | null>(null);
   const [now, setNow] = useState<Date | null>(null);
 
@@ -175,7 +177,7 @@ export function BranchesCoverage({ branches }: { branches: PublicHomeBranch[] })
           {branches.map((branch, index) => {
             const disabled = !branch.isActive;
             const meta = TYPE_META[disabled ? "closed" : "dining"];
-            const metaLabel = t(`brands.${branch.brandType}`);
+            const metaLabel = brandNames(branch.brands);
             const isOpen = open === branch.id;
             const live = now ? liveStatus(branch, now, t) : null;
             return (

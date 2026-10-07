@@ -81,7 +81,10 @@ export interface Branch {
   zone_id?: number | null;
   zone_name?: string | null;
   delivery_radius_km: string;
-  brand_type?: string; // cheez | madchef | combined
+  /** Slugs of the brands this branch serves (Brand.slug). */
+  brands?: string[];
+  /** Deprecated, derived from `brands`: one slug, "combined" for several, "" for none. */
+  brand_type?: string;
   /** "dine_in" | "cloud_kitchen" — a display badge only, never an order type. */
   business_type?: string;
   /** Branch-level delivery fee (৳, 2dp string). 0 = free. */
@@ -107,8 +110,8 @@ export interface Category {
   branch: number | null; // null = global ("Main Branch")
   branch_name: string | null;
   is_global: boolean;
-  /** "cheez" | "madchef" — null = serves BOTH brands (the default). */
-  brand: "cheez" | "madchef" | null;
+  /** A Brand.slug — null = serves EVERY brand (the default). */
+  brand: string | null;
   name: string;
   description: string;
   is_active: boolean;
@@ -168,6 +171,8 @@ export interface OrderItem {
   product_image: string | null;
   variation: number | null;
   variation_name: string;
+  /** Brand slug the line was sold under ("" for legacy multi-brand lines). */
+  brand?: string;
   quantity: number;
   unit_price: string;
   food_note: string;
@@ -498,7 +503,7 @@ export interface BranchManagerDashboard {
     is_active: boolean;
     // req #5 — branch identity shown on the Branch Manager dashboard.
     is_archived?: boolean;
-    brand_type?: string;
+    brands?: string[];
     delivery_area_count?: number;
     delivery_radius_km?: number;
     delivery_fee?: number;

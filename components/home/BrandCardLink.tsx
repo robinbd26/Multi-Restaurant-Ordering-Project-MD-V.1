@@ -1,6 +1,6 @@
 "use client";
 
-import type { MouseEvent, ReactNode } from "react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 
 import { useHomeCart } from "@/components/home/home-cart-context";
 import type { Brand } from "@/lib/home/types";
@@ -23,10 +23,15 @@ const MENU_SECTION_ID = "menu-section";
 export function BrandCardLink({
   brand,
   className,
+  style,
+  testId,
   children,
 }: {
   brand: Brand;
+  /** Defaults to the hero card id; other placements (the footer) pass their own. */
+  testId?: string;
   className?: string;
+  style?: CSSProperties;
   children: ReactNode;
 }) {
   const { setBrand } = useHomeCart();
@@ -47,7 +52,8 @@ export function BrandCardLink({
     <a
       href={`#${MENU_SECTION_ID}`}
       className={className}
-      data-testid={`hero-brand-card-${brand}`}
+      style={style}
+      data-testid={testId ?? `hero-brand-card-${brand}`}
       onClick={onClick}
     >
       {children}

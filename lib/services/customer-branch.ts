@@ -14,6 +14,7 @@ import {
 } from "@/lib/services/customer-location";
 import { isBranchOpenNow } from "@/lib/services/branch-hours";
 
+import { BRANCH_BRANDS_INCLUDE, branchBrandSlugsOf, branchLiveBrandSlugsOf } from "@/lib/brands/branch";
 export { isBranchCoveredForCustomer };
 
 /**
@@ -37,7 +38,8 @@ export interface CustomerBranchContext {
   branch: {
     id: number;
     name: string;
-    brandType: string;
+    /** Live brand slugs the branch serves, in display order. */
+    brands: string[];
     /** "dine_in" | "cloud_kitchen" — a display badge only. */
     businessType: string;
     address: string;
@@ -105,6 +107,7 @@ export async function resolveCustomerBranch(
 
   const branch = await prisma.branch.findFirst({
     where: { id: targetBranchId, isActive: true, isArchived: false },
+    include: BRANCH_BRANDS_INCLUDE,
   });
   if (!branch) {
     return { ...EMPTY, state: "out-of-zone", pointSource: nearest.pointSource };
@@ -128,8 +131,8 @@ export async function resolveCustomerBranch(
     branch: {
       id: branch.id,
       name: branch.name,
-      brandType: branch.brandType,
-      businessType: branch.businessType,
+      brands: branchLiveBrandSlugsOf(branch),
+          businessType: branch.businessType,
       address: branch.address,
       pickupEnabled: branch.pickupEnabled,
       prepTimeMinutes: branch.prepTimeMinutes,
@@ -297,6 +300,7 @@ export async function resolveHomeBranch(
   if (scope.branchId != null) {
     const branch = await prisma.branch.findFirst({
       where: { id: scope.branchId, isActive: true, isArchived: false },
+      include: BRANCH_BRANDS_INCLUDE,
     });
     if (branch) {
       const selection: BrowseScope = { deliverTo: target.deliverTo, branchId: branch.id };
@@ -316,15 +320,15 @@ export async function resolveHomeBranch(
 
       // No distance and no fee: both are properties of a delivery that cannot
       // happen from here, and inventing them would be the lie the bar exists to avoid.
-      const hours = isBranchOpenNow(branch);
+      const hours = isBranchOpenNow({ ...branch, brandSlugs: branchBrandSlugsOf(branch) });
       return {
         state: "ok",
         branchId: branch.id,
         branch: {
           id: branch.id,
           name: branch.name,
-          brandType: branch.brandType,
-      businessType: branch.businessType,
+          brands: branchLiveBrandSlugsOf(branch),
+          businessType: branch.businessType,
           address: branch.address,
           pickupEnabled: branch.pickupEnabled,
           prepTimeMinutes: branch.prepTimeMinutes,

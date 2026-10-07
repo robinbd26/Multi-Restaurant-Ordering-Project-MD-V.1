@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { notifyUser } from "@/lib/services/notifications";
 
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
 /**
  * Assign (or remove, when managerId is null) a branch manager — transactional,
  * history-preserving. Ported from apps/branches/services.py.
@@ -197,6 +198,6 @@ export async function updateBranchDeliverySettings(
   }
   // Changing these affects FUTURE orders only — existing orders keep the
   // charge/estimate/distance snapshots taken when they were placed.
-  return prisma.branch.update({ where: { id: branch.id }, data });
+  return prisma.branch.update({ where: { id: branch.id }, data, include: BRANCH_BRANDS_INCLUDE });
 }
 

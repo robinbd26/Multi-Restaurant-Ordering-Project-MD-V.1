@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import type { Brand } from "@/lib/home/types";
+import type { BrandInfo } from "@/lib/brands/shared";
 
 /**
  * localStorage key for THE cart (cart preservation, req #13). v2 = lines that
@@ -104,8 +105,12 @@ interface HomeCartValue {
   brand: Brand;
   /** Activates a menu tab. A brand the browsed branch does not serve is ignored. */
   setBrand: (brand: Brand) => void;
-  /** The menu tabs the browsed branch serves; both for guests / all-branches. */
+  /** The menu tabs the browsed branch serves; every live brand for guests / all-branches. */
   servedBrands: Brand[];
+  /** Every live brand (from the Brand table), for names, logos and colours. */
+  brandList: BrandInfo[];
+  /** The live brand with this slug, if any. */
+  brandInfo: (slug: Brand | null | undefined) => BrandInfo | undefined;
   /** "branch-conflict" = refused; the switch dialog is now pending. */
   add: (input: CartAddInput) => "added" | "branch-conflict";
   /** The branch this cart is locked to, or null when the cart is empty. */
@@ -125,6 +130,9 @@ interface HomeCartValue {
 }
 
 const HomeCartContext = createContext<HomeCartValue | null>(null);
+
+/** Stable empty default, so the dashboard mount never re-renders on a new []. */
+const EMPTY_BRANDS: BrandInfo[] = [];
 
 /**
  * One line per product + size + crust + configured variant, so two sizes (or
@@ -146,26 +154,29 @@ function lineKey(input: CartAddInput): string {
  */
 export function HomeCartProvider({
   children,
-  initialBrand = "cheez",
-  servedBrands: servedBrandsProp = ["cheez", "madchef"],
+  initialBrand = "",
+  servedBrands: servedBrandsProp = [],
+  brandList = EMPTY_BRANDS,
   activeBranchId = null,
   activeBranchName = null,
 }: {
   children: ReactNode;
   /**
-   * Which brand tab opens first. Previously hardcoded to "cheez", which meant a
-   * catalogue containing only Madchef products rendered an empty grid and the
+   * Which brand tab opens first. A hardcoded first brand meant a catalogue
+   * holding only another brand's products rendered an empty grid and the
    * "No items found" message — the products were loaded and eligible, just
    * filtered out by a tab nobody had chosen. The server picks the first brand
    * that actually has products (see app/page.tsx).
    */
   initialBrand?: Brand;
   /**
-   * The brands the browsed branch serves (see lib/home/brands). One entry means
-   * that brand's tab is the only one; several mean the first is the default and
-   * the customer may switch. Defaults to both for guests and all-branches views.
+   * The brand slugs the browsed branch serves (see lib/home/brands). One entry
+   * means that brand's tab is the only one; several mean the first is the
+   * default and the customer may switch. Empty outside the storefront.
    */
   servedBrands?: Brand[];
+  /** Every live brand, for display. Empty outside the storefront. */
+  brandList?: BrandInfo[];
   /**
    * The branch this render is actually scoped to — the SAME id the product
    * grid and header are drawn from (resolveHomeBranch's result), not merely
@@ -181,9 +192,10 @@ export function HomeCartProvider({
   const [rawBrand, setRawBrand] = useState<Brand>(initialBrand);
   // Keyed by content, not identity: the server hands a fresh array every render.
   const servedKey = servedBrandsProp.join(",");
-  const servedBrands = useMemo<Brand[]>(
-    () => (servedKey ? (servedKey.split(",") as Brand[]) : ["cheez", "madchef"]),
-    [servedKey],
+  const servedBrands = useMemo<Brand[]>(() => (servedKey ? servedKey.split(",") : []), [servedKey]);
+  const brandInfo = useCallback(
+    (slug: Brand | null | undefined) => (slug ? brandList.find((b) => b.slug === slug) : undefined),
+    [brandList],
   );
   // Switching the browsed branch re-seeds the tab from the server's choice (the
   // first served brand that has products). "Adjust state when a prop changes",
@@ -192,10 +204,10 @@ export function HomeCartProvider({
   const [prevScopeKey, setPrevScopeKey] = useState(scopeKey);
   if (prevScopeKey !== scopeKey) {
     setPrevScopeKey(scopeKey);
-    setRawBrand(servedBrands.includes(initialBrand) ? initialBrand : servedBrands[0]);
+    setRawBrand(servedBrands.includes(initialBrand) ? initialBrand : (servedBrands[0] ?? ""));
   }
   // Never show a tab the branch does not serve, whatever state got us here.
-  const brand: Brand = servedBrands.includes(rawBrand) ? rawBrand : servedBrands[0];
+  const brand: Brand = servedBrands.includes(rawBrand) ? rawBrand : (servedBrands[0] ?? "");
   const setBrand = useCallback(
     (next: Brand) => {
       if (servedBrands.includes(next)) setRawBrand(next);
@@ -396,6 +408,8 @@ export function HomeCartProvider({
       brand,
       setBrand,
       servedBrands,
+      brandList,
+      brandInfo,
       add,
       remove,
       setQty,
@@ -406,7 +420,7 @@ export function HomeCartProvider({
       dismissToast,
     };
   }, [
-    lines, isOpen, lastAdded, brand, setBrand, servedBrands, add, remove, setQty, setNote, clear, dismissToast,
+    lines, isOpen, lastAdded, brand, setBrand, servedBrands, brandList, brandInfo, add, remove, setQty, setNote, clear, dismissToast,
     cartBranchId, cartBranchName, pendingBranchSwitch, confirmBranchSwitch, cancelBranchSwitch,
   ]);
 

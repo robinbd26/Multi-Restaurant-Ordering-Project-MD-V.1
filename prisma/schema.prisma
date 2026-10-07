@@ -723,10 +723,9 @@ model Branch {
   // branch radius and no named delivery area supplies its own charge. Decimal
   // for money safety; validated non-negative in the service.
   deliveryFee       Decimal   @default(0)
-  // Brand this branch operates: cheez | madchef | combined. Existing branches
-  // are migrated to "combined" (documented safe default) so nothing is hidden;
-  // a combined branch may manage products of either brand.
-  brandType         String    @default("combined")
+  // The brands this branch serves live in BranchBrand (one row per brand). The
+  // old `brandType` string (cheez | madchef | combined) was migrated into those
+  // rows and dropped: brands are data now, so a fifth brand needs no code change.
   // What kind of venue this is: "dine_in" | "cloud_kitchen". DISPLAY ONLY — a
   // badge shown to customers. It adds no order type and changes no checkout
   // rule. Existing branches migrate to "dine_in" (the platform already runs
@@ -808,6 +807,7 @@ model Branch {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  brands               BranchBrand[]
   categories           Category[]
   products             Product[]
   orders               Order[]
@@ -1198,6 +1198,70 @@ model ManagerActivityLog {
   @@index([timestamp])
 }
 
+// ── Brands ───────────────────────────────────────────────────────────────
+// A restaurant brand sold on the platform (Cheez! Pizza, Madchef, …). Managed by
+// the super admin at /admin/brands; nothing in the code names a brand.
+//
+// `slug` is the stable machine key every product, category and order line
+// refers to. It is set once at creation and never edited (renaming a brand
+// changes `name`, never the key), so the references can be plain foreign keys
+// without ever needing to be rewritten.
+//
+// A brand that products, categories or orders refer to is never hard-deleted:
+// it is ARCHIVED (hidden everywhere, history kept). Only an unused brand can be
+// deleted outright. Same rule as branches and products.
+model Brand {
+  id             Int       @id @default(autoincrement())
+  slug           String    @unique
+  name           String
+  // Bangla display name; "" = use `name` (brand names are usually the same).
+  nameBn         String    @default("")
+  // Upload key ("branding/<uuid>.webp") or a public path ("/images/brand/x.webp").
+  logo           String?
+  // "#rrggbb" — the brand's colour on its menu tab, cards and buttons.
+  accentColor    String    @default("#e8192c")
+  // Short description: the hero card line and the menu header tagline.
+  description    String    @default("")
+  descriptionBn  String    @default("")
+  // Two-or-three word badge ("Pizza Specialist").
+  tagline        String    @default("")
+  taglineBn      String    @default("")
+  // Decorative icon shown beside the tagline and in the last-order countdown.
+  emoji          String    @default("🍽️")
+  // Brand-specific storefront content: the "Crust & size guide" panel above
+  // the menu. Only pizza brands want it, so it belongs to the brand.
+  showCrustGuide Boolean   @default(false)
+  // Display order on the homepage cards and tabs (ascending).
+  sortOrder      Int       @default(0)
+  // Inactive = hidden from customers but still manageable and assignable.
+  isActive       Boolean   @default(true)
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  archivedById   Int?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  branches   BranchBrand[]
+  products   Product[]     @relation("ProductBrand")
+  categories Category[]    @relation("CategoryBrand")
+
+  @@index([isArchived, sortOrder])
+}
+
+// Which brands a branch serves: one row per (branch, brand). A branch may serve
+// one brand or several.
+model BranchBrand {
+  id        Int      @id @default(autoincrement())
+  branchId  Int
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  brandId   Int
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  @@unique([branchId, brandId])
+  @@index([brandId])
+}
+
 model Category {
   id                Int       @id @default(autoincrement())
   // Scope: a concrete branch id, or NULL = "Main Branch (Global)" — a category
@@ -1220,12 +1284,11 @@ model Category {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  // Brand scope for the product form's Brand → Category filter: "cheez" or
-  // "madchef". NULL (the default) = the category serves BOTH brands, which is
-  // exactly what every pre-existing row means — so this column is purely
-  // additive and needs no data backfill. Assigned by the super admin at
-  // creation time (see components/admin/admin-category-form.tsx).
+  // Brand scope for the product form's Brand → Category filter: a Brand.slug.
+  // NULL (the default) = the category serves EVERY brand. Assigned by the super
+  // admin (see components/admin/admin-category-form.tsx).
   brand             String?
+  brandRef          Brand?    @relation("CategoryBrand", fields: [brand], references: [slug], onUpdate: Cascade, onDelete: Restrict)
   products Product[]
 
   @@index([branchId])
@@ -1245,9 +1308,12 @@ model Product {
   // introduced. New pricing lives in ProductVariation; migration backfills one
   // default variation per existing product from this value.
   price              Decimal
-  // Brand this product belongs to: cheez | madchef. Null = inherits the
-  // branch's sole brand (only combined branches require an explicit value).
+  // Brand this product is sold under: a Brand.slug. NULL = sold under EVERY
+  // brand its branch serves (what the old "combined" value meant). Single-brand
+  // branches always store their brand explicitly, so adding a second brand to a
+  // branch never silently lists its existing products under the new one.
   brand              String?
+  brandRef           Brand?    @relation("ProductBrand", fields: [brand], references: [slug], onUpdate: Cascade, onDelete: Restrict)
   discount           Decimal   @default(0) // percentage 0-100
   image              String?
   isAvailable        Boolean   @default(true)
@@ -1468,6 +1534,11 @@ model OrderItem {
   // ordered ("THICK" | "THIN" | ""). Editing the product's variationType later
   // never rewrites historical order lines.
   variationType String            @default("")
+  // IMMUTABLE snapshot of the brand (Brand.slug) this line was sold under, so
+  // an order keeps its brand even if the product is later re-tagged or the
+  // brand archived. "" = indeterminate (a legacy line of a product sold under
+  // several brands at once). Deliberately not a foreign key: a snapshot.
+  brand         String            @default("")
   quantity      Int               @default(1)
   unitPrice     Decimal
   foodNote      String            @default("")

@@ -16,7 +16,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Table, Td } from "@/components/ui/table";
 import { requireRole } from "@/lib/auth/session";
-import { PRODUCT_BRANDS, PRODUCT_VARIATION_TYPES } from "@/lib/constants/enums";
+import { PRODUCT_VARIATION_TYPES } from "@/lib/constants/enums";
 import { prisma } from "@/lib/db";
 import {
   enumParam,
@@ -31,6 +31,8 @@ import {
 import { getT } from "@/lib/i18n/server";
 import { getAdminProductSummary } from "@/lib/services/page-summaries";
 
+import { brandsForRequest } from "@/lib/services/brands";
+import { brandBySlug, brandName } from "@/lib/brands/shared";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("adminExtras.productsTitle") };
@@ -62,8 +64,13 @@ export default async function AdminProductsPage({
   searchParams: Promise<RawSearchParams>;
 }) {
   await requireRole("super_admin");
-  const { t, fmt } = await getT();
+  const { t, fmt, locale } = await getT();
   const sp = await searchParams;
+  const brandList = await brandsForRequest();
+  const brandLabel = (slug: string) => {
+    const b = brandBySlug(brandList, slug);
+    return b ? brandName(b, locale) : slug;
+  };
 
   const { page, pageSize, skip, take, search, sort, direction } = parseListParams(sp, {
     sortable: SORTABLE,
@@ -73,7 +80,7 @@ export default async function AdminProductsPage({
   });
   const branchId = idParam(sp, "branch");
   const categoryId = idParam(sp, "category");
-  const brand = enumParam(sp, "brand", PRODUCT_BRANDS);
+  const brand = enumParam(sp, "brand", brandList.map((b) => b.slug));
   const status = enumParam(sp, "status", STATUSES);
   const variationType = enumParam(sp, "variationType", PRODUCT_VARIATION_TYPES);
 
@@ -83,7 +90,13 @@ export default async function AdminProductsPage({
   const and: Prisma.ProductWhereInput[] = [status === "archived" ? { deletedAt: { not: null } } : { deletedAt: null }];
   if (branchId) and.push({ branchId });
   if (categoryId) and.push({ categoryId });
-  if (brand) and.push({ brand });
+  // A brand filter also matches products sold under every brand of a branch
+  // that serves it (Product.brand NULL), the same rule the storefront uses.
+  if (brand) {
+    and.push({
+      OR: [{ brand }, { brand: null, branch: { brands: { some: { brand: { slug: brand } } } } }],
+    });
+  }
   if (variationType) and.push({ variationType });
   if (status === "held") and.push({ heldByAdmin: true });
   if (status === "available") and.push({ isAvailable: true, heldByAdmin: false });
@@ -166,7 +179,7 @@ export default async function AdminProductsPage({
     ...(categoryId
       ? [chip("category", t("adminExtras.colCategory"), categories.find((c) => c.id === categoryId)?.name ?? String(categoryId))]
       : []),
-    ...(brand ? [chip("brand", t("catalog.brand"), t(`brands.${brand}`))] : []),
+    ...(brand ? [chip("brand", t("catalog.brand"), brandLabel(brand))] : []),
     ...(status ? [chip("status", t("pages.colStatus"), statusLabel(status))] : []),
     ...(variationType ? [chip("variationType", t("variationType.label"), t(`variationType.${variationType}`))] : []),
   ];
@@ -283,7 +296,7 @@ export default async function AdminProductsPage({
               value={brand}
               options={[
                 { value: "", label: t("list.filterAll") },
-                ...PRODUCT_BRANDS.map((b) => ({ value: b, label: t(`brands.${b}`) })),
+                ...brandList.map((b) => ({ value: b.slug, label: brandName(b, locale) })),
               ]}
             />
             <InstantFilterSelect
@@ -373,7 +386,7 @@ export default async function AdminProductsPage({
                         ) : null}
                       </Td>
                       <Td>{p.branch.name}</Td>
-                      <Td>{p.brand ? t(`brands.${p.brand}`) : "—"}</Td>
+                      <Td>{p.brand ? brandLabel(p.brand) : t("brands.allBrandsShort")}</Td>
                       <Td>{p.category?.name ?? "—"}</Td>
                       <Td>{fmt.money(basePriceOf(p))}</Td>
                       <Td>{statusBadge(p)}</Td>

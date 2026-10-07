@@ -169,11 +169,15 @@ export const ACTIVITY_DISPLAY: Record<ActivityType, string> = {
 };
 
 // ── Brands ────────────────────────────────────────────────────────────
-// Branch brand coverage + product brand tags. Stored as strings (SQLite has no
-// enum), validated here. Labels resolve through i18n (messages/*.json brands.*)
-// — never hardcode brand display text in UI.
-export const BRAND_TYPES = ["cheez", "madchef", "combined"] as const;
-export type BrandType = (typeof BRAND_TYPES)[number];
+// Brands are DATA (the Brand table, /admin/brands) — never a list in code. What
+// lives here is only the generic rules shared by the product form and the
+// server-side write checks.
+
+/**
+ * The product-form choice meaning "sold under every brand this branch serves"
+ * (stored as NULL on Product.brand). Only offered on a multi-brand branch.
+ */
+export const ALL_BRANDS_CHOICE = "all";
 
 // Branch venue kind — a customer-facing badge only (never an order type).
 export const BRANCH_BUSINESS_TYPES = ["dine_in", "cloud_kitchen"] as const;
@@ -183,57 +187,24 @@ export function isBranchBusinessType(v: string): v is BranchBusinessType {
   return (BRANCH_BUSINESS_TYPES as readonly string[]).includes(v);
 }
 
-export const PRODUCT_BRANDS = ["cheez", "madchef"] as const;
-export type ProductBrand = (typeof PRODUCT_BRANDS)[number];
-
-export function isBrandType(v: string): v is BrandType {
-  return (BRAND_TYPES as readonly string[]).includes(v);
-}
-export function isProductBrand(v: string): v is ProductBrand {
-  return (PRODUCT_BRANDS as readonly string[]).includes(v);
-}
-
 /**
- * The brand choices a PRODUCT may carry in the dashboard form.
+ * May a category tagged `categoryBrand` be used on a product whose brand is
+ * `productBrand`?
  *
- * `cheez` / `madchef` are the real brand tags. `combined` is the explicit
- * "sold under BOTH brands" choice — a product that is listed in both storefront
- * brand tabs (see `brandsOf` in lib/services/public-catalog.ts). It is only
- * ever offered or stored on a COMBINED branch; a single-brand branch still
- * forces its own brand (see `resolveProductBrand` in lib/services/catalog.ts).
- */
-export const PRODUCT_BRAND_CHOICES = ["cheez", "madchef", "combined"] as const;
-export type ProductBrandChoice = (typeof PRODUCT_BRAND_CHOICES)[number];
-
-export function isProductBrandChoice(v: string): v is ProductBrandChoice {
-  return (PRODUCT_BRAND_CHOICES as readonly string[]).includes(v);
-}
-
-/**
- * A CATEGORY's brand scope. Stored on `Category.brand`; NULL means "serves both
- * brands" (the default for every pre-existing row).
- */
-export function isCategoryBrand(v: string): v is ProductBrand {
-  return isProductBrand(v);
-}
-
-/**
- * May a category tagged `categoryBrand` be used on a product whose brand choice
- * is `productBrand`
- *
- * - a brand-less (NULL) category serves everyone, so it always matches;
- * - a product sold under `combined` (both brands) may use any category;
- * - otherwise the tags must be equal.
+ * - a brand-less (NULL) category serves every brand, so it always matches;
+ * - a product sold under every brand (NULL / ALL_BRANDS_CHOICE) may use any
+ *   category;
+ * - otherwise the slugs must be equal.
  *
  * Kept here beside the enums so the dashboard filter and the server-side write
  * check can never drift apart.
  */
 export function categoryBrandMatchesProductBrand(
   categoryBrand: string | null | undefined,
-  productBrand: string,
+  productBrand: string | null | undefined,
 ): boolean {
   if (!categoryBrand) return true;
-  if (productBrand === "combined") return true;
+  if (!productBrand || productBrand === ALL_BRANDS_CHOICE) return true;
   return categoryBrand === productBrand;
 }
 
@@ -282,30 +253,6 @@ export function allowedCrustChoices(variationType: string): ("THICK" | "THIN")[]
   if (variationType === "THIN") return ["THIN"];
   if (variationType === "BOTH") return ["THICK", "THIN"];
   return [];
-}
-
-/** Which product brands a branch of the given brandType may carry. */
-export function brandsForBranchType(brandType: string): ProductBrand[] {
-  if (brandType === "cheez") return ["cheez"];
-  if (brandType === "madchef") return ["madchef"];
-  return ["cheez", "madchef"]; // combined
-}
-
-/** True if a product tagged `productBrand` may live in a `brandType` branch. */
-export function branchAllowsBrand(brandType: string, productBrand: string): boolean {
-  return (brandsForBranchType(brandType) as readonly string[]).includes(productBrand);
-}
-
-/** The implicit brand of a single-brand branch; null when combined. */
-export function soleBrandOfBranch(brandType: string): ProductBrand | null {
-  if (brandType === "cheez") return "cheez";
-  if (brandType === "madchef") return "madchef";
-  return null;
-}
-
-/** i18n key for a brand / brand-type label (brands.cheez, brands.combined …). */
-export function brandLabelKey(brand: string): string {
-  return `brands.${brand}`;
 }
 
 export function roleDisplay(role: string): string {

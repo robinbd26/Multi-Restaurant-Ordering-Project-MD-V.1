@@ -8,7 +8,9 @@ import { saveUpload } from "@/lib/http/upload";
 import { revalidateCatalog } from "@/lib/cache/catalog";
 import { prisma } from "@/lib/db";
 import { serializeBranch } from "@/lib/serializers";
-import { isBrandType, isBranchBusinessType } from "@/lib/constants/enums";
+import { isBranchBusinessType } from "@/lib/constants/enums";
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
+import { resolveBranchBrandIds, setBranchBrands } from "@/lib/services/brands";
 import { isValidLatLng } from "@/lib/services/geo";
 import { parseBranchDeliveryFee } from "@/lib/services/branches";
 import { validatePhone } from "@/lib/validation/server";
@@ -19,7 +21,7 @@ type Ctx = { params: Promise<{ id: string }> };
 export const GET = handle(async (_req: Request, ctx: Ctx) => {
   const me = await requireApproved();
   const { id } = await ctx.params;
-  const branch = await prisma.branch.findUnique({ where: { id: Number(id) }, include: { manager: true, zone: true } });
+  const branch = await prisma.branch.findUnique({ where: { id: Number(id) }, include: { manager: true, zone: true, ...BRANCH_BRANDS_INCLUDE } });
   if (
     !branch ||
     ((me.role === "customer" || me.role === "rider") &&
@@ -41,10 +43,15 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   if (has("name")) data.name = fields.name;
   if (has("address")) data.address = fields.address;
   if (has("email")) data.email = fields.email;
-  if (has("brand_type")) {
-    if (!isBrandType(fields.brand_type)) throw validationError({ brand_type: sk("errors.catalog.invalidBrandType") });
-    data.brandType = fields.brand_type;
-  }
+  // Which brands the branch serves: `brands` (comma-separated slugs), or the
+  // legacy `brand_type` (cheez | madchef | combined) older callers still send.
+  const brandsSubmitted = has("brands") || has("brand_type");
+  const brandIds = brandsSubmitted
+    ? await resolveBranchBrandIds({
+        brands: has("brands") ? fields.brands : undefined,
+        brand_type: has("brand_type") ? fields.brand_type : undefined,
+      })
+    : null;
   if (has("business_type")) {
     if (!isBranchBusinessType(fields.business_type)) {
       throw validationError({ business_type: sk("errors.catalog.invalidBusinessType") });
@@ -101,13 +108,20 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
 
   const existing = await prisma.branch.findUnique({ where: { id: Number(id) } });
   if (!existing) throw notFound(sk("errors.catalog.branchNotFound"));
-  if (Object.keys(data).length === 0) {
+  if (Object.keys(data).length === 0 && !brandIds) {
     validationError({ detail: sk("errors.catalog.nothingToChange") });
   }
-  const branch = await prisma.branch.update({ where: { id: Number(id) }, data, include: { manager: true, zone: true } });
-  // `brand_type` and `is_active` both change which of this branch's products a
-  // customer may see (BRAND_MATCHES_BRANCH / LIVE_BRANCH in the shared rules).
-  if (has("brand_type") || has("is_active")) revalidateCatalog({ branchId: branch.id });
+  const branch = await prisma.$transaction(async (tx) => {
+    if (brandIds) await setBranchBrands(tx, existing, brandIds, me.id);
+    return tx.branch.update({
+      where: { id: Number(id) },
+      data,
+      include: { manager: true, zone: true, ...BRANCH_BRANDS_INCLUDE },
+    });
+  });
+  // The brands served and `is_active` both change which of this branch's
+  // products a customer may see (BRAND_IS_LIVE / LIVE_BRANCH in the shared rules).
+  if (brandsSubmitted || has("is_active")) revalidateCatalog({ branchId: branch.id });
   return json(serializeBranch(branch));
 });
 

@@ -15,6 +15,7 @@ import { isBranchOpenNow } from "@/lib/services/branch-hours";
 import { currentCoverageWindow } from "@/lib/services/coverage-window";
 import { haversineKm, isValidLatLng, roundKm, type LatLng } from "@/lib/services/geo";
 
+import { BRANCH_BRANDS_INCLUDE, branchBrandSlugsOf } from "@/lib/brands/branch";
 /**
  * THE database-backed coverage answer: "can this branch deliver to this pin,
  * right now, and for how much?" — and, across branches, "who should serve it?".
@@ -172,7 +173,11 @@ export async function branchOptionsForPoint(
 ): Promise<BranchCoverageOption[]> {
   const window = options.window ?? currentCoverageWindow();
   const branches = (
-    await prisma.branch.findMany({ where: { isActive: true, isArchived: false }, orderBy: { name: "asc" } })
+    await prisma.branch.findMany({
+      where: { isActive: true, isArchived: false },
+      include: BRANCH_BRANDS_INCLUDE,
+      orderBy: { name: "asc" },
+    })
   ).filter((b) => (options.brandFilter ? options.brandFilter(b) : true));
   if (branches.length === 0) return [];
 
@@ -187,7 +192,7 @@ export async function branchOptionsForPoint(
     else byBranch.set(a.branchId, [a]);
   }
 
-  const hoursById = new Map(branches.map((b) => [b.id, isBranchOpenNow(b)]));
+  const hoursById = new Map(branches.map((b) => [b.id, isBranchOpenNow({ ...b, brandSlugs: branchBrandSlugsOf(b) })]));
   const ranked = rankBranchesForPoint(
     point,
     branches.map((b) => ({

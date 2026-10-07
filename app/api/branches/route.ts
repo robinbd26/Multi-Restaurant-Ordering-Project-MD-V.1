@@ -7,7 +7,9 @@ import { created, pageParams, paginated } from "@/lib/http/respond";
 import { saveUpload } from "@/lib/http/upload";
 import { prisma } from "@/lib/db";
 import { serializeBranch } from "@/lib/serializers";
-import { isBrandType, isBranchBusinessType } from "@/lib/constants/enums";
+import { isBranchBusinessType } from "@/lib/constants/enums";
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
+import { resolveBranchBrandIds, setBranchBrands } from "@/lib/services/brands";
 import { isValidLatLng } from "@/lib/services/geo";
 import { parseBranchDeliveryFee } from "@/lib/services/branches";
 import { validatePhone } from "@/lib/validation/server";
@@ -44,7 +46,7 @@ export const GET = handle(async (req: Request) => {
 
   const [count, branches] = await Promise.all([
     prisma.branch.count({ where }),
-    prisma.branch.findMany({ where, include: { manager: true, zone: true }, orderBy: { createdAt: "desc" }, skip, take }),
+    prisma.branch.findMany({ where, include: { manager: true, zone: true, ...BRANCH_BRANDS_INCLUDE }, orderBy: { createdAt: "desc" }, skip, take }),
   ]);
   return paginated(branches.map(serializeBranch), { page, pageSize, count });
 });
@@ -65,8 +67,12 @@ export const POST = handle(async (req: Request) => {
   if (Object.keys(errs).length) throw validationError(errs);
   validatePhone(phone);
 
-  const brandType = (fields.brand_type ?? "combined").trim();
-  if (!isBrandType(brandType)) throw validationError({ brand_type: sk("errors.catalog.invalidBrandType") });
+  // `brands` (comma-separated slugs) or the legacy `brand_type`; neither given
+  // keeps the old default of "combined" (every active brand).
+  const brandIds = await resolveBranchBrandIds({
+    brands: fields.brands,
+    brand_type: fields.brands === undefined ? (fields.brand_type ?? "combined") : undefined,
+  });
 
   const businessType = (fields.business_type ?? "dine_in").trim();
   if (!isBranchBusinessType(businessType)) {
@@ -92,7 +98,6 @@ export const POST = handle(async (req: Request) => {
     address,
     phone,
     email: fields.email ?? "",
-    brandType,
     businessType,
     zone: { connect: { id: zoneId } },
     bkashNumber: fields.bkash_number ?? "",
@@ -125,6 +130,13 @@ export const POST = handle(async (req: Request) => {
   const logo = file("logo");
   if (logo) data.logo = await saveUpload(logo, "branch_logos", "logo");
 
-  const branch = await prisma.branch.create({ data, include: { manager: true, zone: true } });
+  const branch = await prisma.$transaction(async (tx) => {
+    const row = await tx.branch.create({ data });
+    await setBranchBrands(tx, row, brandIds, null);
+    return tx.branch.findUniqueOrThrow({
+      where: { id: row.id },
+      include: { manager: true, zone: true, ...BRANCH_BRANDS_INCLUDE },
+    });
+  });
   return created(serializeBranch(branch));
 });
