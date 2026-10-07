@@ -84,8 +84,18 @@ export default async function BranchDetailPage({ params }: { params: Promise<{ i
             <InfoRow label={t("common.email")} value={branch.email} />
             <InfoRow label={t("branches.bkashNumber")} value={branch.bkash_number} />
             <InfoRow label={t("branches.deliveryRadius")} value={`${fmt.num(branch.delivery_radius_km)} ${t("branches.km")}`} />
-            <InfoRow label={t("branches.openLabel")} value={fmt.clock(branch.opening_time)} />
-            <InfoRow label={t("branches.closeLabel")} value={fmt.clock(branch.closing_time)} />
+            <InfoRow
+              label={t("hours.todayLabel")}
+              value={
+                <a href={`/admin/branches/${branch.id}/hours`} className="text-brand-600 hover:underline" data-testid="branch-hours-link">
+                  {branch.hours_today
+                    ? `${fmt.clock(branch.hours_today.start)} – ${fmt.clock(branch.hours_today.end)}`
+                    : t("hours.notSetOrClosed")}
+                  {" · "}
+                  {t("hours.openEditor")}
+                </a>
+              }
+            />
             <InfoRow label={t("common.address")} value={branch.address} />
             <InfoRow label={t("branches.zoneField")} value={branch.zone_name ?? t("branches.zoneNone")} />
             <InfoRow label={t("branches.currentManager")} value={branch.manager_name ?? t("common.notAssigned")} />

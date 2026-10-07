@@ -74,6 +74,13 @@ export const POST = handle(async (req: Request) => {
     brand_type: fields.brands === undefined ? (fields.brand_type ?? "combined") : undefined,
   });
 
+// Branch hours moved to per-brand schedules (/api/branches/[id]/hours). A
+  // caller still sending the old single pair is told so instead of having the
+  // value silently dropped.
+  for (const key of ["opening_time", "closing_time"] as const) {
+    if (fields[key]) throw validationError({ [key]: sk("errors.hours.useHoursPage") });
+  }
+
   const businessType = (fields.business_type ?? "dine_in").trim();
   if (!isBranchBusinessType(businessType)) {
     throw validationError({ business_type: sk("errors.catalog.invalidBusinessType") });
@@ -101,8 +108,6 @@ export const POST = handle(async (req: Request) => {
     businessType,
     zone: { connect: { id: zoneId } },
     bkashNumber: fields.bkash_number ?? "",
-    openingTime: fields.opening_time || null,
-    closingTime: fields.closing_time || null,
     isActive: fields.is_active ? fields.is_active === "true" : true,
   };
   if (fields.prep_time_minutes) {

@@ -98,8 +98,10 @@ export interface Branch {
   // req #5 — serialized by `serializeBranch`; lets the list show "Archived"
   // (history preserved, no new orders) rather than merely "Inactive".
   is_archived?: boolean;
-  opening_time: string | null;
-  closing_time: string | null;
+  /** Today's ordering window across the branch's live brands (display only). */
+  hours_today?: { start: string; end: string } | null;
+  /** Display-only dine-in hours (lib/hours/schedule DineInHours). */
+  dine_in_hours?: { everyDay: { start: string; end: string }[]; days: Record<string, { start: string; end: string }[]> } | null;
   logo: string | null;
   created_at?: string;
   updated_at?: string;

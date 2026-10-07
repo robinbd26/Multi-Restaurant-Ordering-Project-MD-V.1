@@ -25,18 +25,18 @@ import { resolveDeliveryCoordinate } from "@/lib/services/customer-location";
 import { coverageForAddress, type AddressCoverage } from "@/lib/services/address-coverage";
 import { platformFeeFor } from "@/lib/services/settings";
 import { haversineKm } from "@/lib/services/geo";
-import { isBranchOpenNow } from "@/lib/services/branch-hours";
 import { formatClock } from "@/lib/i18n/format";
-import { isFullClosureWindow, isPastNightLastOrder } from "@/lib/services/coverage-window";
+import { channelStatus, opensAtMessage, type ChannelStatus } from "@/lib/hours/availability";
+import { dhakaMoment } from "@/lib/hours/clock";
 import { isReceiveConfirmed } from "@/lib/services/rider-duty";
 import { markChatEndedInTx, openChatInTx, recordRiderChangeInTx } from "@/lib/services/order-chat";
 import { nextOrderNumber } from "@/lib/services/order-number";
 import { customerProductWhere } from "@/lib/services/product-eligibility";
 import { resolveOrderDeliveryArea } from "@/lib/services/delivery-areas";
+import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
+import { productSaleBrands } from "@/lib/services/product-eligibility";
 import type { OrderStatus } from "@/types";
 
-import { BRANCH_BRANDS_INCLUDE, branchBrandSlugsOf } from "@/lib/brands/branch";
-import { productSaleBrands } from "@/lib/services/product-eligibility";
 export interface OrderItemInput {
   product_id: number;
   variation_id?: number;
@@ -292,11 +292,53 @@ function deliveryChargeFor(
  * here, so a held branch is refused ONCE, server-side, for all of them — the
  * dashboard control is a convenience, never the enforcement.
  */
-/** "Closed, opens at 10:45 PM" when the branch has an opening time to name. */
-function branchClosedMessage(opensAt: string | null): string {
-  return opensAt
-    ? sk("errors.orders.branchClosedOpensAt", { time: formatClock(opensAt) })
-    : sk("errors.orders.branchClosed");
+/**
+ * THE hours gate for a cart, run after its lines are priced (quote AND order):
+ * every brand in the cart must be open on the chosen channel right now, on the
+ * Asia/Dhaka clock, per its own schedule at this branch (lib/hours/availability).
+ * The message names the brand, the channel and when it opens, so a customer
+ * whose cart mixes an open brand and a closed one is told exactly which one is
+ * the problem instead of getting a generic error.
+ */
+function assertBrandsOpen(
+  branch: Parameters<typeof channelStatus>[0],
+  lines: PricedLine[],
+  channel: "delivery" | "pickup",
+  brandNames: Map<string, string>,
+): void {
+  const at = dhakaMoment();
+  for (const slug of [...new Set(lines.map((l) => l.brand))]) {
+    const status = channelStatus(branch, slug, channel, at);
+    if (status.open) continue;
+    throw validationError({ items: brandClosedMessage(brandNames.get(slug) ?? slug, channel, status) });
+  }
+}
+
+/** Brand display names for the cart's products, from the rows already loaded. */
+function brandNamesOf(products: PricedProduct[]): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const p of products) for (const bb of p.branch.brands) names.set(bb.brand.slug, bb.brand.name);
+  return names;
+}
+
+function brandClosedMessage(brand: string, channel: "delivery" | "pickup", status: ChannelStatus): string {
+  const ch = `@:hours.channel.${channel}`;
+  if (status.reason === "branch_on_hold") return sk("errors.orders.branchOnHold");
+  if (status.reason === "branch_inactive") return sk("errors.orders.branchNotFoundOrClosed");
+  if (status.reason === "brand_inactive" || status.reason === "brand_not_served") {
+    return sk("errors.orders.someProductsUnavailable");
+  }
+  if (status.reason === "delivery_paused") return sk("errors.orders.brandDeliveryPaused", { brand });
+  if (!status.opensAt) return sk("errors.orders.brandClosed", { brand, channel: ch });
+  const { key, dayKey } = opensAtMessage(status.opensAt);
+  const time = formatClock(status.opensAt.time);
+  const suffix = key === "hours.opensAt" ? "Today" : key === "hours.opensTomorrowAt" ? "Tomorrow" : "OnDay";
+  return sk(`errors.orders.brandClosedOpens${suffix}`, {
+    brand,
+    channel: ch,
+    time,
+    ...(dayKey ? { day: `@:${dayKey}` } : {}),
+  });
 }
 
 async function resolveBranchForCart(input: {
@@ -315,12 +357,6 @@ async function resolveBranchForCart(input: {
   lng: number | null;
   coverage: AddressCoverage | null;
 }> {
-  // ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery AND
-  // pickup, at every branch, whatever that branch's own hours say. Checked
-  // before anything branch-specific, so it applies uniformly to both rails.
-  if (isFullClosureWindow()) {
-    throw validationError({ branch_id: sk("errors.orders.platformClosed") });
-  }
   if (input.fulfillmentType === "pickup") {
     const picked = await prisma.branch.findFirst({
       where: { id: input.branchId, isActive: true, isArchived: false },
@@ -331,9 +367,7 @@ async function resolveBranchForCart(input: {
     // pickup is an order too, so the gate lives here beside the hours check
     // rather than only on the delivery path.
     if (picked.isOnHold) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
-    // A branch outside its opening hours cannot take a pickup order either (§17).
-    const pickedHours = isBranchOpenNow({ ...picked, brandSlugs: branchBrandSlugsOf(picked) });
-    if (!pickedHours.orderable) throw validationError({ branch_id: branchClosedMessage(pickedHours.opensAt) });
+    // Hours are checked per brand once the lines are priced (assertBrandsOpen).
     if (!picked.pickupEnabled) throw validationError({ fulfillment_type: sk("errors.orders.pickupUnavailable") });
     return { branch: picked, lat: null, lng: null, coverage: null };
   }
@@ -362,17 +396,8 @@ async function resolveBranchForCart(input: {
     throw validationError({ delivery_address: sk("errors.orders.outsideDeliveryArea") });
   }
   // A manager's hold is a deliberate, current decision, so it is reported ahead
-  // of the hours gate — the same order the previous resolver used.
+  // of the hours gate (which runs per brand once the lines are priced).
   if (branch.isOnHold) throw validationError({ branch_id: sk("errors.orders.branchOnHold") });
-  const branchHours = isBranchOpenNow({ ...branch, brandSlugs: branchBrandSlugsOf(branch) });
-  if (!branchHours.orderable) {
-    throw validationError({ branch_id: branchClosedMessage(branchHours.opensAt) });
-  }
-  // PHASE 3 — the night shift accepts its last delivery order at 03:45, so the
-  // ride can finish by 04:00. Pickup has no ride and is governed by hours alone.
-  if (isPastNightLastOrder()) {
-    throw validationError({ branch_id: sk("errors.orders.nightLastOrderPassed") });
-  }
   return {
     branch,
     lat: coverage.point?.lat ?? null,
@@ -434,6 +459,8 @@ export async function quoteOrder(input: {
   // converts an already-final 2dp figure for the response body, and nothing is
   // ever computed from the converted value.
   const lines = priceLines(input.items, byId);
+  // Same hours gate the order itself runs, so checkout says "closed" up front.
+  assertBrandsOpen(branch, lines, fulfillmentType, brandNamesOf(products));
   const items = lines.map((line) => ({
     product_id: line.product.id,
     variation_id: line.variation?.id ?? null,
@@ -648,6 +675,8 @@ export async function createOrder(input: {
   // disagree on price. Priced BEFORE the transaction opens: a bad crust or an
   // impossible quantity is a validation error, not a rolled-back write.
   const lines = priceLines(input.items, byId);
+  // The hours gate: every brand in the cart open on this channel right now.
+  assertBrandsOpen(branch, lines, fulfillmentType, brandNamesOf(products));
   const itemsSubtotal = sumLines(lines);
   // PHASE 4 — resolved once, before the transaction, from the same rule the quote
   // used, and snapshotted: a later change to the fee never rewrites this order.

@@ -19,6 +19,7 @@ import type { Branch, Paginated } from "@/types";
 
 import { BrandPills } from "@/components/brands/brand-pills";
 import { activeBrands } from "@/lib/services/brands";
+import { opensText } from "@/lib/hours/opens-text";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t("customer.restaurantsTitle") };
@@ -80,7 +81,7 @@ export default async function CustomerBranchesPage({
   const closestReason = closest && !closest.covered ? "notCovered" : "closed";
   const distanceById = new Map(nearest.branches.map((b) => [b.id, b.distance_km]));
   const coveredById = new Map(nearest.branches.map((b) => [b.id, b.covered]));
-  // Open-now is decided SERVER-SIDE (lib/services/branch-hours.ts, Asia/Dhaka) —
+  // Open-now is decided SERVER-SIDE (lib/hours/availability.ts, Asia/Dhaka) —
   // the client clock is never trusted for this (§20). A covered branch that is
   // closed right now is shown as not orderable, with an "Opens at …" note.
   const openById = new Map(nearest.branches.map((b) => [b.id, b.open_now]));
@@ -239,8 +240,8 @@ export default async function CustomerBranchesPage({
                       delivery verdict below is the real answer. */}
                   <div className="mt-1 text-xs text-fg-subtle">
                     <span data-testid="branch-hours">
-                      {branch.opening_time && branch.closing_time
-                        ? `🕒 ${fmt.clock(branch.opening_time)} – ${fmt.clock(branch.closing_time)}`
+                      {branch.hours_today
+                        ? `🕒 ${fmt.clock(branch.hours_today.start)} – ${fmt.clock(branch.hours_today.end)}`
                         : t("outOfZone.hoursUnknown")}
                     </span>
                   </div>
@@ -293,7 +294,9 @@ export default async function CustomerBranchesPage({
                   ) : null}
                   {closedNow ? (
                     <p className="mt-2 text-xs font-medium text-amber-600 dark:text-amber-400" data-testid="branch-status-note">
-                      {t("nearestBranch.opensAt", { time: fmt.clock(opensAtById.get(branch.id) ?? branch.opening_time) })}
+                      {opensAtById.get(branch.id)
+                        ? opensText(opensAtById.get(branch.id)!, t, fmt)
+                        : t("home.branches.status.closed")}
                     </p>
                   ) : null}
 

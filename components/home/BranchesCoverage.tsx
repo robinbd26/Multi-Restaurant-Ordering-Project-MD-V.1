@@ -1,22 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-import type { PublicHomeBranch } from "@/lib/selectors";
-import { useTranslation } from "@/lib/i18n/use-translation";
-import { branchOpenStatus, parseMinutes, type BranchOpenStatus } from "@/lib/services/branch-hours";
-import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 import { useBrandNames } from "@/components/home/use-brand-names";
+import { opensText } from "@/lib/hours/opens-text";
+import type { PublicHomeBranch } from "@/lib/selectors";
+import { useTranslation } from "@/lib/i18n/use-translation";
+import { cn } from "@/lib/utils";
+
+import type { Formatters } from "@/lib/i18n/format";
 /**
- * req #8 — this section is now driven ENTIRELY by the database (see
- * `publicHomeBranches`). The previous implementation rendered a hardcoded array
- * of 10 demo branches with invented addresses/coverage and name-keyed opening
- * hours; none of that is customer-truth. Hours now come from the branch's own
- * openingTime/closingTime, coverage from its active delivery areas, and the
- * late-night window from its brand type. No branch is fabricated: when the
- * database returns nothing the section renders an empty state.
+ * req #8 — this section is driven ENTIRELY by the database (see
+ * `publicHomeBranches`): branches, their coverage areas, and an open/closed
+ * status computed on the SERVER from each brand's schedule at the branch, on
+ * the Asia/Dhaka clock (lib/hours/availability). It used to read the visitor's
+ * device clock and a hardcoded late-night rule. No branch is fabricated: when
+ * the database returns nothing the section renders an empty state.
  */
+type BranchOpenStatus = "open" | "last-orders" | "delivery-only" | "closed";
 type Branch = PublicHomeBranch;
 
 interface LiveStatus {
@@ -32,58 +33,41 @@ const STATUS_TONES: Record<BranchOpenStatus, { dot: string; bg: string; border: 
   closed: { dot: "#ef4444", bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.22)", text: "#ef4444" },
 };
 
-function formatTime(minutes: number): string {
-  const h = Math.floor(minutes / 60) % 24;
-  const m = minutes % 60;
-  const ampm = h >= 12 ? "PM" : "AM";
-  return `${h % 12 || 12}${m ? ":" + String(m).padStart(2, "0") : ""} ${ampm}`;
-}
-
 /**
- * Display wrapper around the shared `branchOpenStatus` decision. The 4-state
- * status now comes from ONE implementation (also used by server enforcement);
- * this only maps that status — plus the coarse time-of-day window — to the
- * homepage's labels/sub-text. Reads the browser's local clock, as before: this
- * chip is display-only and is NOT the authority for whether an order is allowed.
+ * Maps the server's per-branch status to the chip's label and sub-text.
+ * Display only: placing an order re-checks the same rules per brand.
  */
 function liveStatus(
   branch: Branch,
-  now: Date,
   t: (key: string, vars?: Record<string, string | number>) => string,
+  fmt: Pick<Formatters, "clock">,
 ): LiveStatus {
-  const minutes = now.getHours() * 60 + now.getMinutes();
-  const status = branchOpenStatus({ ...branch, brandSlugs: branch.brands }, minutes);
-  const open = parseMinutes(branch.openingTime) ?? 660; // 11:00 AM default
-  const close = parseMinutes(branch.closingTime) ?? 1380; // 11:00 PM default
-  const lastEntry = Math.max(open, close - 30);
-
-  if (status === "open") {
-    return { status, label: t("home.branches.status.openNow"), sub: t("home.branches.status.diningDelivery") };
+  const s = branch.status;
+  if (!branch.isActive) return { status: "closed", label: t("home.branches.status.permanentlyClosed"), sub: "" };
+  if (s.deliveryOpen) {
+    if (s.deliveryClosesIn != null && s.deliveryClosesIn <= 60) {
+      return {
+        status: "last-orders",
+        label: t("home.branches.status.lastOrders"),
+        sub: t("home.branches.status.lastOrderIn", { minutes: s.deliveryClosesIn }),
+      };
+    }
+    return s.pickupOpen
+      ? { status: "open", label: t("home.branches.status.openNow"), sub: t("home.branches.status.deliveryAndPickup") }
+      : { status: "delivery-only", label: t("home.branches.status.deliveryOnly"), sub: "" };
   }
-  if (status === "delivery-only") {
+  if (s.pickupOpen) {
     return {
-      status,
-      label: minutes < 240 ? t("home.branches.status.cheezDelivery") : t("home.branches.status.deliveryOnly"),
-      sub: t("home.branches.status.deliveryUntil"),
+      status: "delivery-only",
+      label: t("home.branches.status.pickupOnly"),
+      sub: s.deliveryPaused ? t("home.branches.status.deliveryPaused") : "",
     };
   }
-  if (status === "last-orders") {
-    const sub =
-      minutes < 240
-        ? t("home.branches.status.cheezLastOrder")
-        : minutes < lastEntry
-          ? t("home.branches.status.lastEntry")
-          : t("home.branches.status.closesAt");
-    return { status, label: t("home.branches.status.lastOrders"), sub };
-  }
-  // status === "closed"
-  if (!branch.isActive) {
-    return { status, label: t("home.branches.status.permanentlyClosed"), sub: "" };
-  }
-  if (minutes >= 240 && minutes < open && open - minutes <= 30) {
-    return { status, label: t("home.branches.status.openingSoon"), sub: t("home.branches.status.opensAt", { time: formatTime(open) }) };
-  }
-  return { status, label: t("home.branches.status.closed"), sub: t("home.branches.status.opens", { time: formatTime(open) }) };
+  return {
+    status: "closed",
+    label: t("home.branches.status.closed"),
+    sub: s.opensAt ? opensText(s.opensAt, t, fmt) : "",
+  };
 }
 
 function StatusChip({ live }: { live: LiveStatus }) {
@@ -111,16 +95,6 @@ export function BranchesCoverage({ branches }: { branches: PublicHomeBranch[] })
   const { t, fmt } = useTranslation();
   const brandNames = useBrandNames();
   const [open, setOpen] = useState<number | null>(null);
-  const [now, setNow] = useState<Date | null>(null);
-
-  useEffect(() => {
-    const boot = setTimeout(() => setNow(new Date()), 0);
-    const timer = setInterval(() => setNow(new Date()), 60_000);
-    return () => {
-      clearTimeout(boot);
-      clearInterval(timer);
-    };
-  }, []);
 
   // Badge reflects the branch's REAL brand type from the database.
   const TYPE_META: Record<"dining" | "closed", { color: string; bg: string; border: string; icon: string }> = {
@@ -179,7 +153,7 @@ export function BranchesCoverage({ branches }: { branches: PublicHomeBranch[] })
             const meta = TYPE_META[disabled ? "closed" : "dining"];
             const metaLabel = brandNames(branch.brands);
             const isOpen = open === branch.id;
-            const live = now ? liveStatus(branch, now, t) : null;
+            const live = liveStatus(branch, t, fmt);
             return (
               <div
                 key={branch.id}
@@ -217,7 +191,7 @@ export function BranchesCoverage({ branches }: { branches: PublicHomeBranch[] })
                       {disabled ? t("home.branches.closedText") : branch.address}
                     </span>
                   </span>
-                  {live ? <StatusChip live={live} /> : null}
+                  <StatusChip live={live} />
                   {!disabled ? (
                     <span
                       className="shrink-0 text-[0.7rem] text-[#a0a0b0] transition-transform"
@@ -228,15 +202,23 @@ export function BranchesCoverage({ branches }: { branches: PublicHomeBranch[] })
                   ) : null}
                 </button>
 
-                {live?.status === "delivery-only" ? (
+                {/* Some of the branch's brands are open and others are not:
+                    say which, from the server's per-brand status. */}
+                {live.status !== "closed" && branch.status.brands.some((x) => !x.delivery && !x.pickup) ? (
                   <div
                     className="flex items-center gap-2 border-t px-4 py-1.75 pl-17"
                     style={{ background: "rgba(129,140,248,0.08)", borderColor: "rgba(129,140,248,0.18)" }}
                   >
-                    <span className="text-[0.9rem]">🍕</span>
-                    <span className="text-[0.72rem] leading-5 text-[#a5b4fc]">
-                      <strong className="text-[#c4b5fd]">{t("home.branches.deliveryOnlyStrong")}</strong>{" "}
-                      {t("home.branches.deliveryOnlyText")}
+                    <span className="text-[0.9rem]">🕒</span>
+                    <span className="text-[0.72rem] leading-5 text-[#a5b4fc]" data-testid="branch-partial-brands">
+                      <strong className="text-[#c4b5fd]">
+                        {t("home.branches.brandsOpenNow", {
+                          brands: brandNames(branch.status.brands.filter((x) => x.delivery || x.pickup).map((x) => x.slug)),
+                        })}
+                      </strong>{" "}
+                      {t("home.branches.brandsClosedNow", {
+                        brands: brandNames(branch.status.brands.filter((x) => !x.delivery && !x.pickup).map((x) => x.slug)),
+                      })}
                     </span>
                   </div>
                 ) : null}

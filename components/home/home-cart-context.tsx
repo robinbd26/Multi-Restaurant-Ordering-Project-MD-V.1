@@ -13,6 +13,7 @@ import {
 
 import type { Brand } from "@/lib/home/types";
 import type { BrandInfo } from "@/lib/brands/shared";
+import type { StorefrontBrandAvailability } from "@/lib/home/brand-availability";
 
 /**
  * localStorage key for THE cart (cart preservation, req #13). v2 = lines that
@@ -111,6 +112,8 @@ interface HomeCartValue {
   brandList: BrandInfo[];
   /** The live brand with this slug, if any. */
   brandInfo: (slug: Brand | null | undefined) => BrandInfo | undefined;
+  /** Open-now per brand (server, Asia/Dhaka); empty outside the storefront. */
+  brandAvailability: Record<Brand, StorefrontBrandAvailability>;
   /** "branch-conflict" = refused; the switch dialog is now pending. */
   add: (input: CartAddInput) => "added" | "branch-conflict";
   /** The branch this cart is locked to, or null when the cart is empty. */
@@ -133,6 +136,7 @@ const HomeCartContext = createContext<HomeCartValue | null>(null);
 
 /** Stable empty default, so the dashboard mount never re-renders on a new []. */
 const EMPTY_BRANDS: BrandInfo[] = [];
+const EMPTY_AVAILABILITY: Record<Brand, StorefrontBrandAvailability> = {};
 
 /**
  * One line per product + size + crust + configured variant, so two sizes (or
@@ -157,6 +161,7 @@ export function HomeCartProvider({
   initialBrand = "",
   servedBrands: servedBrandsProp = [],
   brandList = EMPTY_BRANDS,
+  brandAvailability = EMPTY_AVAILABILITY,
   activeBranchId = null,
   activeBranchName = null,
 }: {
@@ -177,6 +182,8 @@ export function HomeCartProvider({
   servedBrands?: Brand[];
   /** Every live brand, for display. Empty outside the storefront. */
   brandList?: BrandInfo[];
+  /** Open-now per brand, computed on the server (lib/home/brand-availability). */
+  brandAvailability?: Record<Brand, StorefrontBrandAvailability>;
   /**
    * The branch this render is actually scoped to — the SAME id the product
    * grid and header are drawn from (resolveHomeBranch's result), not merely
@@ -410,6 +417,7 @@ export function HomeCartProvider({
       servedBrands,
       brandList,
       brandInfo,
+      brandAvailability,
       add,
       remove,
       setQty,
@@ -420,7 +428,7 @@ export function HomeCartProvider({
       dismissToast,
     };
   }, [
-    lines, isOpen, lastAdded, brand, setBrand, servedBrands, brandList, brandInfo, add, remove, setQty, setNote, clear, dismissToast,
+    lines, isOpen, lastAdded, brand, setBrand, servedBrands, brandList, brandInfo, brandAvailability, add, remove, setQty, setNote, clear, dismissToast,
     cartBranchId, cartBranchName, pendingBranchSwitch, confirmBranchSwitch, cancelBranchSwitch,
   ]);
 

@@ -3,25 +3,15 @@ import type { APIRequestContext } from "@playwright/test";
 import { API_BASE } from "./routes";
 
 /**
- * PHASE 3 — 03:45 to 04:00 Dhaka time: the night shift takes no NEW delivery
- * order, so the ride can finish by four. That is a real product rule, and for
- * those fifteen minutes a delivery quote or order is refused on purpose.
- *
- * Specs that place delivery orders skip themselves inside the window rather than
- * reporting the rule as a failure. Computed the same way the server computes it
- * (lib/services/coverage-window.ts), from Dhaka wall-clock time.
+ * The hardcoded 03:45–04:00 night-delivery blackout no longer exists: ordering
+ * hours are each brand's own schedule at its branch (lib/hours/availability),
+ * and the e2e seed leaves the demo branches' schedules unset (no time limit),
+ * as are branches the specs create. Kept, always false, so the specs that used
+ * to skip themselves inside the window still compile and simply run.
  */
-export function inNightOrderBlackout(now: Date = new Date()): boolean {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Dhaka",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(now);
-  const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0") % 24;
-  const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-  const minutes = hh * 60 + mm;
-  return minutes >= 3 * 60 + 45 && minutes < 4 * 60;
+export function inNightOrderBlackout(_now: Date = new Date()): boolean {
+  void _now;
+  return false;
 }
 
 export const NIGHT_BLACKOUT_REASON =
@@ -50,23 +40,13 @@ export async function clearCustomerAddresses(
 }
 
 /**
- * ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery and
- * pickup alike, at every branch. Mirrors isFullClosureWindow in
- * lib/services/coverage-window.ts, computed independently (not imported) the
- * same way inNightOrderBlackout above does, so this file has no dependency on
- * server code and keeps working if that module ever moves.
+ * The hardcoded 04:00–11:00 platform closure no longer exists (see above);
+ * schedules are per brand now and tested in 74-brand-hours.spec.ts. Always
+ * false, kept so existing specs compile and run at any hour.
  */
-export function isDhakaFullClosureWindow(now: Date = new Date()): boolean {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Dhaka",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(now);
-  const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0") % 24;
-  const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-  const minutes = hh * 60 + mm;
-  return minutes >= 4 * 60 && minutes < 11 * 60;
+export function isDhakaFullClosureWindow(_now: Date = new Date()): boolean {
+  void _now;
+  return false;
 }
 
 export const FULL_CLOSURE_REASON = "04:00–11:00 Dhaka: the whole platform is closed (by design)";

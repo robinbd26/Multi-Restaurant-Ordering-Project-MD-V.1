@@ -12,9 +12,11 @@ import {
   pointForCustomerAddress,
   type TrustedPoint,
 } from "@/lib/services/customer-location";
-import { isBranchOpenNow } from "@/lib/services/branch-hours";
 
-import { BRANCH_BRANDS_INCLUDE, branchBrandSlugsOf, branchLiveBrandSlugsOf } from "@/lib/brands/branch";
+import { BRANCH_BRANDS_INCLUDE, branchLiveBrandSlugsOf } from "@/lib/brands/branch";
+import { branchNextOpening, branchOpenFor } from "@/lib/hours/availability";
+import { dhakaMoment } from "@/lib/hours/clock";
+import type { NextOpening } from "@/lib/hours/schedule";
 export { isBranchCoveredForCustomer };
 
 /**
@@ -55,7 +57,7 @@ export interface CustomerBranchContext {
   /** Whether the resolved branch can take an order right now (active + within hours). */
   open: boolean;
   /** Opening time ("HH:MM") to show when the branch is currently closed; null otherwise. */
-  opensAt: string | null;
+  opensAt: NextOpening | null;
 }
 
 const EMPTY: CustomerBranchContext = {
@@ -320,7 +322,12 @@ export async function resolveHomeBranch(
 
       // No distance and no fee: both are properties of a delivery that cannot
       // happen from here, and inventing them would be the lie the bar exists to avoid.
-      const hours = isBranchOpenNow({ ...branch, brandSlugs: branchBrandSlugsOf(branch) });
+      // Open = any live brand takes delivery or pickup right now (Dhaka clock).
+      const at = dhakaMoment();
+      const hours = {
+        orderable: branchOpenFor(branch, "any", at),
+        opensAt: branchNextOpening(branch, "any", at),
+      };
       return {
         state: "ok",
         branchId: branch.id,

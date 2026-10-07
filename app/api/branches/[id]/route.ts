@@ -67,8 +67,13 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   if (has("pickup_address")) data.pickupAddress = fields.pickup_address;
   if (has("pickup_phone")) data.pickupPhone = fields.pickup_phone;
   if (has("bkash_number")) data.bkashNumber = fields.bkash_number;
-  if (has("opening_time")) data.openingTime = fields.opening_time || null;
-  if (has("closing_time")) data.closingTime = fields.closing_time || null;
+
+  // Branch hours moved to per-brand schedules (/api/branches/[id]/hours). A
+  // caller still sending the old single pair is told so instead of having the
+  // value silently dropped.
+  for (const key of ["opening_time", "closing_time"] as const) {
+    if (fields[key]) throw validationError({ [key]: sk("errors.hours.useHoursPage") });
+  }
   if (has("is_active")) data.isActive = fields.is_active === "true";
   if (fields.phone) data.phone = validatePhone(fields.phone);
   // req #2 — validate any coordinates that enter (preserved hidden values,

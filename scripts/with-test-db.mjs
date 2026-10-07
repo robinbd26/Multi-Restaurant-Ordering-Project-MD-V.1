@@ -30,6 +30,9 @@ const child = spawn(command, commandArgs, {
   env: {
     ...process.env,
     DATABASE_URL: databaseUrl,
+    // Tells prisma/seed.ts it is seeding the e2e database (demo branch hours
+    // are left unset so the suite can order at any time of day).
+    ...(seedMode ? { E2E_SEED: "1" } : {}),
   },
 });
 

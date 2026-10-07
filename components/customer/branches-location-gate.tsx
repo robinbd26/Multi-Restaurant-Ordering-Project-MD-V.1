@@ -11,6 +11,8 @@ import { useTranslation } from "@/lib/i18n/use-translation";
 import { useLocationConsent } from "@/lib/hooks/use-location-consent";
 import { useLocationRequest } from "@/lib/hooks/use-location-request";
 
+import { opensText } from "@/lib/hours/opens-text";
+import type { NextOpening } from "@/lib/hours/schedule";
 /**
  * Owns the "where are you?" region at the top of the customer branches page and
  * closes Gap #2 (§2 stale saved address / §16 detecting state):
@@ -44,7 +46,7 @@ export function BranchesLocationGate({
   outOfZone: boolean;
   allCoveredClosed: boolean;
   nearestName: string | null;
-  opensAt: string | null;
+  opensAt: NextOpening | null;
   locationInitial: LocationStatus;
 }) {
   const { t, fmt } = useTranslation();
@@ -131,7 +133,7 @@ export function BranchesLocationGate({
       >
         <p className="font-medium">{t("outOfZone.allClosedTitle")}</p>
         {opensAt ? (
-          <p className="mt-0.5">{t("outOfZone.allClosedBody", { branch: nearestName ?? "", time: fmt.clock(opensAt) })}</p>
+          <p className="mt-0.5">{t("outOfZone.allClosedBodyOpens", { branch: nearestName ?? "", opens: opensText(opensAt, t, fmt) })}</p>
         ) : null}
       </div>
     );

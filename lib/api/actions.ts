@@ -976,30 +976,6 @@ export async function saveDeliverySettingsAction(payload: Record<string, unknown
   }
 }
 
-export async function addTimeSlotAction(payload: {
-  label: string;
-  start_time: string;
-  end_time: string;
-}): Promise<ActionState> {
-  try {
-    await sendJSON("/branch-manager/time-slots/", "POST", payload);
-    revalidatePath("/branch-manager/delivery-zone");
-    return { error: null, success: await tr("bmExtras.slotAdded") };
-  } catch (err) {
-    return await errorState(err);
-  }
-}
-
-export async function deleteTimeSlotAction(slotId: number): Promise<ActionState> {
-  try {
-    await sendJSON(`/branch-manager/time-slots/${slotId}/`, "DELETE");
-    revalidatePath("/branch-manager/delivery-zone");
-    return { error: null, success: await tr("bmExtras.slotDeleted") };
-  } catch (err) {
-    return await errorState(err);
-  }
-}
-
 export async function markAttendanceAction(status: string, note: string): Promise<ActionState> {
   try {
     await sendJSON("/attendance/", "POST", { status, note });

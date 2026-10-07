@@ -8,6 +8,8 @@ import { branchPoint, coverageForPoint, type BranchCoverage } from "@/lib/servic
 import { directionsUrl, haversineKm, roundKm, type LatLng } from "@/lib/services/geo";
 
 import { BRANCH_BRANDS_INCLUDE, branchLiveBrandSlugsOf } from "@/lib/brands/branch";
+import { branchTodaySpan, type AvailabilityBranch } from "@/lib/hours/availability";
+import { dhakaMoment } from "@/lib/hours/clock";
 /**
  * Delivery pricing + pickup, on top of the ONE coverage answer.
  *
@@ -61,12 +63,12 @@ export interface PickupInfo {
   distance_km: number | null;
   latitude: string | null;
   longitude: string | null;
-  opening_time: string | null;
-  closing_time: string | null;
+  /** Today's pickup window across the branch's live brands (display only). */
+  pickup_hours_today: { start: string; end: string } | null;
   directions_url: string | null;
 }
 
-function pickupInfo(branch: Branch, point: LatLng | null): PickupInfo {
+function pickupInfo(branch: Branch & Pick<AvailabilityBranch, "brands">, point: LatLng | null): PickupInfo {
   const bp = branchPoint(branch);
   return {
     branch_id: branch.id,
@@ -76,8 +78,7 @@ function pickupInfo(branch: Branch, point: LatLng | null): PickupInfo {
     distance_km: bp && point ? roundKm(haversineKm(bp, point)) : null,
     latitude: branch.latitude?.toString() ?? null,
     longitude: branch.longitude?.toString() ?? null,
-    opening_time: branch.openingTime,
-    closing_time: branch.closingTime,
+    pickup_hours_today: branchTodaySpan(branch, "pickup", dhakaMoment().day),
     // A plain Google Maps URL for the customer to navigate with — no API key.
     directions_url: bp ? directionsUrl(bp) : null,
   };
@@ -104,7 +105,7 @@ export async function nearestPickupBranch(
     },
     include: BRANCH_BRANDS_INCLUDE,
   });
-  let best: { branch: Branch; d: number } | null = null;
+  let best: { branch: (typeof branches)[number]; d: number } | null = null;
   for (const b of branches) {
     if (opts.excludeBranchId && b.id === opts.excludeBranchId) continue;
     // When a product brand is in play, only branches serving that brand qualify.

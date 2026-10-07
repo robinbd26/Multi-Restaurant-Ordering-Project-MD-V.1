@@ -19,6 +19,8 @@ import { LIMITS } from "@/lib/validation/limits";
 import { cn } from "@/lib/utils";
 import type { PaymentMethod } from "@/types";
 
+import { opensText } from "@/lib/hours/opens-text";
+import type { NextOpening } from "@/lib/hours/schedule";
 /* Task 3 — the drawer's checkout state machine. Every step renders INSIDE this
    drawer; nothing navigates to /customer/checkout anymore. */
 type CheckoutStep = "cart" | "pickup-confirm" | "address" | "payment" | "overview" | "success";
@@ -65,6 +67,23 @@ interface DrawerSavedAddress {
 interface AddressCoverageState {
   status: "checking" | "covered" | "outside" | "error";
   pickupEnabled: boolean;
+}
+
+/** /api/branches/[id]/availability — per brand, per channel, right now. */
+interface DrawerAvailabilityChannel {
+  open: boolean;
+  reason: string | null;
+  opens_at: NextOpening | null;
+}
+interface DrawerAvailabilityBrand {
+  slug: string;
+  name: string;
+  delivery: DrawerAvailabilityChannel;
+  pickup: DrawerAvailabilityChannel;
+}
+interface DrawerAvailability {
+  branch_id: number;
+  brands: DrawerAvailabilityBrand[];
 }
 
 /** /api/delivery/quote response — the subset the drawer renders. */
@@ -130,24 +149,22 @@ export function CartDrawer({
   signedIn = false,
   customerName = null,
   customerPhone = null,
-  platformClosed = false,
 }: {
   signedIn?: boolean;
   customerName?: string | null;
   customerPhone?: string | null;
-  /**
-   * ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery and
-   * pickup alike, at every branch. Computed server-side (app/page.tsx) once
-   * per page load, so it reflects Dhaka time rather than the visitor's own
-   * clock. Browsing and the cart itself stay open; this only blocks the two
-   * buttons that would START checkout, which is what stops anything further.
-   */
-  platformClosed?: boolean;
 }) {
   const { lines, count, total, isOpen, closeCart, setQty, remove, clear, cartBranchId, cartBranchName } =
     useHomeCart();
   const { t, fmt } = useTranslation();
   const [confirmClear, setConfirmClear] = useState(false);
+  // Which brands in this cart take delivery / pickup orders right now, from the
+  // server's Asia/Dhaka clock and each brand's own schedule at the cart's
+  // branch (GET /api/branches/[id]/availability). Browsing and the cart stay
+  // open; a closed channel only disables the button that would start checkout,
+  // with the brand and its opening time named. The server re-checks at quote
+  // and order time, so this is a courtesy, never the gate.
+  const [availability, setAvailability] = useState<DrawerAvailability | null>(null);
   // Server-calculated nearest ELIGIBLE branch (req #5) — signed-in customers
   // only; guests see the cart's own branch instead.
   const [nearestBranch, setNearestBranch] = useState<string | null>(null);
@@ -271,6 +288,38 @@ export function CartDrawer({
   // never strand the customer on a dead checkout step.
   const view: CheckoutStep =
     step === "success" && orderResult ? "success" : lines.length === 0 ? "cart" : step;
+
+  useEffect(() => {
+    if (!isOpen || cartBranchId == null) return;
+    let alive = true;
+    const load = () =>
+      fetch(`/api/branches/${cartBranchId}/availability`, { cache: "no-store" })
+        .then((r) => (r.ok ? (r.json() as Promise<DrawerAvailability>) : null))
+        .then((d) => {
+          if (alive) setAvailability(d);
+        })
+        .catch(() => {
+          if (alive) setAvailability(null);
+        });
+    void load();
+    // A slot can open or close while the drawer sits open.
+    const timer = setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [isOpen, cartBranchId]);
+  const cartBrandSlugs = [...new Set(lines.map((l) => l.brand).filter((b): b is string => Boolean(b)))];
+  const closedFor = (channel: "delivery" | "pickup") =>
+    (availability?.brands ?? []).filter((b) => cartBrandSlugs.includes(b.slug) && !b[channel].open);
+  const deliveryClosed = closedFor("delivery");
+  const pickupClosed = closedFor("pickup");
+  const closedLine = (b: DrawerAvailabilityBrand, channel: "delivery" | "pickup") => {
+    const s = b[channel];
+    const when = s.opens_at ? ` ${opensText(s.opens_at, t, fmt)}` : "";
+    if (s.reason === "delivery_paused") return t("home.order.brandDeliveryPaused", { brand: b.name });
+    return t("home.order.brandClosedFor", { brand: b.name, channel: t(`hours.channel.${channel}`) }) + when;
+  };
 
   // WS-7.1 — the customer's spendable reward vouchers, read when the payment
   // step opens. ?vouchers=1 is the light read (no ledger, no daily-login award).
@@ -2215,28 +2264,37 @@ export function CartDrawer({
             /* req #4 — ONE primary action, carrying the grand total, plus the
                 Self Pickup alternative underneath. */
             <>
-              {platformClosed ? (
-                /* ITEM 5 — the SAME honest "here's why, here's what still
-                    works" pattern the outside-delivery-area banner uses:
-                    browsing and the cart stay open, only placing the order
-                    is blocked, with a plain reason and a reopen time. */
+              {deliveryClosed.length || pickupClosed.length ? (
+                /* The SAME honest "here's why, here's what still works"
+                    pattern the outside-delivery-area banner uses: browsing
+                    and the cart stay open, only the closed channel's button
+                    is blocked, naming the brand and when it opens. */
                 <div
                   className="mb-2.5 rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3"
-                  data-testid="drawer-platform-closed"
+                  data-testid="drawer-brand-closed"
                   role="status"
                 >
-                  <p className="text-[0.82rem] font-bold text-amber-300">{t("home.order.platformClosedTitle")}</p>
-                  <p className="mt-0.5 text-[0.75rem] text-amber-200/80">{t("home.order.platformClosedBody")}</p>
+                  <p className="text-[0.82rem] font-bold text-amber-300">{t("home.order.brandClosedTitle")}</p>
+                  {deliveryClosed.map((b) => (
+                    <p key={`d-${b.slug}`} className="mt-0.5 text-[0.75rem] text-amber-200/80" data-testid={`drawer-closed-delivery-${b.slug}`}>
+                      {closedLine(b, "delivery")}
+                    </p>
+                  ))}
+                  {pickupClosed.map((b) => (
+                    <p key={`p-${b.slug}`} className="mt-0.5 text-[0.75rem] text-amber-200/80" data-testid={`drawer-closed-pickup-${b.slug}`}>
+                      {closedLine(b, "pickup")}
+                    </p>
+                  ))}
                 </div>
               ) : null}
               <button
                 type="button"
                 onClick={() => void startCheckout()}
-                disabled={platformClosed || cartBranchId == null || lines.length === 0}
+                disabled={deliveryClosed.length > 0 || cartBranchId == null || lines.length === 0}
                 data-testid="place-an-order"
                 className={cn(
                   "flex w-full items-center justify-center gap-2 rounded-[10px] bg-brand-500 py-3.25 text-[0.95rem] font-extrabold text-white transition-colors hover:bg-brand-600",
-                  (platformClosed || cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
+                  (deliveryClosed.length > 0 || cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
                 )}
               >
                 {t("home.order.placeAnOrder")} · {fmt.money(total)}
@@ -2244,11 +2302,11 @@ export function CartDrawer({
               <button
                 type="button"
                 onClick={startPickupCheckout}
-                disabled={platformClosed || cartBranchId == null || lines.length === 0}
+                disabled={pickupClosed.length > 0 || cartBranchId == null || lines.length === 0}
                 data-testid="self-pickup"
                 className={cn(
                   "mt-2 flex w-full items-center justify-center gap-2 rounded-[10px] border border-brand-500/40 py-2.75 text-[0.85rem] font-extrabold text-brand-400 transition-colors hover:bg-brand-500/10",
-                  (platformClosed || cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
+                  (pickupClosed.length > 0 || cartBranchId == null || lines.length === 0) && "cursor-not-allowed opacity-50",
                 )}
               >
                 🏬 {t("home.order.selfPickup")}

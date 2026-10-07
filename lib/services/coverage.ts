@@ -11,11 +11,12 @@ import {
   type CoverageStatus,
 } from "@/lib/coverage/resolve";
 import { prisma } from "@/lib/db";
-import { isBranchOpenNow } from "@/lib/services/branch-hours";
 import { currentCoverageWindow } from "@/lib/services/coverage-window";
 import { haversineKm, isValidLatLng, roundKm, type LatLng } from "@/lib/services/geo";
 
-import { BRANCH_BRANDS_INCLUDE, branchBrandSlugsOf } from "@/lib/brands/branch";
+import { BRANCH_HOURS_INCLUDE, branchNextOpening, branchOpenFor } from "@/lib/hours/availability";
+import { dhakaMoment } from "@/lib/hours/clock";
+import type { NextOpening } from "@/lib/hours/schedule";
 /**
  * THE database-backed coverage answer: "can this branch deliver to this pin,
  * right now, and for how much?" — and, across branches, "who should serve it?".
@@ -151,8 +152,8 @@ export async function coverageForBranchId(
 export interface BranchCoverageOption extends BranchCoverage {
   branchName: string;
   openNow: boolean;
-  /** Opening time to show when the branch is covered but closed; else null. */
-  opensAt: string | null;
+  /** When delivery next opens, if the branch is covered but closed; else null. */
+  opensAt: NextOpening | null;
   pickupEnabled: boolean;
 }
 
@@ -175,7 +176,7 @@ export async function branchOptionsForPoint(
   const branches = (
     await prisma.branch.findMany({
       where: { isActive: true, isArchived: false },
-      include: BRANCH_BRANDS_INCLUDE,
+      include: BRANCH_HOURS_INCLUDE,
       orderBy: { name: "asc" },
     })
   ).filter((b) => (options.brandFilter ? options.brandFilter(b) : true));
@@ -192,7 +193,16 @@ export async function branchOptionsForPoint(
     else byBranch.set(a.branchId, [a]);
   }
 
-  const hoursById = new Map(branches.map((b) => [b.id, isBranchOpenNow({ ...b, brandSlugs: branchBrandSlugsOf(b) })]));
+  // "Open" for ranking = at least one of its live brands takes DELIVERY right
+  // now, per that brand's own schedule (lib/hours/availability). The pause is
+  // reported separately below, as before.
+  const at = dhakaMoment();
+  const hoursById = new Map(
+    branches.map((b) => [
+      b.id,
+      { orderable: branchOpenFor(b, "delivery", at), opensAt: branchNextOpening(b, "delivery", at) },
+    ]),
+  );
   const ranked = rankBranchesForPoint(
     point,
     branches.map((b) => ({

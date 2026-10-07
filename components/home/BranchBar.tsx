@@ -14,6 +14,8 @@ import { useTranslation } from "@/lib/i18n/use-translation";
 import { useLocationRequest } from "@/lib/hooks/use-location-request";
 
 import { useBrandNames } from "@/components/home/use-brand-names";
+import { opensText } from "@/lib/hours/opens-text";
+import type { NextOpening } from "@/lib/hours/schedule";
 export interface BranchBarContext {
   state: "ok" | "no-location" | "out-of-zone";
   branchName: string | null;
@@ -29,8 +31,8 @@ export interface BranchBarContext {
   prepTimeMinutes: number | null;
   /** Whether the resolved branch can take an order right now. */
   open: boolean;
-  /** Opening time ("HH:MM") shown when the branch is currently closed. */
-  opensAt: string | null;
+  /** When the branch next opens, shown while it is closed (server, Asia/Dhaka). */
+  opensAt: NextOpening | null;
   /** The deliver-to + browsing choices in force after server validation. */
   selection: BrowseScope;
   /** The branch on screen cannot deliver to the deliver-to point. */
@@ -172,7 +174,7 @@ export function BranchBar({
                 className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[0.72rem] font-semibold text-amber-300"
                 data-testid="home-branch-closed"
               >
-                🕒 {t("nearestBranch.opensAt", { time: fmt.clock(context.opensAt) })}
+                🕒 {opensText(context.opensAt, t, fmt)}
               </span>
             ) : null}
             {context.distanceKm != null ? (

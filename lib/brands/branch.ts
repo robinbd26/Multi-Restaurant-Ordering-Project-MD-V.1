@@ -17,7 +17,8 @@ interface BrandLike {
 }
 
 export interface BranchWithBrandRows {
-  brands?: { brand: BrandLike }[];
+  /** BranchBrand rows; `hours` is the brand's schedule JSON at this branch. */
+  brands?: { hours?: string; brand: BrandLike }[];
 }
 
 function ordered(rows: { brand: BrandLike }[]): BrandLike[] {

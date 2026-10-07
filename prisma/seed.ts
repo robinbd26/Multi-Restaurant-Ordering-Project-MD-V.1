@@ -369,6 +369,45 @@ async function main() {
     console.log(`✔ Brand branch: ${br.name} (${b.brand})`);
   }
 
+  // ── Ordering hours per brand (BranchBrand.hours) ─────────────────────
+  // A fresh machine gets sensible schedules (the Uttara pattern): every brand
+  // opens at 11:00 AM; Madchef takes its last order at 10:30 PM; Cheez delivers
+  // on until 4:00 AM with pickup to 11:00 PM; dine-in is shown as 11 AM–11 PM.
+  // Only UNSET schedules are filled, so a manager's real hours survive a re-seed.
+  //
+  // E2E_SEED=1 (set by scripts/with-test-db.mjs --seed) does the opposite for the
+  // demo branches: their schedules are cleared to "not set", which places no
+  // time limit, so the e2e suite can order at whatever Dhaka time it runs. Specs
+  // that need a genuinely open or closed brand set hours through the API.
+  const e2eSeed = process.env.E2E_SEED === "1";
+  const demoBranches = await prisma.branch.findMany({
+    where: { name: { in: [BRANCH_NAME, ...brandBranches.map((b) => b.name)] } },
+    include: { brands: { include: { brand: true } } },
+  });
+  const slot = (start: string, end: string, delivery: boolean, pickup: boolean) => ({ start, end, delivery, pickup });
+  const DEFAULT_HOURS: Record<string, unknown> = {
+    cheez: { everyDay: [slot("11:00", "23:00", true, true), slot("23:00", "04:00", true, false)], days: {} },
+    madchef: { everyDay: [slot("11:00", "22:30", true, true)], days: {} },
+  };
+  const FALLBACK_HOURS = { everyDay: [slot("11:00", "23:00", true, true)], days: {} };
+  for (const b of demoBranches) {
+    for (const row of b.brands) {
+      if (e2eSeed) {
+        await prisma.branchBrand.update({ where: { id: row.id }, data: { hours: "" } });
+      } else if (!row.hours) {
+        const hours = DEFAULT_HOURS[row.brand.slug] ?? FALLBACK_HOURS;
+        await prisma.branchBrand.update({ where: { id: row.id }, data: { hours: JSON.stringify(hours) } });
+      }
+    }
+    if (!e2eSeed && !b.dineInHours && b.businessType === "dine_in") {
+      await prisma.branch.update({
+        where: { id: b.id },
+        data: { dineInHours: JSON.stringify({ everyDay: [{ start: "11:00", end: "23:00" }], days: {} }) },
+      });
+    }
+  }
+  console.log(e2eSeed ? "✔ Demo branch hours cleared for e2e (no time limit)" : "✔ Demo branch hours set where unset");
+
   // ── Phase B demo data: coverage, prep time, pickup, tables, employees, attendance ──
   await prisma.branch.update({
     where: { id: branch.id },
@@ -902,15 +941,7 @@ async function main() {
         { branchId: branch.id, label: "রাত", startTime: "19:00", endTime: "23:00" },
       ],
     });
-    // Hours are left UNSET on the seeded branch on purpose. Server-side hours
-    // enforcement (lib/services/branch-hours.ts) treats a branch with no
-    // openingTime/closingTime as always orderable, so the e2e suite — which
-    // orders from the seeded/created branches at whatever wall-clock CI runs —
-    // stays deterministic regardless of the Dhaka time of day. Tests that need a
-    // genuinely open-or-closed branch seed their own hours relative to now
-    // (see tests/e2e/57-branch-hours-enforcement.spec.ts).
-    await prisma.branch.update({ where: { id: branch.id }, data: { openingTime: null, closingTime: null } });
-    console.log("✔ Seeded 2 delivery time slots (branch hours left unset for deterministic ordering)");
+    console.log("✔ Seeded 2 delivery time slots");
   }
   if (!(await prisma.tableReservation.findFirst())) {
     const res = await prisma.tableReservation.create({

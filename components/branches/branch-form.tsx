@@ -13,7 +13,6 @@ import { saveBranchAction } from "@/lib/api/actions";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { LIMITS } from "@/lib/validation/limits";
 import {
-  differentTimeField,
   email as emailRule,
   max,
   min,
@@ -22,7 +21,6 @@ import {
   phone,
   required,
   selectRequired,
-  time,
 } from "@/lib/validation/rules";
 import { useFormValidation, type FieldRules } from "@/lib/validation/use-form-validation";
 import { brandName, type BrandInfo } from "@/lib/brands/shared";
@@ -44,10 +42,6 @@ const RULES: FieldRules = {
   email: [emailRule],
   bkash_number: [phone],
   delivery_radius_km: [required, number, min(LIMITS.radiusMin), max(LIMITS.radiusMax)],
-  opening_time: [time],
-  // Overnight shifts are real (10:45 PM → 4:00 AM), so closing may be earlier
-  // than opening; it only may not equal it.
-  closing_time: [time, differentTimeField("opening_time")],
 };
 
 const FILES = { logo: false };
@@ -218,12 +212,20 @@ export function BranchForm({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Field label={t("branches.openingTime")} name="opening_time" error={errors.opening_time}>
-          <Input name="opening_time" type="time" defaultValue={branch?.opening_time ?? ""} />
-        </Field>
-        <Field label={t("branches.closingTime")} name="closing_time" error={errors.closing_time}>
-          <Input name="closing_time" type="time" defaultValue={branch?.closing_time ?? ""} />
-        </Field>
+        {/* Hours are per brand and per channel now, on their own page
+            (Branch → Hours), not a single opening/closing pair here. */}
+        <div className="rounded-xl border border-dashed border-border-base p-3 text-xs text-fg-muted sm:col-span-2" data-testid="branch-form-hours-note">
+          {branch ? (
+            <>
+              {t("hours.formNoteEdit")}{" "}
+              <a className="font-semibold text-brand-600 hover:underline" href={`/admin/branches/${branch.id}/hours`}>
+                {t("hours.openEditor")}
+              </a>
+            </>
+          ) : (
+            t("hours.formNoteCreate")
+          )}
+        </div>
         {/* Leaving this empty on edit keeps the branch's current logo. */}
         <Field
           label={t("branches.logo")}

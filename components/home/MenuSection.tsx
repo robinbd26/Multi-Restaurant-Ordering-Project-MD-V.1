@@ -11,6 +11,7 @@ import { brandDescription, brandName, brandTagline, withAlpha, type BrandInfo } 
 import type { Brand, CategoryKey, MenuItem, PublicCategory } from "@/lib/home/types";
 import { useTranslation } from "@/lib/i18n/use-translation";
 
+import { opensText } from "@/lib/hours/opens-text";
 function BrandTab({
   label,
   logo,
@@ -18,12 +19,15 @@ function BrandTab({
   count,
   active,
   activeColor,
+  closedNote,
   onClick,
 }: {
   label: string;
   logo: string | null;
   emoji: string;
   count: string;
+  /** "Opens at 11:00 AM" when the brand is closed on both channels right now. */
+  closedNote?: string | null;
   active: boolean;
   activeColor: string;
   onClick: () => void;
@@ -32,7 +36,10 @@ function BrandTab({
     <button
       onClick={onClick}
       className="-mb-px flex items-center gap-2 whitespace-nowrap px-5 py-3.5 text-[0.9rem] font-semibold transition-colors"
+      data-closed={closedNote ? "true" : undefined}
+      title={closedNote ?? undefined}
       style={{
+        opacity: closedNote && !active ? 0.55 : 1,
         color: active ? "#f0f0f2" : "#a0a0b0",
         borderBottom: `3px solid ${active ? activeColor : "transparent"}`,
       }}
@@ -58,6 +65,7 @@ function BrandTab({
       >
         {count}
       </span>
+      {closedNote ? <span className="text-[0.68rem] font-medium text-[#a0a0b0]">· {closedNote}</span> : null}
     </button>
   );
 }
@@ -87,7 +95,29 @@ export function MenuSection({
   emptyMessage?: string;
 }) {
   const { t, fmt, locale } = useTranslation();
-  const { brand, setBrand: setBrandState, servedBrands, brandInfo } = useHomeCart();
+  const { brand, setBrand: setBrandState, servedBrands, brandInfo, brandAvailability } = useHomeCart();
+  // Open-now per brand comes from the SERVER (Asia/Dhaka, each brand's own
+  // schedule). A brand closed on both channels is greyed with its opening time;
+  // one open on a single channel says which. Browsing and the cart stay open —
+  // checkout is what refuses, per channel, with the same rules.
+  const availabilityNote = (slug: string): { closed: boolean; text: string } | null => {
+    const a = brandAvailability[slug];
+    if (!a) return null;
+    if (a.delivery && a.pickup) return null;
+    if (!a.delivery && !a.pickup) {
+      const opening = a.deliveryOpensAt ?? a.pickupOpensAt;
+      return { closed: true, text: opening ? opensText(opening, t, fmt) : t("home.menu.closedNow") };
+    }
+    const closedChannel = a.delivery ? "pickup" : "delivery";
+    const opening = a.delivery ? a.pickupOpensAt : a.deliveryOpensAt;
+    return {
+      closed: false,
+      text:
+        t(a.delivery ? "home.menu.deliveryOnlyNow" : "home.menu.pickupOnlyNow") +
+        (opening ? ` · ${t(`hours.channel.${closedChannel}`)}: ${opensText(opening, t, fmt)}` : ""),
+    };
+  };
+  const activeNote = availabilityNote(brand);
   const [active, setActive] = useState<CategoryKey | "all">("all");
   const [query, setQuery] = useState("");
   // The active brand can change from outside this component — a hero brand
@@ -216,6 +246,7 @@ export function MenuSection({
                   count={t("home.menu.itemsCount", { n: fmt.num(brandCounts[slug] ?? 0) })}
                   active={brand === slug}
                   activeColor={b.accent_color}
+                  closedNote={availabilityNote(slug)?.closed ? availabilityNote(slug)!.text : null}
                   onClick={() => setBrand(slug)}
                 />
               </span>
@@ -306,6 +337,25 @@ export function MenuSection({
           ) : null}
         </div>
 
+        {activeNote ? (
+          <div
+            className={
+              activeNote.closed
+                ? "mt-4 rounded-[12px] border border-white/10 bg-white/5 px-4 py-3 text-[0.85rem] text-[#d0d0d8]"
+                : "mt-4 rounded-[12px] border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[0.85rem] text-amber-200"
+            }
+            data-testid="menu-brand-closed"
+            role="status"
+          >
+            <strong className="text-white">
+              {activeNote.closed
+                ? t("home.menu.brandClosedNow", { brand: meta.name })
+                : t("home.menu.brandPartlyOpen", { brand: meta.name })}
+            </strong>{" "}
+            {activeNote.text}
+          </div>
+        ) : null}
+
         {/* Category tabs */}
         <div className="mt-4">
           <CategoryTabs categories={categories} accent={accent} active={active} onChange={setActive} />
@@ -370,7 +420,7 @@ export function MenuSection({
                   {t("home.menu.itemsCount", { n: fmt.num(group.items.length) })}
                 </span>
               </div>
-              <div className="item-cards-grid">
+              <div className={activeNote?.closed ? "item-cards-grid opacity-60 grayscale-[0.6]" : "item-cards-grid"}>
                 {group.items.map((item) => (
                   <ProductCard
                     key={item.id}

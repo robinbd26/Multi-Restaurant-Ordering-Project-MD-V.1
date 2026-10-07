@@ -37,6 +37,9 @@ import {
 import type { ActivityType } from "@/lib/constants/enums";
 import { orderPhoneVisibility, type ChatViewer } from "@/lib/order-chat/policy";
 
+import { branchTodaySpan } from "@/lib/hours/availability";
+import { dhakaMoment } from "@/lib/hours/clock";
+import { parseDineInHours } from "@/lib/hours/schedule";
 type Dec = Prisma.Decimal | number | string | null | undefined;
 
 /** Decimal → fixed-places string (fixed-precision), or null. */
@@ -141,8 +144,7 @@ export function serializeBranch(b: BranchWithManager) {
     is_archived: b.isArchived,
     archived_at: b.archivedAt ? iso(b.archivedAt) : null,
     hold_reason: b.holdReason,
-    opening_time: b.openingTime ?? null,
-    closing_time: b.closingTime ?? null,
+    ...branchHoursFields(b),
     logo: b.logo ?? null,
     created_at: iso(b.createdAt),
     updated_at: iso(b.updatedAt),
@@ -160,9 +162,22 @@ export function serializePublicBranch(b: Branch & BranchWithBrandRows) {
     brand_type: legacyBrandType(branchLiveBrandSlugsOf(b)),
     business_type: b.businessType,
     delivery_radius_km: decOr0(b.deliveryRadiusKm, 1),
-    opening_time: b.openingTime ?? null,
-    closing_time: b.closingTime ?? null,
+    ...branchHoursFields(b),
     logo: b.logo ?? null,
+  };
+}
+
+/**
+ * Display-only hours facts for a branch payload: today's ordering window
+ * across its live brands (Asia/Dhaka weekday) and its dine-in hours. The
+ * authority on "can I order now" is lib/hours/availability, not these fields.
+ * Replaces the old single opening_time / closing_time pair.
+ */
+function branchHoursFields(b: Branch & BranchWithBrandRows) {
+  const rows = (b.brands ?? []).map((r) => ({ hours: r.hours ?? "", brand: r.brand }));
+  return {
+    hours_today: branchTodaySpan({ brands: rows }, "any", dhakaMoment().day),
+    dine_in_hours: parseDineInHours(b.dineInHours),
   };
 }
 

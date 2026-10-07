@@ -13,7 +13,6 @@ import { getManagedBranch } from "@/lib/services/branches";
 import { getCompanyLogoUrl } from "@/lib/services/settings";
 import { activeDutySession } from "@/lib/services/rider-duty";
 import { getLocale } from "@/lib/i18n/server";
-import { isFullClosureWindow } from "@/lib/services/coverage-window";
 
 /**
  * PHASE B — nothing behind the login is indexable. Declaring it on the shared
@@ -71,7 +70,6 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             signedIn
             customerName={user.full_name ?? null}
             customerPhone={user.phone ?? null}
-            platformClosed={isFullClosureWindow()}
           />
           <BranchSwitchDialog />
         </>

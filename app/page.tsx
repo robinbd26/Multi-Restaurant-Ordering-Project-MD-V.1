@@ -22,8 +22,8 @@ import type { Brand } from "@/lib/home/types";
 import { getCompanyLogoUrl } from "@/lib/services/settings";
 import { BranchBar, type BranchBarContext } from "@/components/home/BranchBar";
 import { readBrowseScope } from "@/lib/browse-scope/server";
-import { isFullClosureWindow } from "@/lib/services/coverage-window";
-import { isBranchOpenNow } from "@/lib/services/branch-hours";
+import { storefrontAvailability, storefrontCutoffs } from "@/lib/home/brand-availability";
+import { widest } from "@/lib/hours/spans";
 import { savedAddressOptions } from "@/lib/services/addresses";
 import { browsesWithoutLocation, resolveHomeBranch } from "@/lib/services/customer-branch";
 import { branchMenu, publicMenu } from "@/lib/services/public-catalog";
@@ -197,16 +197,18 @@ export default async function HomePage() {
   // hours decision, not a second reading of the clock.
   const pickerAddresses = isCustomer ? await savedAddressOptions(user.id) : [];
   // The master list the checkout add-address form offers (Phase 3: names only).
-  // ITEM 5 — 04:00–11:00 Dhaka: the whole platform is closed, delivery and
-  // pickup alike. Computed server-side (Dhaka time, not the visitor's clock)
-  // and handed to the drawer so it can block placing an order honestly, the
-  // moment checkout opens, rather than only after a failed API call.
-  const platformClosed = isFullClosureWindow();
+  // Which brands are open right now (per brand, per channel) and their
+  // last-order deadlines — computed HERE, on the server's Asia/Dhaka clock,
+  // from each brand's own schedule, never from the visitor's device clock. The
+  // menu greys a closed brand with its opening time; checkout re-checks.
+  const scopeBranchId = branchContext?.state === "ok" ? branchContext.branchId : null;
+  const brandAvailability = storefrontAvailability(branches, scopeBranchId);
+  const cutoffs = storefrontCutoffs(branches, scopeBranchId);
   const pickerBranches = branches.map((b) => ({
     id: b.id,
     name: b.name,
     brands: b.brands,
-    open: isBranchOpenNow({ ...b, brandSlugs: b.brands }).orderable,
+    open: b.status.deliveryOpen || b.status.pickupOpen,
   }));
   const origin = await siteOrigin();
 
@@ -226,8 +228,11 @@ export default async function HomePage() {
       servesCuisine: b.brands
         .map((slug) => liveBrands.find((x) => x.slug === slug)?.name ?? slug)
         .join(", "),
-      ...(b.openingTime && b.closingTime
-        ? { openingHours: `Mo-Su ${b.openingTime}-${b.closingTime}` }
+      // Today's ordering window (schema.org wants one simple range).
+      ...(widest([b.today.delivery, b.today.pickup])
+        ? {
+            openingHours: `Mo-Su ${widest([b.today.delivery, b.today.pickup])!.start}-${widest([b.today.delivery, b.today.pickup])!.end}`,
+          }
         : {}),
     })),
   };
@@ -246,6 +251,7 @@ export default async function HomePage() {
         initialBrand={initialBrand}
         servedBrands={servedBrands}
         brandList={liveBrands}
+        brandAvailability={brandAvailability}
         activeBranchId={branchContext?.branchId ?? null}
         activeBranchName={branchContext?.branch?.name ?? null}
       >
@@ -268,8 +274,8 @@ export default async function HomePage() {
             items={menu.items}
             emptyMessage={emptyMenuMessage}
           />
-          <CallToOrder />
-          <OperatingHours branches={branches} />
+          <CallToOrder branches={branches} brands={liveBrands} />
+          <OperatingHours branches={branches} brands={liveBrands} />
           <BranchesCoverage branches={branches} />
         </main>
         <Footer signedIn={Boolean(user)} brands={liveBrands} branchCount={branches.length} />
@@ -278,11 +284,10 @@ export default async function HomePage() {
           signedIn={Boolean(user)}
           customerName={user?.full_name ?? null}
           customerPhone={user?.phone ?? null}
-          platformClosed={platformClosed}
         />
         <CartToast />
         <BranchSwitchDialog />
-        <CutoffCountdown />
+        <CutoffCountdown cutoffs={cutoffs} />
       </HomeCartProvider>
     </div>
   );

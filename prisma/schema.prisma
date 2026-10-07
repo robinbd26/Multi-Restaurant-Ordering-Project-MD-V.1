@@ -801,8 +801,11 @@ model Branch {
   holdReleaseReason String    @default("")
   holdReleasedAt    DateTime?
   holdReleasedById  Int?
-  openingTime       String? // "HH:MM"
-  closingTime       String? // "HH:MM"
+  // Dine-in hours, DISPLAY ONLY (the app takes no dine-in orders): JSON in the
+  // shape of lib/hours/schedule.ts DineInHours, "" = not shown. Ordering hours
+  // live per brand on BranchBrand.hours. The old single openingTime/closingTime
+  // pair was converted into those schedules and dropped (20261007130000).
+  dineInHours       String    @default("")
   logo              String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -1256,6 +1259,11 @@ model BranchBrand {
   branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
   brandId   Int
   brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  // THE ordering schedule for this brand at this branch: which slots take
+  // delivery and/or pickup orders, every day or per weekday. JSON in the shape
+  // of lib/hours/schedule.ts BrandHours. "" = not configured yet, which places
+  // no time restriction (see lib/services/availability.ts).
+  hours     String   @default("")
   createdAt DateTime @default(now())
 
   @@unique([branchId, brandId])

@@ -7,8 +7,6 @@ import { json } from "@/lib/http/respond";
 import { prisma } from "@/lib/db";
 import { requireManagerBranch } from "@/lib/services/branch-ops";
 
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-
 // GET /api/branch-manager/delivery-settings — own branch prep time, pickup
 // config and hours, plus the read-only coverage facts the manager needs.
 //
@@ -33,8 +31,6 @@ export const GET = handle(async () => {
     pickup_enabled: branch.pickupEnabled,
     pickup_address: branch.pickupAddress,
     pickup_phone: branch.pickupPhone,
-    opening_time: branch.openingTime,
-    closing_time: branch.closingTime,
     /** How many drawn areas actually cover anything — 0 means no delivery. */
     drawn_area_count: areaCount,
     delivery_paused: isDeliveryPaused(branch),
@@ -43,7 +39,8 @@ export const GET = handle(async () => {
   });
 });
 
-// PATCH /api/branch-manager/delivery-settings — prep time, pickup point, hours.
+// PATCH /api/branch-manager/delivery-settings — prep time and pickup point.
+// Hours are per brand now: PUT /api/branches/[id]/hours.
 export const PATCH = handle(async (req: Request) => {
   const me = await requireApiRole("branch_manager");
   const branch = await requireManagerBranch(me);
@@ -52,8 +49,6 @@ export const PATCH = handle(async (req: Request) => {
     pickup_enabled?: boolean;
     pickup_address?: string;
     pickup_phone?: string;
-    opening_time?: string;
-    closing_time?: string;
   };
   const data: Prisma.BranchUpdateInput = {};
 
@@ -65,13 +60,6 @@ export const PATCH = handle(async (req: Request) => {
   if (body.pickup_enabled !== undefined) data.pickupEnabled = Boolean(body.pickup_enabled);
   if (body.pickup_address !== undefined) data.pickupAddress = String(body.pickup_address);
   if (body.pickup_phone !== undefined) data.pickupPhone = String(body.pickup_phone);
-  for (const [key, field] of [["opening_time", "openingTime"], ["closing_time", "closingTime"]] as const) {
-    const v = body[key];
-    if (v !== undefined) {
-      if (v && !TIME_RE.test(v)) throw validationError({ [key]: sk("errors.money.enterValidTime") });
-      (data as Record<string, unknown>)[field] = v || null;
-    }
-  }
 
   await prisma.branch.update({ where: { id: branch.id }, data });
   return json({ ok: true });
