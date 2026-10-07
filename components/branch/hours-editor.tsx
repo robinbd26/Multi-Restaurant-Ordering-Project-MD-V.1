@@ -145,12 +145,12 @@ export function HoursEditor({ branchId, branchName, businessType, brands, dineIn
             />
           </label>
           <Checkbox
-            label={t("hours.channel.delivery")}
+            label={t("home.hours.delivery")}
             checked={s.delivery}
             onChange={(e) => onChange(slots.map((x) => (x.key === s.key ? { ...x, delivery: e.target.checked } : x)))}
           />
           <Checkbox
-            label={t("hours.channel.pickup")}
+            label={t("home.hours.pickup")}
             checked={s.pickup}
             onChange={(e) => onChange(slots.map((x) => (x.key === s.key ? { ...x, pickup: e.target.checked } : x)))}
           />
