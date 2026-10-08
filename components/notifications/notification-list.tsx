@@ -141,15 +141,21 @@ export function NotificationList({ items }: { items: Notification[] }) {
                 onClick={() => open(n)}
                 className={cn(
                   "flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition-colors",
+                  // Unread: a brand tint in BOTH themes. The light-only pale pink
+                  // (brand-50) sat under light text in dark mode and was unreadable;
+                  // dark uses the translucent brand tint the rest of the dark theme
+                  // uses for "active" rows, plus a stronger left edge.
                   unread
-                    ? "border-brand-200 bg-brand-50/60 hover:bg-brand-50"
+                    ? "border-brand-200 border-l-4 border-l-brand-500 bg-brand-50/60 hover:bg-brand-50 dark:border-brand-500/35 dark:border-l-brand-500 dark:bg-brand-500/10 dark:hover:bg-brand-500/15"
                     : "border-border-base bg-surface-card hover:bg-surface-hover",
                 )}
               >
                 <span
                   className={cn(
                     "mt-0.5 flex size-9 items-center justify-center rounded-lg",
-                    unread ? "bg-brand-100 text-brand-600" : "bg-surface-muted text-fg-muted",
+                    unread
+                      ? "bg-brand-100 text-brand-600 dark:bg-brand-500/20 dark:text-brand-300"
+                      : "bg-surface-muted text-fg-muted",
                   )}
                 >
                   <Icon name={TYPE_ICON[n.type] ?? "bell"} className="size-4" />
