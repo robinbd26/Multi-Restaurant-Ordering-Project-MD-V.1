@@ -107,8 +107,16 @@ export async function OperatingHours({ branches, brands }: { branches: PublicHom
     .filter((b) => b.pickupEnabled && b.today.pickup && lateness(b.today.pickup.end) >= lateness(NIGHT_PICKUP_FROM))
     .sort((a, z) => lateness(z.today.pickup!.end) - lateness(a.today.pickup!.end) || a.name.localeCompare(z.name));
   // When home delivery stops tonight across the night-pickup branches: after
-  // it, those orders are collected instead.
-  const nightDeliveryEnds = widest(nightPickup.map((b) => b.today.delivery))?.end ?? null;
+  // it, those orders are collected instead. Only said when pickup really runs
+  // on after delivery stops (a branch can deliver until 4 AM but stop pickup at
+  // 11 PM); an all-day window closes last.
+  const closes = (s: Span | null) => (s ? (s.start === s.end ? Infinity : lateness(s.end)) : -1);
+  const deliveryCloses = Math.max(-1, ...nightPickup.map((b) => closes(b.today.delivery)));
+  const pickupCloses = Math.max(-1, ...nightPickup.map((b) => closes(b.today.pickup)));
+  const nightDeliveryEnds =
+    deliveryCloses >= 0 && pickupCloses > deliveryCloses
+      ? (widest(nightPickup.map((b) => b.today.delivery))?.end ?? null)
+      : null;
 
   return (
     <section className="border-t border-white/8 bg-[#0a0a0c] px-5 pb-20 pt-18" data-testid="home-operating-hours">
