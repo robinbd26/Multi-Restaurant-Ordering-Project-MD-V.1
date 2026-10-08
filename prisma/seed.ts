@@ -912,16 +912,7 @@ async function main() {
     console.log("• Complaints already exist — skipped");
   }
 
-  // ── Branch manager extras: hours, reservation, ramadan (idempotent) ──
-  if (!(await prisma.deliveryTimeSlot.findFirst({ where: { branchId: branch.id } }))) {
-    await prisma.deliveryTimeSlot.createMany({
-      data: [
-        { branchId: branch.id, label: "দুপুর", startTime: "12:00", endTime: "15:00" },
-        { branchId: branch.id, label: "রাত", startTime: "19:00", endTime: "23:00" },
-      ],
-    });
-    console.log("✔ Seeded 2 delivery time slots");
-  }
+  // ── Branch manager extras: reservation, ramadan (idempotent) ──
   if (!(await prisma.tableReservation.findFirst())) {
     const res = await prisma.tableReservation.create({
       data: {

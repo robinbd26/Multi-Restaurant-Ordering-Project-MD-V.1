@@ -57,7 +57,6 @@ export interface BranchSetup {
   categories: number;
   deliveryAreas: number;
   tables: number;
-  timeSlots: number;
   employees: number;
   employeeTeams: number;
   coupons: number;
@@ -116,7 +115,7 @@ export async function branchRemovalCheck(branchId: number): Promise<BranchRemova
   ]);
 
   const [
-    products, categories, deliveryAreas, tables, timeSlots, employees, employeeTeams, coupons,
+    products, categories, deliveryAreas, tables, employees, employeeTeams, coupons,
     rewardRules, ramadanConfigs, ramadanSlots, ramadanMenus, ramadanTables, managerAssignments,
     ridersAssigned,
   ] = await Promise.all([
@@ -124,7 +123,6 @@ export async function branchRemovalCheck(branchId: number): Promise<BranchRemova
     prisma.category.count({ where }),
     prisma.branchDeliveryArea.count({ where }),
     prisma.branchTable.count({ where }),
-    prisma.deliveryTimeSlot.count({ where }),
     prisma.branchEmployee.count({ where }),
     prisma.employeeTeam.count({ where }),
     prisma.coupon.count({ where }),
@@ -144,7 +142,7 @@ export async function branchRemovalCheck(branchId: number): Promise<BranchRemova
     staffAttendance,
   };
   const setup: BranchSetup = {
-    products, categories, deliveryAreas, tables, timeSlots, employees, employeeTeams, coupons,
+    products, categories, deliveryAreas, tables, employees, employeeTeams, coupons,
     rewardRules, ramadanConfigs, ramadanSlots, ramadanMenus, ramadanTables, managerAssignments,
   };
   return {

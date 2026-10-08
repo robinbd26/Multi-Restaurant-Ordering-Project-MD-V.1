@@ -854,7 +854,6 @@ model Branch {
   expenses             BranchExpense[]
   settlements          BranchSettlement[]
   adjustments          FinancialAdjustment[]
-  timeSlots            DeliveryTimeSlot[]
   staffAttendance      StaffAttendance[]
   tableReservations    TableReservation[]
   ramadanTables        RamadanTable[]
@@ -1125,20 +1124,9 @@ model EmployeeAttendance {
   @@index([date])
 }
 
-// ── Branch manager: delivery hours, attendance, reservations ────────────
-model DeliveryTimeSlot {
-  id        Int      @id @default(autoincrement())
-  branchId  Int
-  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  label     String   @default("") // e.g. "Lunch", "Dinner"
-  startTime String // "HH:MM"
-  endTime   String // "HH:MM"
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-
-  @@index([branchId])
-}
-
+// ── Branch manager: attendance, reservations ────────────────────────────
+// (The label-only DeliveryTimeSlot table was dropped in 20261008140000: ordering
+// hours live per brand on BranchBrand.hours.)
 // Daily attendance marking for staff (branch manager, rider, etc.).
 model StaffAttendance {
   id       Int      @id @default(autoincrement())
