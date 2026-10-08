@@ -6,7 +6,9 @@ import { MapPicker } from "@/components/maps/map-picker";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/input";
+import { Checkbox, Field, FieldGroup, Input, Select, Textarea } from "@/components/ui/input";
+import { ImageUpload } from "@/components/ui/image-upload";
+import { mediaUrl } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { initialActionState } from "@/lib/api/action-state";
 import { saveBranchAction } from "@/lib/api/actions";
@@ -227,14 +229,19 @@ export function BranchForm({
           )}
         </div>
         {/* Leaving this empty on edit keeps the branch's current logo. */}
-        <Field
+        <FieldGroup
           label={t("branches.logo")}
           name="logo"
           hint={branch?.logo ? t("branches.logoKeepHint") : undefined}
           error={errors.logo}
         >
-          <Input name="logo" type="file" accept="image/*" className="py-2" />
-        </Field>
+          <ImageUpload
+            name="logo"
+            initialPreview={branch?.logo ? mediaUrl(branch.logo) : null}
+            testId="upload-branch-logo"
+            ariaLabel={t("branches.logo")}
+          />
+        </FieldGroup>
       </div>
 
       <input type="hidden" name="is_active" value="false" />

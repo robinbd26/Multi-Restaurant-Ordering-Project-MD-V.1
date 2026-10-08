@@ -1,16 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
-import { FieldError } from "@/components/ui/field-error";
+import { ImageUpload } from "@/components/ui/image-upload";
 import { Spinner } from "@/components/ui/spinner";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { parseFieldErrors } from "@/lib/validation/contract";
-import { IMAGE_MIME_TYPES } from "@/lib/validation/limits";
 import { validateImageFile } from "@/lib/validation/rules";
 
 /**
@@ -27,7 +26,8 @@ export function LogoSettings({ initialUrl }: { initialUrl: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  // Bumped after a confirmed upload, which clears the picked file.
+  const [resetKey, setResetKey] = useState(0);
 
   /** Same MIME/extension/size limits the API enforces on the way in. */
   function checkFile(candidate: File | null): string | null {
@@ -42,7 +42,6 @@ export function LogoSettings({ initialUrl }: { initialUrl: string | null }) {
     if (clientError) {
       setFileError(clientError);
       setSuccess(null);
-      inputRef.current?.focus();
       return;
     }
     setBusy(true);
@@ -64,7 +63,7 @@ export function LogoSettings({ initialUrl }: { initialUrl: string | null }) {
       setUrl(data.url ?? null);
       // Cleared ONLY after a confirmed success.
       setFile(null);
-      if (inputRef.current) inputRef.current.value = "";
+      setResetKey((k) => k + 1);
       setSuccess(t("logo.updated"));
       router.refresh();
     } catch {
@@ -118,26 +117,20 @@ export function LogoSettings({ initialUrl }: { initialUrl: string | null }) {
         </span>
         <p className="text-xs text-fg-muted">{t("logo.hint")}</p>
       </div>
-      <div>
-        <input
-          id="logo-file"
-          aria-label={t("logo.fileLabel")}
-          ref={inputRef}
-          type="file"
-          accept={IMAGE_MIME_TYPES.join(",")}
-          aria-invalid={Boolean(fileError)}
-          aria-describedby={fileError ? "logo-file-error" : undefined}
-          onChange={(e) => {
-            const picked = e.target.files?.[0] ?? null;
-            setFile(picked);
-            // Re-check as soon as the choice changes, so the message clears the
-            // moment a valid file is picked.
-            setFileError(picked ? checkFile(picked) : null);
-          }}
-          className="block w-full text-sm text-fg-muted file:mr-3 file:rounded-lg file:border-0 file:bg-surface-muted file:px-3 file:py-2 file:text-sm file:font-medium"
-        />
-        <FieldError id="logo-file-error" message={fileError} />
-      </div>
+      <ImageUpload
+        onFilesChange={(files) => {
+          const picked = files[0] ?? null;
+          setFile(picked);
+          // Re-check as soon as the choice changes, so the message clears the
+          // moment a valid file is picked.
+          setFileError(picked ? checkFile(picked) : null);
+        }}
+        error={fileError}
+        resetKey={resetKey}
+        ariaLabel={t("logo.fileLabel")}
+        testId="logo-upload"
+        inputTestId="logo-file"
+      />
       <div className="flex gap-2">
         <Button type="button" onClick={upload} disabled={busy}>
           {busy ? <Spinner className="size-4" /> : null}

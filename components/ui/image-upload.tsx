@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { FieldError } from "@/components/ui/field-error";
+import { FieldError, useFieldAria } from "@/components/ui/field-error";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
 import { IMAGE_EXTENSIONS, MAX_IMAGE_BYTES, imageFileProblem } from "@/lib/validation/limits";
@@ -143,6 +143,14 @@ export function ImageUpload({
 
   const shownError = error ?? localError;
   const errorId = `${inputId}-error`;
+  // Inside a <FieldGroup>, the group owns the label, hint and form error; the
+  // real input picks up its invalid state and described-by from there, and
+  // this component only adds its own pick-time error (wrong type / too big).
+  const aria = useFieldAria({
+    "aria-invalid": shownError ? true : undefined,
+    "aria-describedby": shownError ? errorId : undefined,
+  });
+  const invalid = Boolean(shownError) || aria["aria-invalid"] === true;
   const full = multiple ? existing.length + files.length >= limit : false;
   const singlePreview = !multiple ? (previews[0]?.url ?? initialPreview) : null;
   const tiles = [
@@ -169,7 +177,7 @@ export function ImageUpload({
         variant === "compact" ? "gap-2 px-3 py-2" : "flex-col gap-2 px-4 py-6",
         dragOver
           ? "border-brand-500 bg-brand-50/70 dark:bg-brand-500/10"
-          : shownError
+          : invalid
             ? "border-red-400 dark:border-red-500/60"
             : "border-border-strong hover:border-brand-400 hover:bg-surface-muted/50",
         (disabled || full) && "pointer-events-none opacity-50",
@@ -185,8 +193,8 @@ export function ImageUpload({
         disabled={disabled || full}
         className="sr-only"
         aria-label={ariaLabel ?? t("upload.clickOrDrag")}
-        aria-invalid={shownError ? true : undefined}
-        aria-describedby={shownError ? errorId : undefined}
+        aria-invalid={aria["aria-invalid"]}
+        aria-describedby={aria["aria-describedby"]}
         data-testid={inputTestId}
         onChange={(e) => {
           add(e.target.files);

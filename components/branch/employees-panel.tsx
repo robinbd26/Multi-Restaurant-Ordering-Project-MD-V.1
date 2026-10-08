@@ -6,7 +6,8 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
-import { Field, Input, Select } from "@/components/ui/input";
+import { Field, FieldGroup, Input, Select } from "@/components/ui/input";
+import { ImageUpload } from "@/components/ui/image-upload";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { parseFieldErrors, type FieldErrors } from "@/lib/validation/contract";
 import { LIMITS } from "@/lib/validation/limits";
@@ -265,9 +266,9 @@ export function EmployeesPanel() {
             <Input name="joining_date" type="date" defaultValue={editing?.joining_date ?? ""} />
           </Field>
           {/* Left empty on edit → the saved photo is kept. */}
-          <Field label={t("b5.photo")} name="photo" error={errors.photo}>
-            <Input name="photo" type="file" accept="image/*" className="py-2" />
-          </Field>
+          <FieldGroup label={t("b5.photo")} name="photo" error={errors.photo}>
+            <ImageUpload name="photo" variant="avatar" testId="upload-employee-photo" ariaLabel={t("b5.photo")} />
+          </FieldGroup>
           <div className="flex items-end gap-2 sm:col-span-2">
             <Button type="submit" disabled={busy}>{editing ? t("common.update") : t("common.create")}</Button>
             <Button type="button" variant="outline" onClick={() => setShowForm(false)}>{t("common.cancel")}</Button>

@@ -1,17 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
-import Image from "next/image";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Checkbox, Field, Input, Textarea } from "@/components/ui/input";
+import { Checkbox, Field, FieldGroup, Input, Textarea } from "@/components/ui/input";
+import { ImageUpload } from "@/components/ui/image-upload";
 import { Spinner } from "@/components/ui/spinner";
 import { accentForeground, BRAND_COLOR_PATTERN, BRAND_SLUG_PATTERN, type BrandInfo } from "@/lib/brands/shared";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { parseFieldErrors } from "@/lib/validation/contract";
-import { IMAGE_MIME_TYPES } from "@/lib/validation/limits";
 import { validateImageFile } from "@/lib/validation/rules";
 
 /** "Cheez! Pizza" → "cheez-pizza", a starting suggestion for the slug field. */
@@ -40,11 +39,9 @@ export function BrandForm({ brand }: { brand?: BrandInfo }) {
   const [slug, setSlug] = useState(brand?.slug ?? "");
   const [slugTouched, setSlugTouched] = useState(editing);
   const [color, setColor] = useState(brand?.accent_color ?? "#e8192c");
-  const [preview, setPreview] = useState<string | null>(brand?.logo ?? null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -176,24 +173,11 @@ export function BrandForm({ brand }: { brand?: BrandInfo }) {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t("brandsAdmin.logo")} name="logo" hint={t("brandsAdmin.logoHint")} error={errors.logo}>
-          <span className="flex items-center gap-3">
-            <span className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border-base bg-surface-muted text-2xl">
-              {preview ? <Image src={preview} alt="" fill sizes="56px" className="object-cover" unoptimized /> : "🍽️"}
-            </span>
-            <input
-              ref={fileRef}
-              type="file"
-              name="logo"
-              accept={IMAGE_MIME_TYPES.join(",")}
-              className="text-sm text-fg-muted file:mr-3 file:rounded-lg file:border-0 file:bg-surface-muted file:px-3 file:py-1.5 file:text-sm file:font-semibold"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                setPreview(f ? URL.createObjectURL(f) : (brand?.logo ?? null));
-              }}
-            />
-          </span>
-        </Field>
+        <FieldGroup label={t("brandsAdmin.logo")} name="logo" hint={t("brandsAdmin.logoHint")} error={errors.logo}>
+          {/* The current logo is the preview until a new one is picked; the
+              named input still carries the file in the form's FormData. */}
+          <ImageUpload name="logo" initialPreview={brand?.logo ?? null} testId="upload-brand-logo" ariaLabel={t("brandsAdmin.logo")} />
+        </FieldGroup>
         <Field label={t("brandsAdmin.sortOrder")} name="sort_order" hint={t("brandsAdmin.sortOrderHint")} error={errors.sort_order}>
           <Input name="sort_order" type="number" min={0} max={9999} defaultValue={brand ? String(brand.sort_order) : ""} />
         </Field>
