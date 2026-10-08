@@ -1,7 +1,7 @@
 # Reviews, complaints & addresses: handoff report
 
 Branch: `reviews-complaints-addresses` (cut from `main` at `2e6997d`, equal to `origin/main` after `git fetch`).
-Nothing is pushed and no PR exists (CLAUDE.md + this round's instructions).
+Pushed and merged into `main` on explicit instruction (see "Push and merge" at the end). No PR was opened.
 
 ## Resume here
 If this session was interrupted: read the Status list, continue at the first unchecked item. Don't redo checked items.
@@ -59,7 +59,7 @@ If this session was interrupted: read the Status list, continue at the first unc
       build (bug found and fixed in `61fed09`), final checks, this report.
 - [x] Follow-up: Bengali guide + 29 screenshots (`8b8ff25`). Three small bugs found while taking the screenshots,
       fixed in their own commits: `00e98e1`, `ad6b7d2`, `8d36237` (see "Found while writing the guide").
-- [ ] Follow-up: push branch, conditional merge to main (see the last section).
+- [x] Follow-up: branch pushed, `main` tagged, merged (`b9e6a44`), built and pushed (see the last section).
 
 ## Decisions
 
@@ -354,3 +354,21 @@ dirty copy. They only read what is in YOUR database.
 11. For e2e: `npm run build`, `npm run test:e2e:prepare` (migrates + seeds the test DB, demo hours all day), then specs.
 
 If a migration fails: stop, restore the backup (`copy backups\...bak prisma\dev.db`) and send Ash the error text.
+
+## Push and merge (follow-up, on explicit instruction)
+- **Guide:** `docs/guide/mad-delivery-guide-bn.md`, screenshots in `docs/guide/images/` (commit `8b8ff25`).
+- **Branch push:** done, `git push -u origin reviews-complaints-addresses` (new branch on origin, tracking set).
+- **Merge conditions checked first:** production build passes on the branch, `npx tsc --noEmit` clean, no
+  branch-caused e2e failures (the remaining ones also fail on main; listed under "E2E results (final)").
+- **Tag:** `pre-reviews-complaints-addresses` on the old `main` (`2e6997d`), pushed to origin.
+- **Merge:** `main` was up to date with origin (`2e6997d`, nobody had pushed since the branch was cut).
+  `git merge --no-ff reviews-complaints-addresses`: no conflicts. **Merge commit: `b9e6a44`.**
+- **After the merge, on `main`:** `npx tsc --noEmit` clean, `npm run build` passes; the merged tree is identical to the
+  branch tree. Pushed: `2e6997d..b9e6a44 main -> main`. No push needed a retry. Nothing was force-pushed and no branch
+  was deleted.
+- **This report update** was committed on `main` after the merge and pushed; the branch was then fast-forwarded to
+  `main` and pushed, so both point at the same commit.
+- **Rollback** (undoes the whole merge in one new commit, history kept):
+  `git revert -m 1 b9e6a44` then `git push origin main`.
+  The database migrations are NOT undone by a revert; restore a DB backup if the data must go back too.
+  The tag `pre-reviews-complaints-addresses` marks the exact pre-merge `main`.
