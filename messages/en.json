@@ -1044,7 +1044,8 @@
     "businessTypeDineIn": "Dine-in restaurant",
     "businessTypeCloudKitchen": "Cloud kitchen",
     "brandsServed": "Brands served",
-    "brandsServedHint": "Tick every brand this branch serves. Manage the brand list under Brands."
+    "brandsServedHint": "Tick every brand this branch serves. Manage the brand list under Brands.",
+    "radiusN": "{km} km radius"
   },
   "catalog": {
     "title": "Products",
@@ -3634,7 +3635,12 @@
     "maxRadius": "Maximum coverage",
     "drawnAreas": "Areas drawn",
     "noDrawnAreas": "None — you deliver nowhere yet",
-    "manageAreas": "Manage delivery areas"
+    "manageAreas": "Manage delivery areas",
+    "prepLabel": "Preparation time (minutes)",
+    "prepHint": "How long the kitchen usually needs. Snapshotted onto each order when it is confirmed.",
+    "pickupEnabled": "Offer self-pickup at this branch",
+    "pickupAddress": "Pickup address",
+    "pickupPhone": "Pickup phone"
   },
   "riderLoc": {
     "nowOnline": "You are now online",
@@ -4265,7 +4271,10 @@
     "rejectReasonHint": "The customer sees this word for word, so say what they should do next.",
     "rejectReasonPlaceholder": "e.g. This TrxID is not in our bKash statement.",
     "errRejectReasonRequired": "Write why the payment is being rejected — the customer will see this.",
-    "codNoticePickup": "Pay {amount} in cash when you collect your order."
+    "codNoticePickup": "Pay {amount} in cash when you collect your order.",
+    "bank": "Bank transfer",
+    "bankSettled": "This order has been paid by bank transfer.",
+    "bankPendingNotice": "Please transfer {amount}. The branch confirms the order once the money arrives."
   },
   "orderWorkflow": {
     "history": "Status history",
@@ -4528,7 +4537,8 @@
     "confirmDeleteZone": "Delete zone \"{name}\"?",
     "deleteZoneDescription": "No branch uses this zone, so it can be removed for good. Orders and addresses keep their own copy of area names, so nothing else changes.",
     "deleteZoneInUse": "{count} branch(es) use this zone. Move them to another zone first (edit each branch):",
-    "deleteZoneConfirm": "Delete zone"
+    "deleteZoneConfirm": "Delete zone",
+    "activate": "Activate"
   },
   "platformFee": {
     "title": "Platform Fee",
