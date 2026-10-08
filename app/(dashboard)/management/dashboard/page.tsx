@@ -71,7 +71,7 @@ export default async function ManagementDashboardPage() {
               slices={[
                 { label: t("management.statusPending"), value: b.pending + b.accepted, color: "#f4a261" },
                 { label: t("management.statusPreparing"), value: b.preparing + b.ready, color: "#8b5cf6" },
-                { label: t("management.statusDelivering"), value: b.picked_up + b.on_the_way + b.delayed, color: "#3b82f6" },
+                { label: t("management.statusDelivering"), value: b.picked_up + b.on_the_way, color: "#3b82f6" },
                 { label: t("management.statusCompleted"), value: b.delivered, color: "#2dc653" },
                 { label: t("management.statusCancelled"), value: b.cancelled, color: "#e63946" },
               ]}

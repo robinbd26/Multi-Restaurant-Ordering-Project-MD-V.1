@@ -28,11 +28,8 @@ function Row({ icon, label, value }: { icon: string; label: string; value: React
 export async function RiderCurrentOrder({ orders }: { orders: Order[] }) {
   const { t, fmt } = await getT();
   const current =
-    // A delayed delivery is still the rider's CURRENT job — it must not drop out
-    // of this card just because they told the customer it would take longer.
-    orders.find(
-      (o) => o.status === "on_the_way" || o.status === "picked_up" || o.status === "delayed",
-    ) ??
+    // A delay is an announcement on an on_the_way order, so it stays current.
+    orders.find((o) => o.status === "on_the_way" || o.status === "picked_up") ??
     orders.find((o) => o.status === "ready") ??
     orders[0];
 

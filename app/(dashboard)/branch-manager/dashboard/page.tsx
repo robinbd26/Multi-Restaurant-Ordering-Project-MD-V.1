@@ -229,7 +229,7 @@ export default async function BranchManagerDashboardPage() {
               slices={[
                 { label: t("branchManager.sliceWaiting"), value: breakdown.pending + breakdown.accepted, color: "#f4a261" },
                 { label: t("branchManager.slicePreparing"), value: breakdown.preparing + breakdown.ready, color: "#8b5cf6" },
-                { label: t("branchManager.sliceDelivering"), value: breakdown.picked_up + breakdown.on_the_way + breakdown.delayed, color: "#3b82f6" },
+                { label: t("branchManager.sliceDelivering"), value: breakdown.picked_up + breakdown.on_the_way, color: "#3b82f6" },
                 { label: t("branchManager.sliceCompleted"), value: breakdown.delivered, color: "#2dc653" },
                 { label: t("branchManager.sliceCancelled"), value: breakdown.cancelled, color: "#e63946" },
               ]}

@@ -12,7 +12,6 @@ const ORDER_STATUSES: OrderStatus[] = [
   "ready",
   "picked_up",
   "on_the_way",
-  "delayed",
   "delivered",
   "cancelled",
 ];

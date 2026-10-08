@@ -24,7 +24,6 @@ export const LIVE_ORDER_STATUSES = [
   "ready",
   "picked_up",
   "on_the_way",
-  "delayed",
   "delivered",
   "cancelled",
 ] as const;

@@ -35,7 +35,7 @@ import { haversineKm } from "@/lib/services/geo";
  * OPEN_DELIVERY_STATES in lib/services/rider-duty.ts (which decides when a rider
  * may go offline) so "the rider is still carrying my food" means one thing.
  */
-const IN_FLIGHT_DELIVERY_STATES = ["accepted", "preparing", "ready", "picked_up", "on_the_way", "delayed"];
+const IN_FLIGHT_DELIVERY_STATES = ["accepted", "preparing", "ready", "picked_up", "on_the_way"];
 
 /** A rider's active duty session, reduced to what an authorization check needs. */
 export interface RiderDutyContext {
