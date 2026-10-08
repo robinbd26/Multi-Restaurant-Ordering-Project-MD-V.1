@@ -35,10 +35,12 @@ export const GET = handle(async (req: Request) => {
   return paginated(items.map(serializeComplaint), { page, pageSize, count });
 });
 
-// POST /api/complaints — any approved user may file a complaint.
+// POST /api/complaints — any approved user may file a complaint. JSON, or
+// multipart (the customer form, which can attach up to 5 photos as "photos").
+// For customers the recipient is decided on the server from the order.
 export const POST = handle(async (req: Request) => {
   const me = await requireApproved();
-  const body = (await req.json().catch(() => ({}))) as {
+  let body: {
     recipient_role?: string;
     branch_id?: number | null;
     order_id?: number | null;
@@ -46,6 +48,29 @@ export const POST = handle(async (req: Request) => {
     subject?: string;
     message?: string;
   };
+  let photos: File[] = [];
+  if ((req.headers.get("content-type") ?? "").includes("multipart/form-data")) {
+    const form = await req.formData();
+    const text = (key: string) => {
+      const v = form.get(key);
+      return typeof v === "string" ? v : undefined;
+    };
+    const num = (key: string) => {
+      const v = Number(text(key));
+      return Number.isSafeInteger(v) && v > 0 ? v : null;
+    };
+    body = {
+      recipient_role: text("recipient_role"),
+      branch_id: num("branch_id"),
+      order_id: num("order_id"),
+      category: text("category"),
+      subject: text("subject"),
+      message: text("message"),
+    };
+    photos = form.getAll("photos").filter((v): v is File => typeof v === "object" && v !== null && "arrayBuffer" in v);
+  } else {
+    body = (await req.json().catch(() => ({}))) as typeof body;
+  }
 
   const complaint = await createComplaint({
     complainantId: me.id,
@@ -55,6 +80,7 @@ export const POST = handle(async (req: Request) => {
     category: String(body.category ?? "other"),
     subject: String(body.subject ?? ""),
     message: String(body.message ?? ""),
+    photos,
   });
   return created(serializeComplaint(complaint));
 });

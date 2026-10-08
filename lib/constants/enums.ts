@@ -75,6 +75,9 @@ export const COMPLAINT_CATEGORIES = [
   "service",
   "payment",
   "app",
+  // A customer cannot address the rider directly any more (the recipient is
+  // always the branch manager), so the manager needs to see the topic.
+  "rider_behavior",
   "other",
 ] as const;
 type ComplaintCategory = (typeof COMPLAINT_CATEGORIES)[number];
@@ -101,6 +104,7 @@ const COMPLAINT_CATEGORY_DISPLAY: Record<ComplaintCategory, string> = {
   service: "সেবা",
   payment: "পেমেন্ট",
   app: "অ্যাপ",
+  rider_behavior: "রাইডারের আচরণ",
   other: "অন্যান্য",
 };
 

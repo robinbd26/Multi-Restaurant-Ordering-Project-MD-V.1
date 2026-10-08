@@ -67,6 +67,24 @@ export async function ComplaintDetailView({ id }: { id: string }) {
               ) : null}
             </CardContent>
           </Card>
+
+          {complaint.photos && complaint.photos.length > 0 ? (
+            <Card className="mt-6" testId="complaint-photos-view">
+              <CardHeader title={t("complaints.photos")} />
+              <CardContent>
+                <ul className="grid grid-cols-3 gap-2">
+                  {complaint.photos.map((p, i) => (
+                    <li key={p.url}>
+                      <a href={p.url} target="_blank" rel="noreferrer" aria-label={t("reviews.openPhoto", { n: i + 1 })}>
+                        {/* eslint-disable-next-line @next/next/no-img-element -- access-checked route, not optimizable */}
+                        <img src={p.thumb} alt="" className="aspect-square w-full rounded-lg object-cover ring-1 ring-border-base" loading="lazy" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       </div>
     </>

@@ -302,6 +302,7 @@ export type ComplaintCategory =
   | "service"
   | "payment"
   | "app"
+  | "rider_behavior"
   | "other";
 export type NotificationType =
   | "system"
@@ -374,6 +375,8 @@ export interface Complaint {
   category_display: string;
   subject: string;
   message: string;
+  /** Attached photos (customer complaints), access-checked urls. */
+  photos?: { url: string; thumb: string }[];
   status: ComplaintStatus;
   status_display: string;
   assigned_to: number | null;

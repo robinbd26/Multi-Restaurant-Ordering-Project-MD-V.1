@@ -692,9 +692,12 @@ model Complaint {
   branch        Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
   orderId       Int?
   order         Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  category      String   @default("other") // food_quality|delivery|service|payment|app|other
+  category      String   @default("other") // food_quality|delivery|service|payment|app|rider_behavior|other
   subject       String
   message       String
+  // JSON array of up to 5 storage keys in "complaint_photos/" (private,
+  // served by /api/complaints/[id]/photos/[n] to whoever may read it).
+  photos        String   @default("[]")
   status        String   @default("pending") // pending|in_progress|resolved|closed
   assignedToId  Int?
   assignedTo    User?    @relation("ComplaintAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)

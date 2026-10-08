@@ -2162,6 +2162,9 @@
       "forbidden": "You are not allowed to manage reviews.",
       "notFound": "Review not found.",
       "flagForbidden": "Only the branch manager of this product's branch can flag this review."
+    },
+    "complaints": {
+      "tooManyPhotos": "You can attach up to {max} photos."
     }
   },
   "states": {
@@ -2218,7 +2221,8 @@
     "service": "Service",
     "payment": "Payment",
     "app": "App",
-    "other": "Other"
+    "other": "Other",
+    "rider_behavior": "Rider behavior"
   },
   "complaints": {
     "title": "Complaints",
@@ -2259,7 +2263,19 @@
     "filedOn": "Filed on",
     "handledBy": "Handled by",
     "branchLabel": "Branch",
-    "backToList": "Back to complaints"
+    "backToList": "Back to complaints",
+    "newSubCustomer": "Tell us what went wrong. It goes to the manager of the branch that handled your order.",
+    "goesToManager": "Goes to: {branch} branch manager",
+    "goesToAdminNoManager": "Goes to: our support team ({branch} has no branch manager assigned yet)",
+    "goesToAdminNoOrder": "Goes to: our support team (no order selected)",
+    "noOrdersYet": "You have no orders yet. Your complaint will go to our support team.",
+    "orderToday": "Today, {time}",
+    "orderYesterday": "Yesterday, {time}",
+    "orderDaysAgo": "{n} days ago",
+    "orderOnDate": "{date}, {time}",
+    "photosLabel": "Photos (optional, up to {max})",
+    "photos": "Photos",
+    "goesToManagerNamed": "Goes to: {branch} manager"
   },
   "notifications": {
     "title": "Notifications",
