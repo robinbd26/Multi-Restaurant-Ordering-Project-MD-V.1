@@ -51,7 +51,7 @@ export function serializeCoverage(coverage: BranchCoverage): DeliveryPricingPayl
     area_name: named?.name ?? "",
     estimated_minutes: coverage.estimatedMinutes,
     is_held: coverage.pickupOnly,
-    hold_reason: coverage.blockedArea?.holdReason ?? "",
+    hold_reason: coverage.blockedReason,
   };
 }
 

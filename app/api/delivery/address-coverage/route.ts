@@ -62,7 +62,7 @@ export const POST = handle(async (req: Request) => {
     estimated_minutes: coverage.coverage?.estimatedMinutes ?? null,
     area_name: (coverage.coverage?.area ?? coverage.coverage?.blockedArea)?.name ?? null,
     held: coverage.pickupOnly,
-    hold_reason: coverage.coverage?.blockedArea?.holdReason ?? "",
+    hold_reason: coverage.coverage?.blockedReason ?? "",
     pickup_enabled: branch.pickupEnabled,
     branch: { id: branch.id, name: branch.name },
   });

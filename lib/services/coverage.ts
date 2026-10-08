@@ -5,6 +5,7 @@ import type { Branch, BranchDeliveryArea } from "@prisma/client";
 import { isDeliveryPaused } from "@/lib/coverage/pause";
 import {
   coverageForBranch,
+  exclusionActive,
   rankBranchesForPoint,
   type BranchCoverageResult,
   type CoverageReason,
@@ -42,9 +43,20 @@ export const COVERAGE_AREA_SELECT = {
   coverageWindow: true,
   deliveryCharge: true,
   estimatedDeliveryMinutes: true,
+  // Temporary exclusions. Ended ones are loaded too and dropped by
+  // `withActiveExclusions`, so "has it ended?" is decided in one place, on the
+  // server clock, at the moment of the check.
+  exclusions: { select: { id: true, shape: true, reason: true, endsAt: true } },
 } as const;
 
 export type CoverageArea = Prisma.BranchDeliveryAreaGetPayload<{ select: typeof COVERAGE_AREA_SELECT }>;
+
+export { exclusionActive };
+
+/** The same rows with only the exclusions that are in force right now. */
+function withActiveExclusions<A extends CoverageArea>(areas: A[], now: Date = new Date()): A[] {
+  return areas.map((a) => ({ ...a, exclusions: a.exclusions.filter((e) => exclusionActive(e, now)) }));
+}
 
 /** The branch columns coverage reads. */
 type CoverageBranch = Pick<
@@ -78,6 +90,8 @@ export interface BranchCoverage {
   area: CoverageArea | null;
   /** The held/paused area behind a pickup-only verdict, so the UI can say why. */
   blockedArea: CoverageArea | null;
+  /** Why the pin is blocked: the hold reason, or the exclusion's reason. */
+  blockedReason: string;
   /** Exact money — the chosen area's charge, else the branch-level fee. */
   charge: Prisma.Decimal;
   estimatedMinutes: number | null;
@@ -100,6 +114,8 @@ function toBranchCoverage(
     pickupOnly: result.status === "pickup_only",
     area: result.area,
     blockedArea: result.heldArea,
+    blockedReason:
+      result.reason === "area_excluded" ? (result.exclusion?.reason ?? "") : (result.heldArea?.holdReason ?? ""),
     // The branch-level fee keeps its old meaning: it applies when no area
     // supplies a charge. Coverage now always names an area, so in practice this
     // is the fallback for a quote taken before an area is resolved.
@@ -112,10 +128,12 @@ function toBranchCoverage(
 
 /** Load a branch's areas for the coverage decision. */
 export async function areasForCoverage(branchId: number): Promise<CoverageArea[]> {
-  return prisma.branchDeliveryArea.findMany({
-    where: { branchId, isActive: true },
-    select: COVERAGE_AREA_SELECT,
-  });
+  return withActiveExclusions(
+    await prisma.branchDeliveryArea.findMany({
+      where: { branchId, isActive: true },
+      select: COVERAGE_AREA_SELECT,
+    }),
+  );
 }
 
 /**
@@ -182,10 +200,12 @@ export async function branchOptionsForPoint(
   ).filter((b) => (options.brandFilter ? options.brandFilter(b) : true));
   if (branches.length === 0) return [];
 
-  const areas = await prisma.branchDeliveryArea.findMany({
-    where: { branchId: { in: branches.map((b) => b.id) }, isActive: true },
-    select: { ...COVERAGE_AREA_SELECT, branchId: true },
-  });
+  const areas = withActiveExclusions(
+    await prisma.branchDeliveryArea.findMany({
+      where: { branchId: { in: branches.map((b) => b.id) }, isActive: true },
+      select: { ...COVERAGE_AREA_SELECT, branchId: true },
+    }),
+  );
   const byBranch = new Map<number, CoverageArea[]>();
   for (const a of areas) {
     const list = byBranch.get(a.branchId);

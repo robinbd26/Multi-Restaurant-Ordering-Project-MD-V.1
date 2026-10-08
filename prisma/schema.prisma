@@ -853,7 +853,8 @@ model Branch {
 // previous system compared a customer's typed area name against a seeded master
 // list, which can never be complete for Dhaka (a customer standing outside the
 // Banani branch was told "not deliverable" because their block was not on the
-// list). `name` is now just a label an operator reads ("Core", "Eskaton side").
+// list). Each branch has exactly ONE area (unique branchId); temporary
+// exclusions (DeliveryAreaExclusion) carve pieces out of it for a while.
 //
 // `shape` is JSON, in one of two forms (see lib/coverage/shape.ts):
 //   {"type":"Polygon","coordinates":[[[lng,lat],…]]}  — GeoJSON, one closed ring
@@ -874,9 +875,9 @@ model BranchDeliveryArea {
   id                       Int      @id @default(autoincrement())
   branchId                 Int
   branch                   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  // A label for operators, NOT a matching key. Duplicates are allowed on
-  // purpose: two shapes may legitimately both be called "Core" (day and night,
-  // or two disjoint pockets), and uniqueness only ever served name matching.
+  // Not typed by anyone any more (one area per branch, see @@unique below): the
+  // service keeps it equal to the branch name, so the order snapshot
+  // Order.deliveryAreaName stays readable.
   name                     String
   // The drawn boundary. Null = nothing drawn yet → covers nothing.
   shape                    String?
@@ -893,9 +894,36 @@ model BranchDeliveryArea {
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
-  orders Order[] @relation("OrderDeliveryArea")
+  orders     Order[]                 @relation("OrderDeliveryArea")
+  exclusions DeliveryAreaExclusion[]
 
-  @@index([branchId])
+  // ONE area per branch (20261008100000): a branch covers exactly one drawn
+  // area. The old many-named-areas model was seeded test data and was removed.
+  @@unique([branchId])
+}
+
+// ── Temporary exclusion: part of a branch's area that cannot be served for a
+// while (road closed, flooding, an event). A SEPARATE row laid on top of the
+// area, never an edit of the area's shape, so removing it (or letting it run
+// out) brings the original coverage back exactly as it was; nobody redraws
+// anything. `endsAt` NULL = until someone removes it; otherwise it stops
+// counting at that instant (every coverage read compares it to now, like the
+// delivery pause, so no job has to run to "expire" it).
+//
+// A pin inside an active exclusion is PICKUP ONLY for that branch, exactly like
+// a held area: "we cannot drive there right now" is not "we are closed".
+model DeliveryAreaExclusion {
+  id          Int                @id @default(autoincrement())
+  areaId      Int
+  area        BranchDeliveryArea @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  // Same JSON forms as BranchDeliveryArea.shape (lib/coverage/shape.ts).
+  shape       String
+  reason      String             @default("")
+  endsAt      DateTime?
+  createdById Int? // audit: raw actor id (app-level), like updatedById
+  createdAt   DateTime           @default(now())
+
+  @@index([areaId])
 }
 
 // ── MASTER zone list (super admin owned) ─────────────────────────────────

@@ -567,3 +567,62 @@ body {
   padding-right: 0.875rem;
   padding-left: 2.25rem;
 }
+
+/* Range slider with a filled track: the part up to the thumb is drawn in the
+   brand colour, so a radius slider shows "how much of the allowed maximum" at a
+   glance instead of a lone dot. The component sets --fill (0%–100%). The tall
+   hit area (2.75rem) keeps it comfortable on touch while the track stays thin. */
+.range-fill {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2.75rem;
+  background: transparent;
+  cursor: pointer;
+}
+.range-fill:focus-visible {
+  outline: none;
+}
+.range-fill::-webkit-slider-runnable-track {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--color-brand-500) 0 var(--fill, 0%),
+    var(--border-base) var(--fill, 0%) 100%
+  );
+}
+.range-fill::-moz-range-track {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--border-base);
+}
+.range-fill::-moz-range-progress {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--color-brand-500);
+}
+.range-fill::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin-top: -0.4375rem;
+  border-radius: 9999px;
+  background: #fff;
+  border: 3px solid var(--color-brand-500);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+}
+.range-fill::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background: #fff;
+  border: 3px solid var(--color-brand-500);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+}
+.range-fill:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-brand-500) 30%, transparent);
+}
+.range-fill:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-brand-500) 30%, transparent);
+}

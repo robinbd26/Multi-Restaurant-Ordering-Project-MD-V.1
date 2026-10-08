@@ -5,14 +5,14 @@ import { deleteArea, serializeArea, updateArea } from "@/lib/services/delivery-a
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// PATCH /api/delivery-areas/[id] — name / shift / time / charge / shape.
+// PATCH /api/delivery-areas/[id] — shift / time / charge / shape / active.
+// (The area has no name of its own any more; a sent "name" is ignored.)
 // Ownership enforced in the service (SA any, BM own branch only), and every
 // change is written to the activity log.
 export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   const me = await requireApproved();
   const { id } = await ctx.params;
   const body = (await req.json().catch(() => ({}))) as {
-    name?: string;
     estimated_delivery_minutes?: unknown;
     delivery_charge?: unknown;
     shape?: unknown;
@@ -20,7 +20,6 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
     coverage_window?: unknown;
   };
   const area = await updateArea(me, Number(id), {
-    ...(body.name !== undefined ? { name: body.name } : {}),
     ...(body.estimated_delivery_minutes !== undefined
       ? { estimatedDeliveryMinutes: body.estimated_delivery_minutes }
       : {}),

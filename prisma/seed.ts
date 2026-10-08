@@ -8,6 +8,8 @@ import bcrypt from "bcryptjs";
 
 import { syncAreaMaster } from "@/lib/services/area-master";
 
+import { seedDefaultDeliveryAreas } from "./seed-delivery-areas";
+
 const prisma = new PrismaClient();
 
 const SEED_PASSWORD = "Admin12345@##";
@@ -421,37 +423,11 @@ async function main() {
       pickupPhone: "01000000000",
     },
   });
-  // Delivery areas for the Main Branch — SHAPES, because coverage is now a
-  // customer's pin inside a drawn area (lib/coverage). One wide circle around
-  // the branch so a seeded customer can actually order, one cheaper pocket that
-  // OVERLAPS it (so the "cheapest wins" rule is exercised end to end), and one
-  // HELD area covering a third spot, so the pickup-only path has something real
-  // to hit. Shapes are written as JSON exactly as the editor stores them.
-  const circle = (lat: string, lng: string, radiusKm: number) =>
-    JSON.stringify({ type: "Circle", coordinates: [Number(lng), Number(lat)], radiusKm });
-  const seedAreas = [
-    // The branch pin is 23.78081, 90.4079 with a 5 km radius: this fills it.
-    { name: "Core (all round)", charge: "60.00", minutes: 45, held: false, shape: circle("23.7808100", "90.4079000", 5) },
-    // A cheaper pocket INSIDE the core area — overlapping on purpose.
-    { name: "Gulshan pocket", charge: "40.00", minutes: 35, held: false, shape: circle("23.7925000", "90.4078000", 1.5) },
-    // Held: covered, but delivery paused there, so checkout offers pickup.
-    { name: "Dhanmondi edge", charge: "90.00", minutes: 70, held: true, reason: "Temporarily paused (rider shortage)", shape: circle("23.7500000", "90.3800000", 1) },
-  ];
-  for (const a of seedAreas) {
-    const existingA = await prisma.branchDeliveryArea.findFirst({ where: { branchId: branch.id, name: a.name } });
-    const data = {
-      branchId: branch.id,
-      name: a.name,
-      shape: a.shape,
-      isActive: true,
-      isHeld: a.held,
-      holdReason: a.held ? (a.reason ?? "") : "",
-      estimatedDeliveryMinutes: a.minutes,
-      deliveryCharge: new Prisma.Decimal(a.charge),
-    };
-    if (existingA) await prisma.branchDeliveryArea.update({ where: { id: existingA.id }, data });
-    else await prisma.branchDeliveryArea.create({ data });
-  }
+  // Delivery areas: ONE per branch (20261008100000). Each seeded demo branch
+  // gets a circle around its pin when it has no area yet; a drawn area is
+  // never overwritten. See prisma/seed-delivery-areas.ts.
+  const createdAreas = await seedDefaultDeliveryAreas(prisma);
+  console.log(createdAreas.length ? `✔ Delivery areas created: ${createdAreas.join(", ")}` : "✔ Delivery areas: nothing missing");
 
   // Graphical tables.
   const seedTables = [

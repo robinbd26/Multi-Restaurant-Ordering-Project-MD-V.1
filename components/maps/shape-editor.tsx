@@ -42,6 +42,9 @@ import { fitPoints, pinIcon, useLeafletMap, type Leaflet, type LeafletMap } from
 
 type Mode = "circle" | "polygon";
 
+/** Smallest circle the slider offers. */
+const RADIUS_MIN_KM = 0.2;
+
 export function ShapeEditor({
   value,
   onChange,
@@ -235,7 +238,7 @@ export function ShapeEditor({
 
   function applyCircle(nextRadius: number) {
     if (!center) return;
-    const clamped = Math.max(0.1, Math.min(nextRadius, maxRadiusKm));
+    const clamped = Math.max(RADIUS_MIN_KM, Math.min(nextRadius, maxRadiusKm));
     setRadiusKm(clamped);
     setMode("circle");
     ringRef.current = [];
@@ -295,26 +298,18 @@ export function ShapeEditor({
       </div>
 
       {mode === "circle" ? (
-        <label className="flex items-center gap-3 text-sm" data-testid={`${testId}-radius`}>
-          <span className="whitespace-nowrap text-fg-muted">{t("deliveryArea.radiusLabel")}</span>
-          <input
-            type="range"
-            min={0.2}
-            max={maxRadiusKm}
-            step={0.1}
-            value={Math.min(radiusKm, maxRadiusKm)}
-            onChange={(e) => applyCircle(Number(e.target.value))}
-            className="h-11 flex-1 accent-brand-500"
-            aria-label={t("deliveryArea.radiusLabel")}
-          />
-          <span className="w-16 text-right font-medium tabular-nums">
-            {t("branches.radiusN", { km: fmt.num(Math.min(radiusKm, maxRadiusKm).toFixed(1)) })}
-          </span>
-        </label>
+        <RadiusSlider
+          value={Math.min(radiusKm, maxRadiusKm)}
+          min={RADIUS_MIN_KM}
+          max={maxRadiusKm}
+          onChange={applyCircle}
+          label={t("deliveryArea.radiusLabel")}
+          testId={`${testId}-radius`}
+        />
       ) : null}
 
       <div className="relative">
-        <div ref={containerRef} className="h-72 w-full rounded-xl border border-border-base sm:h-96" data-testid={`${testId}-canvas`} />
+        <div ref={containerRef} className="h-80 w-full rounded-xl border border-border-base sm:h-[28rem] lg:h-[34rem]" data-testid={`${testId}-canvas`} />
         {status === "loading" ? (
           <div className="absolute inset-0 flex items-center justify-center gap-2 rounded-xl bg-surface-muted text-sm text-fg-muted">
             <Spinner className="size-4" /> {t("mapPicker.loading")}
@@ -450,6 +445,65 @@ export function ShapeOverview({
           <Spinner className="size-4" /> {t("mapPicker.loading")}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** "3 km" / "2.5 km": one decimal, without a trailing ".0". */
+export function formatKm(km: number, num: (value: string | number) => string): string {
+  const rounded = Math.round(km * 10) / 10;
+  return num(Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1));
+}
+
+/**
+ * A radius slider that says how far it reaches: the value in km updates live
+ * while dragging, and the part of the track up to the thumb is filled, so the
+ * manager sees both the number and the proportion of the allowed maximum.
+ */
+export function RadiusSlider({
+  value,
+  min,
+  max,
+  step = 0.1,
+  onChange,
+  label,
+  testId,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (km: number) => void;
+  label: string;
+  testId?: string;
+}) {
+  const { t, fmt } = useTranslation();
+  const span = max - min;
+  const percent = span > 0 ? Math.max(0, Math.min(100, ((value - min) / span) * 100)) : 100;
+  return (
+    <div className="space-y-1.5" data-testid={testId}>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm text-fg-muted">{label}</span>
+        <span className="text-base font-semibold tabular-nums text-fg-base" data-testid={testId ? `${testId}-value` : undefined} aria-live="polite">
+          {t("deliveryArea.radiusKm", { km: formatKm(value, fmt.num) })}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="range-fill w-full"
+        style={{ "--fill": `${percent}%` } as React.CSSProperties}
+        aria-label={label}
+        aria-valuetext={t("deliveryArea.radiusKm", { km: formatKm(value, fmt.num) })}
+      />
+      <div className="flex justify-between text-xs text-fg-subtle">
+        <span>{t("deliveryArea.kmShort", { km: formatKm(min, fmt.num) })}</span>
+        <span>{t("deliveryArea.kmShort", { km: formatKm(max, fmt.num) })}</span>
+      </div>
     </div>
   );
 }
