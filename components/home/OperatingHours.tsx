@@ -1,7 +1,7 @@
 import Image from "next/image";
 
 import { brandName, withAlpha, type BrandInfo } from "@/lib/brands/shared";
-import { crossesMidnight, earliness, widest, type Span } from "@/lib/hours/spans";
+import { crossesMidnight, earliness, lateness, widest, type Span } from "@/lib/hours/spans";
 import { getT } from "@/lib/i18n/server";
 import type { PublicHomeBranch } from "@/lib/selectors";
 
@@ -11,6 +11,9 @@ import type { PublicHomeBranch } from "@/lib/selectors";
  * Nothing here names a brand or a time — a brand the super admin adds, or an
  * hour a branch manager changes, shows up with no code change.
  */
+
+/** Pickup whose last order today is at or after this counts as "night pickup". */
+const NIGHT_PICKUP_FROM = "23:00";
 
 /** Group branches by today's first opening time ("HH:MM" → names + brands). */
 function groupByOpening(branches: PublicHomeBranch[]) {
@@ -96,13 +99,16 @@ export async function OperatingHours({ branches, brands }: { branches: PublicHom
   const lateLast = widest(lateNight.map((b) => b.today.delivery))?.end ?? null;
   const groups = groupByOpening(branches);
 
-  const PICKUP = [
-    { area: "Mirpur DOHS", place: t("home.hours.pickupMainGate") },
-    { area: "Mohakhali DOHS", place: t("home.hours.pickupRawaClub") },
-    { area: "Dhaka Cantonment", place: t("home.hours.pickupSainikClub") },
-    { area: "Nikunja", place: t("home.hours.pickupNavyHq") },
-    { area: "Bashundhara", place: t("home.hours.pickupBaridhara"), note: t("home.hours.bashundharaNote") },
-  ];
+  // Night pickup: branches whose PICKUP runs late tonight, from the same
+  // schedules that decide ordering (like "Call to order"). Late = the last
+  // pickup order today is at 11:00 PM or later, or runs past midnight. Never
+  // fixed text: with no such branch the block is not shown at all.
+  const nightPickup = branches
+    .filter((b) => b.pickupEnabled && b.today.pickup && lateness(b.today.pickup.end) >= lateness(NIGHT_PICKUP_FROM))
+    .sort((a, z) => lateness(z.today.pickup!.end) - lateness(a.today.pickup!.end) || a.name.localeCompare(z.name));
+  // When home delivery stops tonight across the night-pickup branches: after
+  // it, those orders are collected instead.
+  const nightDeliveryEnds = widest(nightPickup.map((b) => b.today.delivery))?.end ?? null;
 
   return (
     <section className="border-t border-white/8 bg-[#0a0a0c] px-5 pb-20 pt-18" data-testid="home-operating-hours">
@@ -212,37 +218,48 @@ export async function OperatingHours({ branches, brands }: { branches: PublicHom
           </div>
         ) : null}
 
-        {/* Night pickup points — static marketing copy (not driven by the schedules). */}
-        <div className="rounded-2xl border px-7 py-6" style={{ background: "rgba(15,12,5,0.9)", borderColor: "rgba(251,191,36,0.4)" }}>
-          <div className="mb-2.5 flex items-center gap-2.5">
-            <span className="text-[1.25rem]">📍</span>
-            <h3 className="font-display text-[1.2rem] font-extrabold text-[#fbbf24]" style={{ letterSpacing: "0.5px" }}>
-              {t("home.hours.pickupTitle")}
-            </h3>
-          </div>
-          <p
-            className="mb-4 rounded-[10px] border px-3.5 py-2.5 text-[0.78rem] leading-6 text-[#e8e2d0]"
-            style={{ background: "rgba(251,191,36,0.07)", borderColor: "rgba(251,191,36,0.25)" }}
+        {/* Night pickup points — built from today's pickup schedules. */}
+        {nightPickup.length ? (
+          <div
+            className="rounded-2xl border px-7 py-6"
+            style={{ background: "rgba(15,12,5,0.9)", borderColor: "rgba(251,191,36,0.4)" }}
+            data-testid="hours-night-pickup"
           >
-            ⏰ {t("home.hours.pickupNotePre")}{" "}
-            <strong className="text-[#fbbf24]">Mirpur DOHS, Mohakhali DOHS, Bashundhara, Nikunja & Dhaka Cantonment</strong>{" "}
-            {t("home.hours.pickupNoteMid")} <strong className="text-[#fbbf24]">10:15 PM</strong>
-            {t("home.hours.pickupNotePost")}
-          </p>
-          <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}>
-            {PICKUP.map((p) => (
-              <div key={p.area} className="rounded-xl border bg-white/4 px-3.5 py-3" style={{ borderColor: "rgba(251,191,36,0.28)" }}>
-                <p className="mb-1 font-display text-[0.95rem] font-extrabold text-[#fbbf24]">{p.area}</p>
-                <p className="text-[0.74rem] leading-5 text-[#d6cebc]">📍 {p.place}</p>
-                {p.note ? (
+            <div className="mb-2.5 flex items-center gap-2.5">
+              <span className="text-[1.25rem]">📍</span>
+              <h3 className="font-display text-[1.2rem] font-extrabold text-[#fbbf24]" style={{ letterSpacing: "0.5px" }}>
+                {t("home.hours.pickupTitle")}
+              </h3>
+            </div>
+            <p
+              className="mb-4 rounded-[10px] border px-3.5 py-2.5 text-[0.78rem] leading-6 text-[#e8e2d0]"
+              style={{ background: "rgba(251,191,36,0.07)", borderColor: "rgba(251,191,36,0.25)" }}
+            >
+              ⏰{" "}
+              {nightDeliveryEnds
+                ? t("home.hours.nightPickupNoteDelivery", { time: fmt.clock(nightDeliveryEnds) })
+                : t("home.hours.nightPickupNote")}
+            </p>
+            <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}>
+              {nightPickup.map((b) => (
+                <div
+                  key={b.id}
+                  className="rounded-xl border bg-white/4 px-3.5 py-3"
+                  style={{ borderColor: "rgba(251,191,36,0.28)" }}
+                  data-testid={`night-pickup-${b.id}`}
+                >
+                  <p className="mb-1 font-display text-[0.95rem] font-extrabold text-[#fbbf24]">{b.name}</p>
+                  <p className="text-[0.74rem] leading-5 text-[#d6cebc]">📍 {b.pickupAddress}</p>
                   <p className="mt-1.5 border-t pt-1.5 text-[0.69rem] leading-5 text-[#a89060]" style={{ borderColor: "rgba(251,191,36,0.2)" }}>
-                    {p.note}
+                    {b.today.pickup!.start === b.today.pickup!.end
+                      ? t("home.hours.nightPickupAllDay")
+                      : t("home.hours.nightPickupUntil", { time: fmt.clock(b.today.pickup!.end) })}
                   </p>
-                ) : null}
-              </div>
-            ))}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </section>
   );
