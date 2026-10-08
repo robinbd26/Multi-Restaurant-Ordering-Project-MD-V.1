@@ -6,6 +6,24 @@ Nothing is pushed and no PR exists (CLAUDE.md + this round's instructions).
 ## Resume here
 If this session was interrupted: read the Status list, continue at the first unchecked item. Don't redo checked items.
 
+## Summary
+- **Delivery areas:** one area per branch, no name field, live "N km radius" slider, full-width editor, super admin and
+  branch manager both edit (server-enforced, logged), temporary blocks with an optional end time. Old seeded areas
+  removed by migration; each demo branch gets a 5 km default.
+- **My Addresses:** live-location card gone; two modes (Pick on map with "Use my current location" first, or Enter
+  manually + find on map); Home/Work/Other + one optional flat/floor/landmark line; coverage warning before saving.
+- **Product reviews:** delivered/collected customers, one per product (editable), 1 to 5 stars, text, up to 3 photos;
+  invite after delivery; "★ 4.8 (30)" on cards; reviews in the product modal; marketing/super admin hide and restore,
+  branch manager views and flags; management pages with filters.
+- **Complaints:** customer form always goes to the order's branch manager ("Goes to: …"), super admin when the branch
+  has none; Other + Rider behavior categories; friendly order labels in Dhaka time; up to 5 photos.
+- **Shared upload field** everywhere the app takes an image (order chat kept its camera button).
+- **Dark mode** unread notifications fixed.
+- **Hours:** no hours = closed, with warnings; live pairs without hours backfilled to all day; Night Pickup Points from
+  real data.
+- **Cleanup:** DeliveryTimeSlot dropped, "delayed" leftovers removed (fixed a NaN dashboard slice), missing i18n keys
+  added, spec 22 rerunnable.
+
 ## Status
 - [x] Setup: on `main` = `origin/main` (2e6997d). Previous round present: `/admin/brands`, `lib/hours/*` schedule,
       migrations 20261007120000/130000/140000 (brands, hours, status flow). Branch `reviews-complaints-addresses` created.
@@ -20,12 +38,26 @@ If this session was interrupted: read the Status list, continue at the first unc
       `backups/dev.db.2026-10-08T11-28-48Z.pre-product-reviews.bak`). Browser-checked on the test DB: customer review,
       card line and modal (logged out), marketing hide/restore, BM flag; API: marketing flag 403, BM hide 403.
       E2E spec for reviews: TODO in Finishing.
-- [ ] Part 4: complaints form
-- [ ] Part 5: shared upload component
-- [ ] Part 6: dark mode unread notifications
-- [ ] Part 7: branch hours follow-ups
-- [ ] Part 8: cleanup leftovers
-- [ ] Finishing: verification, browser walkthrough, final report
+- [x] Part 4: complaints form. Commit `7e4757e`. Migration 20261008120000 applied to Ash's dev.db (backup
+      `backups/dev.db.2026-10-08T11-47-14Z.pre-complaint-photos.bak`). Browser-checked: customer form, live "Goes to",
+      friendly order labels, photo upload; complaint #6 notified only Main Branch's manager + super admins; photo shown
+      on the detail page; BM/super admin can open it.
+- [x] Part 5: shared upload component. Component added in `4990a60` (first used by reviews), rolled out in `0e32c26`.
+      Browser-checked on the brand form: wrong-type error, preview, remove, real input carries the file.
+- [x] Part 6: dark mode unread notifications. Commit `4355dea`. Browser-checked on /admin/notifications (dark).
+      Cause: unread rows used `bg-brand-50/60` + `bg-brand-100` with no `dark:` variant. Fix: dark uses `brand-500/10`
+      tint (same as other active rows in the dark theme) and unread rows get a brand left edge in both themes.
+- [x] Part 7: branch hours follow-ups. Commits `f3edb12` (rule + warnings + backfill), `10432aa` (night pickup).
+      Migration 20261008130000 applied to Ash's dev.db (backup `backups/dev.db.2026-10-08T12-06-17Z.pre-hours-backfill.bak`):
+      0 of 12 branch-brand pairs needed hours (all had them). Browser-checked: branch page banner, availability API says
+      `hours_not_set`, homepage night pickup from data.
+- [x] Part 8: cleanup leftovers. Commits `2a052c9` (drop DeliveryTimeSlot + API; migration 20261008140000 applied to
+      Ash's dev.db after backup `backups/dev.db.2026-10-08T15-52-53Z.pre-drop-time-slots.bak`), `0a21e1c` (delayed
+      leftovers + NaN dashboard fix), `d2855a1` (missing i18n keys), `650021c` (spec 22 cleanup).
+- [x] New/updated e2e: `bbd3d71` (spec 76 + delivery-areas-management rewrite). 76: 5/5 pass.
+- [x] Finishing: related e2e runs against a main baseline (`308399e`, `ec73c4f`), role walkthrough on a production
+      build (bug found and fixed in `61fed09`), final checks, this report.
+- [ ] Follow-up: Bengali guide + screenshots, push branch, conditional merge to main (see the last section).
 
 ## Decisions
 
@@ -107,10 +139,192 @@ If this session was interrupted: read the Status list, continue at the first unc
 - Reviews management pages: `/marketing/reviews`, `/admin/reviews`, `/branch-manager/reviews` (+ nav entries).
 - The marketing Feedback overview now ignores hidden reviews too (it averaged all of them).
 
+### Part 4: complaints
+- **Routing (server-enforced, customers only):** the selected order decides everything. Branch has an active approved
+  manager → `branch_manager` + that branch (only that branch's managers are notified, plus super admins as before).
+  **No manager assigned → `super_admin`, branch kept** on the complaint (so it lands in the super admin's inbox, which
+  filters on recipient role). **No order selected → `super_admin`.** The old fallbacks for customers (their latest
+  order's branch, or a branch-less complaint every manager could see) are no longer used for customers; riders and
+  staff keep the old resolution.
+- **Order is optional** for customers (a complaint about the app has no order); without one it goes to support.
+  The newest order is pre-selected so the "Goes to" line is meaningful immediately.
+- **"Goes to" wording:** "Goes to: Gulshan branch manager"; a branch whose name already ends in "Branch" reads
+  "Goes to: Main Branch manager"; no manager: "Goes to: our support team (Gulshan has no branch manager assigned yet)".
+- **Order label:** `#id · <date> · <total>`, id like the customer's order pages ("Order #122"). Dates on the Dhaka
+  calendar: Today / Yesterday with time, "N days ago" for 2 to 6 days (no time, as specified), then "3 Oct, 2:15 PM".
+- **Photos:** stored as a JSON array on `Complaint.photos` (additive migration, default `[]`). Served with
+  `private, no-cache`: during the browser check a rider on the same browser got the super admin's cached photo with a
+  `max-age` header, so complaint photos now revalidate every time. **Not fixed (pre-existing, unrelated):** order chat
+  photos use `private, max-age=300`, so on a shared browser the next logged-in user can see a cached chat photo for up to
+  5 minutes. Flagged for the developer.
+- Staff/rider complaint form unchanged (recipient dropdown, JSON, no photos).
+
+### Part 5: shared upload component
+- `components/ui/image-upload.tsx`, used for: product image, brand logo, company logo (settings), branch logo, profile
+  picture (own profile and admin user form), employee photo, Ramadan menu image, rider registration NID front/back and
+  licence, review photos (3), complaint photos (5).
+- **Order chat kept its camera button** (it already had a preview and never showed the bare browser control; a drop
+  zone would crowd the composer). This is the "if it fits" case from the brief.
+- Limits: unchanged per place. Type check = the shared `imageFileProblem` (same as the server); size = the server's
+  50 MB default, or the caller's own cap (10 MB per photo for chat/review/complaint photos, matching chat).
+- Integration: a real hidden `<input name=…>` carries the file, so FormData forms, their validation hooks and the e2e
+  `setInputFiles('input[name=…]')` selectors keep working. Fields moved from `Field` to `FieldGroup` because `Field`
+  wraps its children in a `<label>` (nested labels).
+
+### Part 7: hours follow-ups
+- **Which pairs had no hours:** on Ash's dev.db **none** (all 12 branch-brand pairs had schedules, including archived
+  Mirpur Branch). On the test DB, the branches created by earlier e2e runs had none; the migration gave the active ones
+  all-day hours. Robin's machine: the migration does the same for any live pair without hours, so nothing that is open
+  today closes. (Branches created after this release start with no hours, i.e. closed, as requested.)
+- **Why a backfill and not just a warning:** "make sure nothing open today closes" can only be guaranteed on Robin's
+  data (which I cannot see) by giving unconfigured live pairs the behaviour they have today. All-day = exactly the old
+  "no time limit". Managers can narrow it in the hours editor.
+- Unreadable/malformed hours JSON also counts as "not set" (closed), so a corrupt row can never open a brand.
+- Warnings: admin branch detail banner, BM dashboard banner (both name the brands), admin branch list badge, hours
+  editor panel text. They all link to the hours editor.
+- **Night Pickup Points:** "late at night" = last pickup order today at 11:00 PM or later, or past midnight. Branch must
+  have pickup enabled. Shows branch name, pickup address (else branch address) and "Pickup until …". Hidden when none.
+  The old fixed list (Mirpur DOHS, Mohakhali DOHS, Cantonment, Nikunja, Bashundhara pickup spots) had no data behind it
+  and is gone; if the client wants those named pickup spots back, they need a data model (e.g. pickup points per branch).
+- **e2e impact:** the e2e seed now writes an explicit all-day schedule for the demo branches (it used to clear them to
+  mean "always open"). Specs that create a branch and then order from it must set hours: helper `openBranchAllDay()`.
+
+### Part 8: cleanup
+- **DeliveryTimeSlot:** confirmed unused before removal (only its own API routes, an `addTimeSlot` helper, the seed,
+  the branch-removal setup counter + its label, and an audit spec checking the endpoint's auth referenced it; no UI,
+  no reader). Dropped by migration 20261008140000. Ash's table held the 2 seeded demo rows only.
+- **"delayed" leftovers removed** from in-flight/status lists (order-chat policy, rider-duty, rider-location, live
+  board, page summaries, customer active count, rider current-order pickers). **Real bug found and fixed:** the admin,
+  management and BM dashboards summed `picked_up + on_the_way + delayed` for "Delivering", but the breakdown has had no
+  `delayed` key since `dec4c29`, so the slice was `NaN`. Kept on purpose: the rider's Delayed button (an announcement
+  the update-status route accepts) and two display fallbacks that render a legacy "delayed" row as On the way.
+  `tests/order-chat-policy.test.mts` listed "delayed" as in flight; updated.
+- **Missing i18n keys:** all ten from the last report added in en + bn; a scan of every static `t()`/`sk()` key in
+  app/components/lib now finds none missing.
+- **Spec 22:** `beforeEach`/`afterEach` release courier2 (override its open orders to Cancelled, end duty). Ran twice
+  on the same DB: only C3 fails, at the wrong-branch assignment (expects 400, gets 409); that assertion also failed on
+  a fresh DB on main last round, so it is pre-existing and left as is.
+- **Build gotcha (also for Robin):** `tsconfig.json` includes the generated types of `.next-e2e/` (an isolated e2e
+  build folder). A stale `.next-e2e/types` from 26 Sep still listed the deleted time-slot routes and broke
+  `npm run build`. I deleted only `.next-e2e/types` (generated, git-ignored). If Robin's build fails the same way:
+  delete `.next-e2e/types` (or the whole `.next-e2e` folder).
+
 ## Backups (not committed)
 - `backups/dev.db.2026-10-08T11-04-54Z.pre-reviews-complaints-addresses.bak` (before any migration this round).
 - `backups/dev.db.2026-10-08T11-28-48Z.pre-product-reviews.bak` (before the reviews migration).
+- `backups/dev.db.2026-10-08T11-47-14Z.pre-complaint-photos.bak` (before the complaint photos migration).
+- `backups/dev.db.2026-10-08T12-06-17Z.pre-hours-backfill.bak` (before the hours backfill migration).
+- `backups/dev.db.2026-10-08T15-52-53Z.pre-drop-time-slots.bak` (before dropping DeliveryTimeSlot).
 
 ## Verification
 
-## Steps for Robin
+### E2E findings while finishing (and what was changed because of them)
+- A `main` baseline worktree (2e6997d, own `npm ci`, own build, own test DB, port 3200) ran the same 32 related spec
+  files: **main = 65 failed / 200 passed**. First branch run: 87 failed / 178 passed. Compared by test title (line
+  numbers move when a spec is edited), 25 failures were branch-only. Causes, all from this round's intended changes:
+  1. **Held Main Branch area cascade.** Specs 25, 28 and 39 "created" an area on Main Branch and held it. With one area
+     per branch that held Main's only area, and a test that failed before resuming left Main pickup-only for every
+     later spec (35, 39, 68, 26 UI, ...). Fix: those tests now use a fresh branch far from Dhaka
+     (`freshDeliveryBranch()` fixture) or resume in `finally`; the e2e seed resets Main's area (not held, active, no
+     blocks) on every `test:e2e:prepare`.
+  2. **New overlapping seeded areas.** The seed now gives Cheez Gulshan and Madchef Dhanmondi areas (requested for dev
+     machines). They share a pin, so for many test points they became the customer's nearest branch, changing the
+     catalogue scope dozens of specs assume. Decision: **the e2e seed keeps only Main Branch's area** (removes the
+     other two demo areas on the test DB only); dev machines still get one area per demo branch.
+  3. **No hours = closed.** Specs that create a branch and order from it now call `openBranchAllDay()` (26, 29, 35,
+     55, 63, 66, 70).
+  4. **One area per branch / no area names.** Area tests in 25, 28, 39 and 29 ("find a branch by its area's name")
+     rewritten for the single-area model; spec 61 rewritten for the two-mode address form (and starts from an empty
+     address book, since other specs fill the shared customer's 5-address cap).
+
+### E2E results (final)
+- **Branch: 62 failed / 221 passed** on the same 32 related spec files plus 22, 76 and delivery-areas-management.
+  **Main baseline: 65 failed / 200 passed** (same files that exist on main).
+- After the fixes above, **no failure is branch-only.** Every remaining branch failure also fails on main (same test
+  title), or is one of the four the brief said to leave alone: `35:165`, `12:199`, `26:264`, `29:438`.
+  Other groups failing on both: the screenshot specs (18), and parts of 55, 62, 63, 66, 70 (mostly stale fixtures and
+  timing on a long-lived test DB).
+- Spec 22 C3: fails on both (main also fails C2 and C5, which now pass on the branch thanks to the cleanup hooks).
+- 26 / 29 "branch list" UI tests failed at first only because ~226 leftover fixture branches from earlier runs pushed the
+  target past the list's 100-branch page. I archived old fixture branches **in the test DB only**, and the specs now
+  archive what they create. They pass.
+- New spec 76 (review eligibility + one-per-product, moderation permissions, complaint routing incl. no-manager
+  fallback, no-hours rule, one area per branch + temporary block): **5/5 pass**.
+
+### Commands run at the end (on `61fed09`)
+- `npx tsc --noEmit`: clean.
+- `npx eslint` on every file touched this round (per commit) and on the final fix: clean.
+- `npm run test:unit`: **82/82 pass** (new: review policy, complaint routing, no-hours rule, coverage exclusions).
+- `npm run build`: passes, no warnings.
+- `node scripts/check-i18n-params.mjs`: clean (run after the i18n commits).
+
+### Browser walkthrough (production build, test DB, port 3100; desktop 1380 wide and mobile 400 wide)
+- **Super admin** (desktop, clicking through the sidebar): Delivery Areas overview and Edit area for Main Branch
+  (slider, blocks, hold), Reviews (filters, hide/restore), Complaints #6 with its photo, branch detail no-hours banner,
+  notifications in dark mode. **Bug found:** the overview map drew archived branches' areas and its "not drawn yet"
+  count disagreed with the list. Fixed in `61fed09`.
+- **Marketing** (mobile): Reviews with the Flagged filter, hide and restore, no layout overflow.
+- **Branch manager** (mobile): Delivery Area editor (one area, radius slider, add/remove block), dashboard (no NaN, no
+  false no-hours banner), Reviews (view + flag only, no hide button).
+- **Rider** (desktop + mobile): dashboard and order flow unaffected; complaint form for staff unchanged.
+- **Customer** (mobile): complaint form ("Goes to: Main Branch manager", order labels like "#229 · Today, 11:25 PM ·
+  ৳704", photos), order page "Rate your items", My Addresses two modes and the 5-address counter.
+- **Logged out** (mobile): product card "★ 5.0 (1)", product modal reviews section (average, breakdown, text), Night
+  Pickup block, no horizontal scroll; the product sheet sits flush at the bottom.
+
+### Not verified (and why)
+- "Use my current location" with a real GPS fix: the browser here has no location permission; the button and its
+  error path were checked, the success path only through the map pin.
+- Barikoi reverse geocoding with a real key on this machine's test run: the code path is the existing `/api/geo`
+  routes; with no key the form falls back to manual text, which was checked.
+- Push notifications (Firebase is on hold); the in-app notifications were checked.
+- Robin's data: migrations were tested on copies of Ash's dev.db and on deliberately dirty copies, not on Robin's DB.
+
+### Loose ends for the developer
+- I stopped only my own server on port 3100. Ash's dev server was not touched; restart it if it was running before
+  (the Prisma client was regenerated during the run).
+- `stash@{0}` holds the untracked rider-offline snapshot png from main (`git stash pop` on main if you want it back).
+- Scratch worktree for the main baseline: `git worktree list` shows it under the session scratchpad (`.../scratchpad/mb`).
+  Remove with `git worktree remove --force <path>` when convenient; I left it because it is outside the project folder.
+- Order chat photos are cached `private, max-age=300` (pre-existing): on a shared browser the next user can see a cached
+  chat photo for up to 5 minutes. Complaint photos were changed to `no-cache`; chat was left as is.
+- The test DB keeps growing (fixture branches, orders). `npm run test:e2e:prepare` resets demo data but not old fixtures;
+  deleting `prisma/test.db` before prepare gives a clean slate.
+
+## Steps for Robin (own machine, own dev.db)
+Five migrations this round. Two of them change data on purpose (delivery areas are wiped; unset hours become
+all-day), so back up first. Each was tested on a copy of Ash's dev.db and, where it repairs data, on a deliberately
+dirty copy. They only read what is in YOUR database.
+
+1. Stop your dev server (Windows: `prisma generate` fails while it holds the query engine file).
+2. Back up: `copy prisma\dev.db backups\dev.db.<date>.before-reviews-complaints-addresses.bak` (never commit `backups/`).
+3. Get the code: `git fetch origin` then `git checkout reviews-complaints-addresses` (or pull `main` once the PR is merged).
+4. `npm install` (no new packages; it runs `prisma generate` for the new schema).
+5. `npx prisma migrate deploy`. It applies, in order:
+   - `20261008100000_one_delivery_area_per_branch`: **deletes every delivery area** (they were test data), after
+     clearing `Order.deliveryAreaId` (orders keep their own name/charge/ETA snapshot), then makes one area per branch
+     and adds the temporary-blocks table. After this, **no branch delivers until it has an area** (step 6).
+   - `20261008110000_product_reviews`: one review per customer per product (keeps the newest if you had duplicates),
+     photos, moderation fields; backfills branch/brand on existing reviews.
+   - `20261008120000_complaint_photos`: adds `Complaint.photos` (empty for existing complaints).
+   - `20261008130000_backfill_unset_brand_hours`: "no hours" now means CLOSED. Any live brand at a live branch with no
+     (or unreadable) hours gets an all-day schedule, so nothing that is open for you today closes. To see which ones
+     it touches, run this BEFORE migrating (optional):
+     `npx prisma db execute --stdin --schema prisma/schema.prisma` and paste
+     `SELECT branchId, brandId FROM BranchBrand WHERE hours = '' OR hours IS NULL;` (or just look at the hours editors
+     afterwards: backfilled brands show 12:00 AM to 12:00 AM).
+   - `20261008140000_drop_delivery_time_slots`: drops the unused time-slot table.
+6. Give the demo branches their default delivery area: `npx tsx prisma/seed-delivery-areas.ts` (only creates a 5 km
+   circle for Main Branch / Cheez Gulshan / Madchef Dhanmondi when they have a map pin and no area; touches nothing
+   else). Any other branch: its manager or the super admin draws the area at Delivery Areas.
+   (`npm run seed` also does this, but it re-applies other demo data, e.g. demo branch coordinates.)
+7. Env: nothing new. `.env.example` only had the `E2E_SEED` note reworded.
+8. If `npm run build` fails with "Cannot find module ... app/api/branch-manager/time-slots", delete the generated
+   folder `.next-e2e\types` (or the whole `.next-e2e`), which `tsconfig.json` includes; it is stale build output.
+9. Restart the dev server.
+10. Check: Delivery Areas shows one row per branch; My Addresses has the two tabs; a product you received can be rated
+    from its order page; /marketing/reviews lists reviews; the homepage Night Pickup block shows only branches with
+    late pickup (or nothing).
+11. For e2e: `npm run build`, `npm run test:e2e:prepare` (migrates + seeds the test DB, demo hours all day), then specs.
+
+If a migration fails: stop, restore the backup (`copy backups\...bak prisma\dev.db`) and send Ash the error text.
