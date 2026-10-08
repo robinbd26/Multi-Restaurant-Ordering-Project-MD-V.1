@@ -334,6 +334,7 @@ function brandClosedMessage(brand: string, channel: "delivery" | "pickup", statu
     return sk("errors.orders.someProductsUnavailable");
   }
   if (status.reason === "delivery_paused") return sk("errors.orders.brandDeliveryPaused", { brand });
+  if (status.reason === "hours_not_set") return sk("errors.orders.brandHoursNotSet", { brand });
   if (!status.opensAt) return sk("errors.orders.brandClosed", { brand, channel: ch });
   const { key, dayKey } = opensAtMessage(status.opensAt);
   const time = formatClock(status.opensAt.time);

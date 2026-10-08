@@ -132,3 +132,25 @@ export async function assignableOrderId(bmReq: APIRequestContext): Promise<numbe
   if (!accepted.ok()) throw new Error(`could not accept order ${pending.id}: ${accepted.status()}`);
   return pending.id;
 }
+
+/**
+ * Give every brand a branch serves an ALL-DAY schedule (00:00 to 00:00, both
+ * channels). Since "no hours set" means CLOSED, a branch a spec creates takes
+ * no orders until this (or a real schedule) is set. `req` must be a super
+ * admin (or that branch's manager). Brands default to every brand the branch
+ * serves, read from the hours endpoint.
+ */
+export async function openBranchAllDay(req: APIRequestContext, branchId: number, slugs?: string[]): Promise<void> {
+  let brands = slugs;
+  if (!brands) {
+    const view = (await (await req.get(`${API_BASE}/api/branches/${branchId}/hours`)).json()) as {
+      brands?: { brand: { slug: string } }[];
+    };
+    brands = (view.brands ?? []).map((b) => b.brand.slug);
+  }
+  const allDay = { everyDay: [{ start: "00:00", end: "00:00", delivery: true, pickup: true }], days: {} };
+  const res = await req.put(`${API_BASE}/api/branches/${branchId}/hours`, {
+    data: { brands: Object.fromEntries(brands.map((slug) => [slug, allDay])) },
+  });
+  if (!res.ok()) throw new Error(`openBranchAllDay(${branchId}) failed: ${res.status()} ${await res.text()}`);
+}

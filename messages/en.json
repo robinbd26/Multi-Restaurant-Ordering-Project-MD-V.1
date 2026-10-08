@@ -457,25 +457,20 @@
       "dineIn": "Dine-In",
       "delivery": "Delivery",
       "pickupTitle": "Night Pickup Points",
-      "pickupNotePre": "Home delivery to",
-      "pickupNotePost": ". Orders after this time must be self-collected from the pickup points below.",
       "titlePre": "Operating",
       "titleAccent": "Hours",
       "lastOrder": "Last Order",
-      "pickupNoteMid": "is available until",
-      "pickupMainGate": "Pickup from Main Gate",
-      "pickupRawaClub": "Pickup from Rawa Club",
-      "pickupSainikClub": "Pickup from Sainik Club",
-      "pickupNavyHq": "Pickup from Navy HQ",
-      "pickupBaridhara": "Pickup from Baridhara J Block",
-      "bashundharaNote": "Last order inside Bashundhara accepted until 10:15 PM",
       "range": "{from} – {to}",
       "notToday": "Closed today",
       "pickup": "Pickup",
       "subtitleToday": "Today's dine-in, delivery and pickup hours, straight from each branch's schedule.",
       "brandNote": "Served at {n} branch(es). Times are today's last orders.",
       "lateNightTitleGeneric": "Late-Night Delivery",
-      "lateNightBody": "These branches keep delivering past midnight tonight. Last order is accepted at {time}."
+      "lateNightBody": "These branches keep delivering past midnight tonight. Last order is accepted at {time}.",
+      "nightPickupNote": "These branches take pickup orders late tonight. Order ahead and collect from the branch.",
+      "nightPickupNoteDelivery": "Home delivery from these branches ends at {time} tonight. After that, order for pickup and collect from the branch.",
+      "nightPickupUntil": "Pickup until {time} tonight",
+      "nightPickupAllDay": "Pickup open around the clock"
     },
     "branches": {
       "eyebrow": "{n} Branches Across Dhaka",
@@ -1789,7 +1784,8 @@
       "overrideStaffOnly": "Only the branch manager or the super admin can override an order's status.",
       "overrideReasonRequired": "Write a reason of at least {min} characters.",
       "overrideNotAllowed": "This order can't be overridden from \"{status}\".",
-      "riderAssignWindow": "A rider can be assigned once the order is accepted and until it is picked up."
+      "riderAssignWindow": "A rider can be assigned once the order is accepted and until it is picked up.",
+      "brandHoursNotSet": "{brand} is not taking orders at this branch yet."
     },
     "catalog": {
       "onlyAssignedManagerCanModifyCatalog": "Only the assigned branch manager can modify the catalog.",
@@ -4774,8 +4770,8 @@
     "addSlot": "Add time slot",
     "removeSlot": "Remove",
     "noChannelWarning": "Tick Delivery or Pickup, or this slot takes no orders.",
-    "notSetTitle": "Hours not set",
-    "notSetBody": "Until hours are set, this brand takes orders at any time. Set its hours so customers can only order when you are open.",
+    "notSetTitle": "No hours set, closed to customers",
+    "notSetBody": "Customers cannot order this brand here until you set its hours.",
     "setHours": "Set hours",
     "clearHours": "Clear these hours (no time limit)",
     "dineInTitle": "Dine-in hours",
@@ -4790,7 +4786,10 @@
     "notSetOrClosed": "Closed today or not set",
     "openEditor": "Edit hours",
     "formNoteEdit": "Opening hours are set per brand and per delivery/pickup on the branch's Hours page.",
-    "formNoteCreate": "After saving, set this branch's opening hours per brand on its Hours page (until then it has no time limit)."
+    "formNoteCreate": "After saving, set this branch's opening hours per brand on its Hours page (until then it has no time limit).",
+    "noHoursClosed": "No hours set, closed to customers",
+    "noHoursBrands": "{brands} cannot take orders at this branch until hours are added.",
+    "setHoursNow": "Set hours"
   },
   "orderStatusPickup": {
     "ready": "Ready for collection",

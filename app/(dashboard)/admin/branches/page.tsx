@@ -30,6 +30,8 @@ import type { Prisma } from "@prisma/client";
 
 import { BRANCH_BRANDS_INCLUDE, branchBrandSlugsOf } from "@/lib/brands/branch";
 import { BrandBadges } from "@/components/brands/brand-badges";
+import { NoHoursWarning } from "@/components/branch/no-hours-warning";
+import { brandsWithoutHours } from "@/lib/hours/availability";
 const BASE = "/admin/branches";
 const SORTABLE = ["name", "createdAt"] as const;
 const STATES = ["active", "inactive", "archived", "unassigned"] as const;
@@ -103,6 +105,8 @@ export default async function BranchListPage({
       address: b.address,
       phone: b.phone,
       brands: branchBrandSlugsOf(b),
+      // Live brands with no hours: closed to customers until they are set.
+      no_hours: b.isActive && !b.isArchived ? brandsWithoutHours(b).length > 0 : false,
       is_active: b.isActive,
       is_archived: b.isArchived,
       delivery_radius_km: String(b.deliveryRadiusKm),
@@ -186,6 +190,7 @@ export default async function BranchListPage({
                     <BrandBadges slugs={branch.brands} emptyLabel={t("brands.noneAssigned")} />
                   </span>
                   <span className="block max-w-56 truncate text-xs text-fg-subtle">{branch.address}</span>
+                  {branch.no_hours ? <NoHoursWarning compact brandNames={["*"]} href={`/admin/branches/${branch.id}/hours`} /> : null}
                 </Td>
                 <Td>{branch.phone}</Td>
                 <Td>{branch.manager_name ?? <span className="text-fg-subtle">{t("common.notAssigned")}</span>}</Td>

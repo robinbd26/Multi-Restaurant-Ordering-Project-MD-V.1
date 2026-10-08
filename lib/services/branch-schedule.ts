@@ -10,7 +10,7 @@ import { forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { formatClock } from "@/lib/i18n/format";
 import { logAdminAction } from "@/lib/services/audit";
 import { serializeBrand } from "@/lib/services/brands";
-import { BRANCH_HOURS_INCLUDE } from "@/lib/hours/availability";
+import { BRANCH_HOURS_INCLUDE, brandsWithoutHours } from "@/lib/hours/availability";
 import {
   normaliseBrandHours,
   normaliseDineInHours,
@@ -151,4 +151,19 @@ export async function saveBranchSchedule(user: User, branchId: number, input: Sc
     revalidatePath(`/admin/branches/${branch.id}`);
   }
   return branchSchedule(user, branchId);
+}
+
+/**
+ * Names of the live brands at this branch that have NO hours, so they are
+ * closed to customers until hours are set ("No hours set" warnings).
+ * Empty for an archived or deactivated branch: it takes no orders anyway.
+ */
+export async function brandNamesWithoutHours(branchId: number): Promise<string[]> {
+  const branch = await prisma.branch.findUnique({
+    where: { id: branchId },
+    include: { brands: { include: { brand: true } } },
+  });
+  if (!branch || branch.isArchived || !branch.isActive) return [];
+  const slugs = new Set(brandsWithoutHours(branch));
+  return branch.brands.filter((r) => slugs.has(r.brand.slug)).map((r) => r.brand.name);
 }

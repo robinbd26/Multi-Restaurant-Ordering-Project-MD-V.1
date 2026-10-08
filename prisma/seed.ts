@@ -377,10 +377,12 @@ async function main() {
   // on until 4:00 AM with pickup to 11:00 PM; dine-in is shown as 11 AM–11 PM.
   // Only UNSET schedules are filled, so a manager's real hours survive a re-seed.
   //
-  // E2E_SEED=1 (set by scripts/with-test-db.mjs --seed) does the opposite for the
-  // demo branches: their schedules are cleared to "not set", which places no
-  // time limit, so the e2e suite can order at whatever Dhaka time it runs. Specs
-  // that need a genuinely open or closed brand set hours through the API.
+  // E2E_SEED=1 (set by scripts/with-test-db.mjs --seed) gives the demo branches
+  // an ALL-DAY schedule (00:00 to 00:00, both channels) instead, so the e2e
+  // suite can order at whatever Dhaka time it runs. ("Not set" used to mean "no
+  // time limit"; since no hours now means CLOSED, the e2e seed has to say
+  // "always open" explicitly.) Specs that need a genuinely open or closed brand
+  // set hours through the API.
   const e2eSeed = process.env.E2E_SEED === "1";
   const demoBranches = await prisma.branch.findMany({
     where: { name: { in: [BRANCH_NAME, ...brandBranches.map((b) => b.name)] } },
@@ -392,10 +394,11 @@ async function main() {
     madchef: { everyDay: [slot("11:00", "22:30", true, true)], days: {} },
   };
   const FALLBACK_HOURS = { everyDay: [slot("11:00", "23:00", true, true)], days: {} };
+  const ALL_DAY_HOURS = JSON.stringify({ everyDay: [slot("00:00", "00:00", true, true)], days: {} });
   for (const b of demoBranches) {
     for (const row of b.brands) {
       if (e2eSeed) {
-        await prisma.branchBrand.update({ where: { id: row.id }, data: { hours: "" } });
+        await prisma.branchBrand.update({ where: { id: row.id }, data: { hours: ALL_DAY_HOURS } });
       } else if (!row.hours) {
         const hours = DEFAULT_HOURS[row.brand.slug] ?? FALLBACK_HOURS;
         await prisma.branchBrand.update({ where: { id: row.id }, data: { hours: JSON.stringify(hours) } });
@@ -408,7 +411,7 @@ async function main() {
       });
     }
   }
-  console.log(e2eSeed ? "✔ Demo branch hours cleared for e2e (no time limit)" : "✔ Demo branch hours set where unset");
+  console.log(e2eSeed ? "✔ Demo branch hours set to all day for e2e" : "✔ Demo branch hours set where unset");
 
   // ── Phase B demo data: coverage, prep time, pickup, tables, employees, attendance ──
   await prisma.branch.update({

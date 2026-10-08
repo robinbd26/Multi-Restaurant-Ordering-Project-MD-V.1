@@ -4,6 +4,8 @@ import { WeeklySalesChart } from "@/components/dashboard/bar-chart";
 import { DonutChart } from "@/components/dashboard/donut-chart";
 import { Icon } from "@/components/layout/icons";
 import { PageHeader } from "@/components/layout/page-header";
+import { NoHoursWarning } from "@/components/branch/no-hours-warning";
+import { brandNamesWithoutHours } from "@/lib/services/branch-schedule";
 import { BranchHoldControl } from "@/components/branch/branch-hold-control";
 import { LiveOperationsBoard } from "@/components/branch/live-operations-board";
 import { OrderTable } from "@/components/orders/order-table";
@@ -56,6 +58,8 @@ export default async function BranchManagerDashboardPage() {
   // from the request). A read failure degrades to "no hold controls" rather
   // than taking the whole dashboard down.
   const hold = await branchHoldStateById(data.branch.id).catch(() => null);
+  // A brand with no hours takes no orders: say so before anything else.
+  const unscheduled = await brandNamesWithoutHours(data.branch.id);
 
   return (
     <>
@@ -74,6 +78,8 @@ export default async function BranchManagerDashboardPage() {
           </span>
         }
       />
+
+      <NoHoursWarning brandNames={unscheduled} href="/branch-manager/delivery-hours" />
 
       {/* While the branch is held the state has to be UNMISSABLE — a full-width
           banner above everything, saying what is and is not affected. Orders
