@@ -8,7 +8,7 @@ import bcrypt from "bcryptjs";
 
 import { syncAreaMaster } from "@/lib/services/area-master";
 
-import { seedDefaultDeliveryAreas } from "./seed-delivery-areas";
+import { DEMO_BRANCH_NAMES, seedDefaultDeliveryAreas } from "./seed-delivery-areas";
 
 const prisma = new PrismaClient();
 
@@ -429,7 +429,28 @@ async function main() {
   // Delivery areas: ONE per branch (20261008100000). Each seeded demo branch
   // gets a circle around its pin when it has no area yet; a drawn area is
   // never overwritten. See prisma/seed-delivery-areas.ts.
-  const createdAreas = await seedDefaultDeliveryAreas(prisma);
+  // The e2e database keeps the test world its specs were written for: only Main
+  // Branch delivers. The two brand branches share one pin, so areas for them
+  // would make them the "nearest branch" for many test points and change every
+  // nearest-branch expectation. Their areas are removed there (test DB only).
+  if (e2eSeed) {
+    await prisma.branchDeliveryArea.deleteMany({
+      where: { branch: { name: { in: DEMO_BRANCH_NAMES.filter((n) => n !== BRANCH_NAME) } } },
+    });
+  }
+  const createdAreas = await seedDefaultDeliveryAreas(prisma, e2eSeed ? [BRANCH_NAME] : DEMO_BRANCH_NAMES);
+  if (e2eSeed) {
+    // The test DB persists between runs: a spec that stopped half way must not
+    // leave Main Branch's only area held, deactivated or partly blocked.
+    const mainArea = await prisma.branchDeliveryArea.findUnique({ where: { branchId: branch.id } });
+    if (mainArea) {
+      await prisma.deliveryAreaExclusion.deleteMany({ where: { areaId: mainArea.id } });
+      await prisma.branchDeliveryArea.update({
+        where: { id: mainArea.id },
+        data: { isHeld: false, holdReason: "", isActive: true },
+      });
+    }
+  }
   console.log(createdAreas.length ? `✔ Delivery areas created: ${createdAreas.join(", ")}` : "✔ Delivery areas: nothing missing");
 
   // Graphical tables.

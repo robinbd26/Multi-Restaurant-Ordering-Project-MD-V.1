@@ -16,9 +16,12 @@ import { Prisma, PrismaClient } from "@prisma/client";
 export const DEMO_BRANCH_NAMES = ["Main Branch", "Cheez Gulshan", "Madchef Dhanmondi"];
 const DEFAULT_RADIUS_KM = 5;
 
-export async function seedDefaultDeliveryAreas(prisma: PrismaClient): Promise<string[]> {
+export async function seedDefaultDeliveryAreas(
+  prisma: PrismaClient,
+  names: readonly string[] = DEMO_BRANCH_NAMES,
+): Promise<string[]> {
   const branches = await prisma.branch.findMany({
-    where: { name: { in: DEMO_BRANCH_NAMES }, isArchived: false },
+    where: { name: { in: [...names] }, isArchived: false },
     include: { deliveryAreas: { select: { id: true } } },
   });
   const created: string[] = [];
