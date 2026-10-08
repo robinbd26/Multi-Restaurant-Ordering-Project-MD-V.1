@@ -770,11 +770,18 @@ async function main() {
       },
     });
     if (reviewable.items[0]) {
-      await prisma.foodReview.create({
-        data: {
+      // Branch + brand snapshot like a real review, so the branch manager's
+      // review list (filtered by branch) shows it. One per customer+product.
+      const line = reviewable.items[0];
+      await prisma.foodReview.upsert({
+        where: { customerId_productId: { customerId: customer.id, productId: line.productId } },
+        update: {},
+        create: {
           orderId: reviewable.id,
-          productId: reviewable.items[0].productId,
+          productId: line.productId,
           customerId: customer.id,
+          branchId: reviewable.branchId,
+          brand: line.brand,
           rating: 4,
           comment: "খাবার সুস্বাদু ছিল।",
         },
