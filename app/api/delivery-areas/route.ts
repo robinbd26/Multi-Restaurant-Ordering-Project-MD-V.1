@@ -2,7 +2,7 @@ import { requireApproved } from "@/lib/auth/current-user";
 import { parseDeliveryAreaQuery } from "@/lib/delivery-areas/query";
 import { handle } from "@/lib/http/errors";
 import { created, json } from "@/lib/http/respond";
-import { createArea, deliveryAreaListForUser, serializeArea } from "@/lib/services/delivery-areas";
+import { deliveryAreaListForUser, saveBranchArea, serializeArea } from "@/lib/services/delivery-areas";
 
 // GET /api/delivery-areas?branch_id=&status=active|held — super admin (all /
 // filtered) or branch manager (own branch only, enforced in the service).
@@ -21,8 +21,11 @@ export const GET = handle(async (req: Request) => {
   });
 });
 
-// POST /api/delivery-areas — super admin (any branch via branch_id) or branch
-// manager (own branch; submitted branch_id ignored → no spoofing).
+// POST /api/delivery-areas — save THE delivery area of a branch (one per
+// branch): creates it (201) or, when the branch already has one, updates it
+// (200). Super admin: any branch via branch_id. Branch manager: own branch;
+// a submitted branch_id is ignored, so no spoofing. A legacy "name" field is
+// accepted and ignored (the area takes the branch name).
 //
 // `shape` is the drawn boundary as JSON (a GeoJSON Polygon, or the documented
 // Circle extension). The service validates it and refuses anything reaching
@@ -31,21 +34,19 @@ export const POST = handle(async (req: Request) => {
   const me = await requireApproved();
   const body = (await req.json().catch(() => ({}))) as {
     branch_id?: number;
-    name?: string;
     estimated_delivery_minutes?: unknown;
     delivery_charge?: unknown;
     shape?: unknown;
     is_active?: unknown;
     coverage_window?: unknown;
   };
-  const area = await createArea(me, {
+  const { area, created: isNew } = await saveBranchArea(me, {
     branchId: body.branch_id,
-    name: body.name ?? "",
     estimatedDeliveryMinutes: body.estimated_delivery_minutes,
     deliveryCharge: body.delivery_charge,
     shape: body.shape,
     isActive: body.is_active,
     coverageWindow: body.coverage_window,
   });
-  return created(serializeArea(area));
+  return isNew ? created(serializeArea(area)) : json(serializeArea(area));
 });

@@ -56,9 +56,7 @@ export default async function CustomerOrdersPage({
     summary.preparing +
     summary.ready +
     summary.picked_up +
-    summary.on_the_way +
-    // A delayed order is still in flight — it belongs in the ACTIVE count.
-    summary.delayed;
+    summary.on_the_way;
 
   const chip = (active: boolean) =>
     cn(

@@ -1,13 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import {
-  API_BASE,
-  newSession,
-  setLocale,
-  inNightOrderBlackout,
-  NIGHT_BLACKOUT_REASON,
-  isDhakaFullClosureWindow,
-  FULL_CLOSURE_REASON, activeZoneId } from "./helpers";
+import { API_BASE, newSession, setLocale, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, isDhakaFullClosureWindow, FULL_CLOSURE_REASON, activeZoneId, openBranchAllDay } from "./helpers";
 
 /**
  * ITEM 8 — a ONE-TIME address for this order only. "Add new address" always
@@ -72,6 +65,8 @@ async function farBranchWithProduct(req: APIRequestContext) {
   });
   expect(branchRes.status(), "branch created").toBe(201);
   const branch = (await branchRes.json()) as { id: number; name: string };
+  // No hours set = closed (reviews-complaints-addresses round): open it all day.
+  await openBranchAllDay(req, branch.id);
 
   const cat = await req.post(`${API_BASE}/api/categories/`, {
     data: { name: uniq("OtCat"), branch_id: branch.id, is_active: true },

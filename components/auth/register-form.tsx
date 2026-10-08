@@ -7,7 +7,8 @@ import { UsernameField } from "@/components/auth/username-field";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/forms/password-input";
-import { Field, Input, Textarea } from "@/components/ui/input";
+import { Field, FieldGroup, Input, Textarea } from "@/components/ui/input";
+import { ImageUpload } from "@/components/ui/image-upload";
 import { Spinner } from "@/components/ui/spinner";
 import { registerAction, type AuthFormState } from "@/lib/auth/actions";
 import { useTranslation } from "@/lib/i18n/use-translation";
@@ -177,15 +178,15 @@ export function RegisterForm({
             <Textarea name="permanent_address" rows={2} />
           </Field>
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label={t("register.nidFront")} name="nid_front_image" error={errors.nid_front_image}>
-              <Input name="nid_front_image" type="file" accept="image/*" className="py-2" />
-            </Field>
-            <Field label={t("register.nidBack")} name="nid_back_image" error={errors.nid_back_image}>
-              <Input name="nid_back_image" type="file" accept="image/*" className="py-2" />
-            </Field>
-            <Field label={t("register.licenseImage")} name="license_image" error={errors.license_image}>
-              <Input name="license_image" type="file" accept="image/*" className="py-2" />
-            </Field>
+            <FieldGroup label={t("register.nidFront")} name="nid_front_image" error={errors.nid_front_image}>
+              <ImageUpload name="nid_front_image" testId="upload-nid-front" ariaLabel={t("register.nidFront")} />
+            </FieldGroup>
+            <FieldGroup label={t("register.nidBack")} name="nid_back_image" error={errors.nid_back_image}>
+              <ImageUpload name="nid_back_image" testId="upload-nid-back" ariaLabel={t("register.nidBack")} />
+            </FieldGroup>
+            <FieldGroup label={t("register.licenseImage")} name="license_image" error={errors.license_image}>
+              <ImageUpload name="license_image" testId="upload-license" ariaLabel={t("register.licenseImage")} />
+            </FieldGroup>
           </div>
         </fieldset>
       ) : null}

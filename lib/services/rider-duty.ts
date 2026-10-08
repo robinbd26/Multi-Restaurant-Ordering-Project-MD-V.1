@@ -29,9 +29,9 @@ import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
 
 // An order counts as an ACTIVE delivery for a rider while it is assigned to them
 // and not yet delivered or cancelled — this blocks going offline / switching.
-// WS-5.2 — "delayed" belongs here: the food is still in the rider's hands, so a
-// delayed delivery must keep blocking going offline just like on_the_way does.
-const OPEN_DELIVERY_STATES = ["accepted", "preparing", "ready", "picked_up", "on_the_way", "delayed"];
+// ("delayed" is no longer a status since 20261007140000: a delay is an
+// announcement on an on_the_way order, which is already listed.)
+const OPEN_DELIVERY_STATES = ["accepted", "preparing", "ready", "picked_up", "on_the_way"];
 
 // ── Serializers ─────────────────────────────────────────────────────────
 export function serializeDutySession(s: {

@@ -306,20 +306,48 @@ model RiderReview {
   @@index([riderId])
 }
 
+// PRODUCT REVIEW (the table kept its original name). One per customer per
+// product (20261008110000): a customer who ordered the dish again edits their
+// review instead of piling up duplicates. Eligibility (enforced in
+// lib/services/product-reviews.ts): the customer has a Delivered or Collected
+// order (both stored as "delivered") containing this product. `orderId` is the
+// order that made them eligible most recently.
+//
+// A product belongs to one branch, so a review belongs to that product, branch
+// and brand; `branchId` / `brand` are snapshots taken at write time so the
+// moderation filters do not depend on later catalogue edits.
 model FoodReview {
-  id         Int      @id @default(autoincrement())
-  orderId    Int
-  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId  Int
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  customerId Int
-  customer   User     @relation("FoodReviewCustomer", fields: [customerId], references: [id], onDelete: Cascade)
-  rating     Int // 1-5
-  comment    String   @default("")
-  createdAt  DateTime @default(now())
+  id           Int       @id @default(autoincrement())
+  orderId      Int
+  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    Int
+  product      Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customerId   Int
+  customer     User      @relation("FoodReviewCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  rating       Int // 1-5
+  comment      String    @default("")
+  // JSON array of up to 3 storage keys in "review_photos/" (private folder,
+  // served by /api/reviews/[id]/photos/[n], which refuses hidden reviews).
+  photos       String    @default("[]")
+  branchId     Int?
+  brand        String    @default("")
+  // Moderation. Hidden reviews stay in the database but never count toward
+  // the rating and are never shown to customers. Marketing / super admin only.
+  isHidden     Boolean   @default(false)
+  hiddenAt     DateTime?
+  hiddenById   Int?
+  hiddenReason String    @default("")
+  // A branch manager's "please look at this" for marketing. Cleared when
+  // marketing hides or restores the review.
+  flaggedAt    DateTime?
+  flaggedById  Int?
+  flagReason   String    @default("")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
 
-  @@unique([orderId, productId])
-  @@index([productId])
+  @@unique([customerId, productId])
+  @@index([productId, isHidden])
+  @@index([branchId])
 }
 
 // ── Money flow ──────────────────────────────────────────────────────────
@@ -664,9 +692,12 @@ model Complaint {
   branch        Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
   orderId       Int?
   order         Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  category      String   @default("other") // food_quality|delivery|service|payment|app|other
+  category      String   @default("other") // food_quality|delivery|service|payment|app|rider_behavior|other
   subject       String
   message       String
+  // JSON array of up to 5 storage keys in "complaint_photos/" (private,
+  // served by /api/complaints/[id]/photos/[n] to whoever may read it).
+  photos        String   @default("[]")
   status        String   @default("pending") // pending|in_progress|resolved|closed
   assignedToId  Int?
   assignedTo    User?    @relation("ComplaintAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
@@ -823,7 +854,6 @@ model Branch {
   expenses             BranchExpense[]
   settlements          BranchSettlement[]
   adjustments          FinancialAdjustment[]
-  timeSlots            DeliveryTimeSlot[]
   staffAttendance      StaffAttendance[]
   tableReservations    TableReservation[]
   ramadanTables        RamadanTable[]
@@ -853,7 +883,8 @@ model Branch {
 // previous system compared a customer's typed area name against a seeded master
 // list, which can never be complete for Dhaka (a customer standing outside the
 // Banani branch was told "not deliverable" because their block was not on the
-// list). `name` is now just a label an operator reads ("Core", "Eskaton side").
+// list). Each branch has exactly ONE area (unique branchId); temporary
+// exclusions (DeliveryAreaExclusion) carve pieces out of it for a while.
 //
 // `shape` is JSON, in one of two forms (see lib/coverage/shape.ts):
 //   {"type":"Polygon","coordinates":[[[lng,lat],…]]}  — GeoJSON, one closed ring
@@ -874,9 +905,9 @@ model BranchDeliveryArea {
   id                       Int      @id @default(autoincrement())
   branchId                 Int
   branch                   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  // A label for operators, NOT a matching key. Duplicates are allowed on
-  // purpose: two shapes may legitimately both be called "Core" (day and night,
-  // or two disjoint pockets), and uniqueness only ever served name matching.
+  // Not typed by anyone any more (one area per branch, see @@unique below): the
+  // service keeps it equal to the branch name, so the order snapshot
+  // Order.deliveryAreaName stays readable.
   name                     String
   // The drawn boundary. Null = nothing drawn yet → covers nothing.
   shape                    String?
@@ -893,9 +924,36 @@ model BranchDeliveryArea {
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
-  orders Order[] @relation("OrderDeliveryArea")
+  orders     Order[]                 @relation("OrderDeliveryArea")
+  exclusions DeliveryAreaExclusion[]
 
-  @@index([branchId])
+  // ONE area per branch (20261008100000): a branch covers exactly one drawn
+  // area. The old many-named-areas model was seeded test data and was removed.
+  @@unique([branchId])
+}
+
+// ── Temporary exclusion: part of a branch's area that cannot be served for a
+// while (road closed, flooding, an event). A SEPARATE row laid on top of the
+// area, never an edit of the area's shape, so removing it (or letting it run
+// out) brings the original coverage back exactly as it was; nobody redraws
+// anything. `endsAt` NULL = until someone removes it; otherwise it stops
+// counting at that instant (every coverage read compares it to now, like the
+// delivery pause, so no job has to run to "expire" it).
+//
+// A pin inside an active exclusion is PICKUP ONLY for that branch, exactly like
+// a held area: "we cannot drive there right now" is not "we are closed".
+model DeliveryAreaExclusion {
+  id          Int                @id @default(autoincrement())
+  areaId      Int
+  area        BranchDeliveryArea @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  // Same JSON forms as BranchDeliveryArea.shape (lib/coverage/shape.ts).
+  shape       String
+  reason      String             @default("")
+  endsAt      DateTime?
+  createdById Int? // audit: raw actor id (app-level), like updatedById
+  createdAt   DateTime           @default(now())
+
+  @@index([areaId])
 }
 
 // ── MASTER zone list (super admin owned) ─────────────────────────────────
@@ -1066,20 +1124,9 @@ model EmployeeAttendance {
   @@index([date])
 }
 
-// ── Branch manager: delivery hours, attendance, reservations ────────────
-model DeliveryTimeSlot {
-  id        Int      @id @default(autoincrement())
-  branchId  Int
-  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  label     String   @default("") // e.g. "Lunch", "Dinner"
-  startTime String // "HH:MM"
-  endTime   String // "HH:MM"
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-
-  @@index([branchId])
-}
-
+// ── Branch manager: attendance, reservations ────────────────────────────
+// (The label-only DeliveryTimeSlot table was dropped in 20261008140000: ordering
+// hours live per brand on BranchBrand.hours.)
 // Daily attendance marking for staff (branch manager, rider, etc.).
 model StaffAttendance {
   id       Int      @id @default(autoincrement())

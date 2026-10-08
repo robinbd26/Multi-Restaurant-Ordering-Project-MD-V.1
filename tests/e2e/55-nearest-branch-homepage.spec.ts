@@ -5,17 +5,7 @@ import {
   type BrowserContext,
   type Page,
 } from "@playwright/test";
-import {
-  newSession,
-  setLocale,
-  ROLE_HOME,
-  atPath,
-  login,
-  E2E_ORIGIN,
-  inNightOrderBlackout,
-  NIGHT_BLACKOUT_REASON,
-  isDhakaFullClosureWindow,
-  FULL_CLOSURE_REASON, activeZoneId } from "./helpers";
+import { newSession, setLocale, ROLE_HOME, atPath, login, E2E_ORIGIN, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, isDhakaFullClosureWindow, FULL_CLOSURE_REASON, activeZoneId, openBranchAllDay } from "./helpers";
 
 /**
  * NEAREST-BRANCH HOMEPAGE — an authenticated customer sees, and can order, the
@@ -92,6 +82,8 @@ async function makeBranch(req: APIRequestContext, overrides: Record<string, stri
     data: { latitude: String(point.lat), longitude: String(point.lng) },
   });
   expect(moved.status(), "branch placed on its own slot").toBe(200);
+  // No hours set = closed (reviews-complaints-addresses round): open it all day.
+  await openBranchAllDay(req, branch.id);
   return { ...branch, point };
 }
 

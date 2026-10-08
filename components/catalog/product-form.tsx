@@ -1,16 +1,16 @@
 "use client";
 
-import { useActionState, useCallback, useMemo, useRef, useState } from "react";
-import Image from "next/image";
+import { useActionState, useCallback, useMemo, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/input";
+import { Checkbox, Field, FieldGroup, Input, Select, Textarea } from "@/components/ui/input";
+import { ImageUpload } from "@/components/ui/image-upload";
 import { Spinner } from "@/components/ui/spinner";
 import { initialActionState } from "@/lib/api/action-state";
 import { saveProductAction } from "@/lib/api/actions";
 import { useTranslation } from "@/lib/i18n/use-translation";
-import { cn, mediaUrl } from "@/lib/utils";
+import { mediaUrl } from "@/lib/utils";
 import { FormError } from "@/components/ui/field-error";
 import { FormSection } from "@/components/catalog/form-section";
 import { LIMITS, MAX_IMAGE_MB } from "@/lib/validation/limits";
@@ -132,9 +132,6 @@ export function ProductForm({
   const { t, fmt, locale } = useTranslation();
   const action = saveProductAction.bind(null, product?.id ?? null, basePath);
   const [state, formAction, pending] = useActionState(action, initialActionState);
-  const [preview, setPreview] = useState<string | null>(mediaUrl(product?.image ?? null));
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [dragOver, setDragOver] = useState(false);
 
   const [branchId, setBranchId] = useState<number | null>(
     fixedBranch?.id ?? product?.branch ?? branches?.[0]?.id ?? null,
@@ -190,21 +187,6 @@ export function ProductForm({
     if (saved && !list.some((c) => c.id === saved.id)) list.unshift(saved);
     return list;
   }, [branchCategories, soleBrand, brand, product, categories]);
-
-  /** Assign a dropped file to the real input so it is genuinely submitted. */
-  const applyFile = (file: File) => {
-    const input = fileInputRef.current;
-    if (input) {
-      try {
-        const dt = new DataTransfer();
-        dt.items.add(file);
-        input.files = dt.files;
-      } catch {
-        // Older browsers without assignable `files`: click-to-pick still works.
-      }
-    }
-    setPreview(URL.createObjectURL(file));
-  };
 
   // ── Variation mutations ────────────────────────────────────────────
   const setRow = (i: number, patch: Partial<VariationRow>) =>
@@ -690,86 +672,23 @@ export function ProductForm({
           <FormSection title={t("catalog.sectionImage")}>
             {/* Leaving the file input empty on edit keeps the saved image — it is
                 never cleared by an unrelated validation error elsewhere. */}
-            <Field
+            <FieldGroup
               label={t("catalog.image")}
               name="image"
-              hint={product?.image ? t("catalog.imageKeepHint") : t("catalog.imageFormatsHint", { n: MAX_IMAGE_MB })}
+              hint={product?.image ? t("catalog.imageKeepHint") : undefined}
               error={errors.image}
             >
-              {/* Modern drag-and-drop zone. The real <input type="file"> stays in
-                  the DOM (sr-only) so the multipart `image` part and the E2E
-                  setInputFiles selector keep working; the wrapping <label> makes
-                  the whole tile clickable, and a dropped file is assigned to the
-                  input programmatically so it is genuinely submitted. */}
-              <label
-                data-testid="image-dropzone"
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOver(false);
-                  const file = e.dataTransfer.files?.[0];
-                  if (file) applyFile(file);
-                }}
-                className={cn(
-                  "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors",
-                  dragOver
-                    ? "border-brand-500 bg-brand-50/70 dark:bg-brand-500/10"
-                    : "border-border-strong hover:border-brand-400 hover:bg-surface-muted/50",
-                )}
-              >
-                <input
-                  ref={fileInputRef}
-                  name="image"
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    setPreview(file ? URL.createObjectURL(file) : mediaUrl(product?.image ?? null));
-                  }}
-                />
-                {preview ? (
-                  <Image
-                    src={preview}
-                    alt={t("catalog.preview")}
-                    width={80}
-                    height={80}
-                    className="size-20 rounded-xl border border-border-base object-cover"
-                    unoptimized
-                  />
-                ) : (
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    className="size-9 text-fg-muted"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z"
-                    />
-                  </svg>
-                )}
-                <span className="text-sm font-medium text-fg-base">
-                  {preview ? t("catalog.imageChange") : t("catalog.imageDropTitle")}
-                </span>
-                <span className="text-xs text-fg-muted">
-                  {t("catalog.imageFormatsHint", { n: MAX_IMAGE_MB })}
-                </span>
-              </label>
-            </Field>
+              {/* The shared upload field. Its real <input name="image"> carries
+                  the file in the multipart submit (and keeps the E2E
+                  setInputFiles selector working). */}
+              <ImageUpload
+                name="image"
+                initialPreview={mediaUrl(product?.image ?? null)}
+                hint={t("catalog.imageFormatsHint", { n: MAX_IMAGE_MB })}
+                testId="image-dropzone"
+                ariaLabel={t("catalog.image")}
+              />
+            </FieldGroup>
           </FormSection>
 
           <FormSection title={t("catalog.sectionVisibility")} contentClassName="space-y-2.5">

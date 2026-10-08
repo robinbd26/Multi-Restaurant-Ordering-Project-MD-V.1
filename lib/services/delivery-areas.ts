@@ -1,6 +1,6 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
-import type { BranchDeliveryArea, User } from "@prisma/client";
+import type { BranchDeliveryArea, DeliveryAreaExclusion, User } from "@prisma/client";
 
 import {
   MAX_CIRCLE_RADIUS_KM,
@@ -14,22 +14,26 @@ import { prisma } from "@/lib/db";
 import { logAdminAction } from "@/lib/services/audit";
 import { COVERAGE_WINDOW_DEFAULT, isCoverageWindow } from "@/lib/constants/enums";
 import type {
+  DeliveryAreaExclusionRow,
   DeliveryAreaListQuery,
   DeliveryAreaListResult,
   DeliveryAreaRow,
 } from "@/lib/delivery-areas/query";
 import { conflict, forbidden, notFound, sk, validationError } from "@/lib/http/errors";
 import { branchForManager } from "@/lib/selectors";
-import { branchPoint, coverageForPoint } from "@/lib/services/coverage";
+import { branchPoint, coverageForPoint, exclusionActive } from "@/lib/services/coverage";
 import { isValidLatLng, type LatLng } from "@/lib/services/geo";
 import { LIMITS, decimalPlaces, isFiniteNumber } from "@/lib/validation/limits";
 
 /**
- * Delivery areas: the shapes a branch delivers inside.
+ * Delivery areas: the ONE shape a branch delivers inside.
  *
- * An area carries the TERMS (name, shift, ETA, charge, hold state, active) and
- * a SHAPE. The shape is the only thing that decides coverage; everything else
- * decides what it costs and when.
+ * Each branch has exactly one area (unique branchId). It carries the TERMS
+ * (ETA, charge, hold state, active) and a SHAPE. The shape is the only thing
+ * that decides coverage; everything else decides what it costs. Nobody types a
+ * name: the row's `name` is kept equal to the branch name so the order snapshot
+ * stays readable. Temporary EXCLUSIONS carve a piece out for a while without
+ * touching the shape, so removing one restores the area exactly.
  *
  * WHO MAY EDIT: a branch manager owns their own branch's areas, a super admin
  * owns every branch's. A submitted branch id from a manager is ignored rather
@@ -42,12 +46,24 @@ import { LIMITS, decimalPlaces, isFiniteNumber } from "@/lib/validation/limits";
 
 type SerializableArea = BranchDeliveryArea & {
   branch?: { name: string; address?: string } | null;
+  exclusions?: DeliveryAreaExclusion[];
 };
 
 /** Everything serializeArea needs, in one place so no read forgets the names. */
 export const AREA_INCLUDE = {
   branch: { select: { name: true, address: true } },
+  exclusions: { orderBy: { createdAt: "desc" } },
 } as const;
+
+export function serializeExclusion(e: DeliveryAreaExclusion): DeliveryAreaExclusionRow {
+  return {
+    id: e.id,
+    shape: e.shape,
+    reason: e.reason,
+    ends_at: e.endsAt ? e.endsAt.toISOString() : null,
+    created_at: e.createdAt.toISOString(),
+  };
+}
 
 export function serializeArea(a: SerializableArea): DeliveryAreaRow {
   return {
@@ -68,6 +84,9 @@ export function serializeArea(a: SerializableArea): DeliveryAreaRow {
     // covering nobody.
     shape: a.shape,
     coverage_window: a.coverageWindow,
+    // Only the exclusions still in force: an ended one no longer blocks
+    // anything, so listing it would only make the manager wonder.
+    exclusions: (a.exclusions ?? []).filter((e) => exclusionActive(e)).map(serializeExclusion),
     created_at: a.createdAt.toISOString(),
     updated_at: a.updatedAt.toISOString(),
   };
@@ -152,17 +171,6 @@ function parseCharge(v: unknown): Prisma.Decimal {
   return new Prisma.Decimal(n.toFixed(2));
 }
 
-function validatedName(value: unknown): string {
-  const name = String(value ?? "").trim();
-  if (!name) throw validationError({ name: sk("errors.deliveryArea.nameRequired") });
-  if (name.length < LIMITS.nameMin || name.length > LIMITS.nameMax) {
-    throw validationError({
-      name: sk("errors.deliveryArea.invalidNameLength", { min: LIMITS.nameMin, max: LIMITS.nameMax }),
-    });
-  }
-  return name;
-}
-
 /** Which shift a coverage row applies to. Absent means the all-day default. */
 function parseWindow(value: unknown): string {
   if (value === undefined || value === null || value === "") return COVERAGE_WINDOW_DEFAULT;
@@ -216,7 +224,6 @@ function parseShapeInput(
 
 export interface AreaInput {
   branchId?: number;
-  name: string;
   estimatedDeliveryMinutes?: unknown;
   deliveryCharge?: unknown;
   shape?: unknown;
@@ -224,19 +231,31 @@ export interface AreaInput {
   coverageWindow?: unknown;
 }
 
-export async function createArea(user: User, input: AreaInput) {
+/**
+ * Create or update THE delivery area of a branch (one per branch).
+ *
+ * BM: always their own branch (a submitted branch id is ignored). SA: any
+ * active branch. If the branch already has its area this updates it instead of
+ * failing, so "save my branch's area" is one call whatever the starting state.
+ * Returns the row and whether it was newly created.
+ */
+export async function saveBranchArea(user: User, input: AreaInput) {
   const branch = await resolveAreaBranch(user, input.branchId);
   if (!branch.isActive || branch.isArchived) {
     throw validationError({ branch_id: sk("errors.deliveryArea.branchUnavailable") });
   }
-  const name = validatedName(input.name);
+  const existing = await prisma.branchDeliveryArea.findUnique({ where: { branchId: branch.id } });
+  if (existing) {
+    const area = await updateArea(user, existing.id, input);
+    return { area, created: false };
+  }
+
   const coverageWindow = parseWindow(input.coverageWindow);
   const shape = parseShapeInput(input.shape, branch);
-
   const area = await prisma.branchDeliveryArea.create({
     data: {
       branchId: branch.id,
-      name,
+      name: branch.name,
       shape: shape ? serializeShape(shape) : null,
       estimatedDeliveryMinutes:
         input.estimatedDeliveryMinutes === undefined ? 45 : parseMinutes(input.estimatedDeliveryMinutes),
@@ -251,26 +270,30 @@ export async function createArea(user: User, input: AreaInput) {
   await logAreaChange(
     user,
     branch.id,
-    `Created delivery area "${area.name}" (${coverageWindow}${shape ? "" : ", no shape drawn yet"})`,
+    `Created the delivery area of ${branch.name}${shape ? ` (${describeShape(shape)})` : " (no shape drawn yet)"}`,
   );
-  return area;
+  return { area, created: true };
+}
+
+/** "3.0 km circle" / "12-point shape", for the activity log. */
+function describeShape(shape: CoverageShape): string {
+  return shape.type === "Circle"
+    ? `${shape.radiusKm.toFixed(1)} km circle`
+    : `${shape.coordinates[0].length - 1}-point shape`;
 }
 
 export async function updateArea(user: User, areaId: number, input: Partial<AreaInput>) {
   const area = await areaForManage(user, areaId);
   const branch = await prisma.branch.findUniqueOrThrow({ where: { id: area.branchId } });
-  const data: Prisma.BranchDeliveryAreaUpdateInput = { updatedById: user.id };
+  // The name follows the branch (nobody types it any more), so a branch rename
+  // is picked up on the next save.
+  const data: Prisma.BranchDeliveryAreaUpdateInput = { updatedById: user.id, name: branch.name };
   const changes: string[] = [];
 
   if (input.coverageWindow !== undefined) {
     const nextWindow = parseWindow(input.coverageWindow);
     if (nextWindow !== area.coverageWindow) changes.push(`shift ${area.coverageWindow} → ${nextWindow}`);
     data.coverageWindow = nextWindow;
-  }
-  if (input.name !== undefined) {
-    const name = validatedName(input.name);
-    if (name !== area.name) changes.push(`renamed "${area.name}" → "${name}"`);
-    data.name = name;
   }
   if (input.estimatedDeliveryMinutes !== undefined) {
     const minutes = parseMinutes(input.estimatedDeliveryMinutes);
@@ -293,8 +316,9 @@ export async function updateArea(user: User, areaId: number, input: Partial<Area
   }
   if (input.shape !== undefined) {
     const shape = parseShapeInput(input.shape, branch);
-    data.shape = shape ? serializeShape(shape) : null;
-    changes.push(shape ? "shape redrawn" : "shape cleared");
+    const next = shape ? serializeShape(shape) : null;
+    if (next !== area.shape) changes.push(shape ? `shape redrawn (${describeShape(shape)})` : "shape cleared");
+    data.shape = next;
   }
 
   const updated = await prisma.branchDeliveryArea.update({
@@ -303,7 +327,7 @@ export async function updateArea(user: User, areaId: number, input: Partial<Area
     include: AREA_INCLUDE,
   });
   if (changes.length > 0) {
-    await logAreaChange(user, area.branchId, `Updated delivery area "${updated.name}": ${changes.join(", ")}`);
+    await logAreaChange(user, area.branchId, `Updated the delivery area of ${branch.name}: ${changes.join(", ")}`);
   }
   return updated;
 }
@@ -471,7 +495,11 @@ export async function resolveOrderDeliveryArea(
   })();
   if (!coverage) return null;
 
-  if (coverage.pickupOnly) throw validationError({ delivery_area_id: sk("errors.deliveryArea.held") });
+  if (coverage.pickupOnly) {
+    throw validationError({
+      delivery_area_id: sk(coverage.reason === "area_excluded" ? "errors.deliveryArea.excluded" : "errors.deliveryArea.held"),
+    });
+  }
   if (!coverage.covered || !coverage.area) {
     throw validationError({ delivery_area_id: sk("errors.deliveryArea.pointNotCovered") });
   }
@@ -480,5 +508,80 @@ export async function resolveOrderDeliveryArea(
   if (requestedAreaId != null && requestedAreaId !== coverage.area.id) {
     throw conflict(sk("errors.deliveryArea.notForPoint"));
   }
-  return prisma.branchDeliveryArea.findUnique({ where: { id: coverage.area.id } });
+  const row = await prisma.branchDeliveryArea.findUnique({
+    where: { id: coverage.area.id },
+    include: { branch: { select: { name: true } } },
+  });
+  // The order snapshots the area's name: with one area per branch that is the
+  // branch's current name, whatever the row last stored.
+  return row ? { ...row, name: row.branch.name } : null;
+}
+
+// ── temporary exclusions ──────────────────────────────────────────────────
+
+const EXCLUSION_REASON_MAX = 200;
+
+export interface ExclusionInput {
+  shape: unknown;
+  reason?: unknown;
+  /** ISO instant, or empty/absent for "until removed". */
+  endsAt?: unknown;
+}
+
+/**
+ * Mark part of a branch's area as temporarily unserved.
+ *
+ * Same permission as editing the area (BM own branch, SA any), checked through
+ * areaForManage. The shape is NOT merged into the area: it is its own row, so
+ * removing it, or its end time passing, restores coverage exactly.
+ */
+export async function addExclusion(user: User, areaId: number, input: ExclusionInput) {
+  const area = await areaForManage(user, areaId);
+  const branch = await prisma.branch.findUniqueOrThrow({ where: { id: area.branchId } });
+  const shape = parseShape(input.shape);
+  if (!shape) throw validationError({ shape: sk("errors.deliveryArea.invalidShape") });
+  // It only ever matters inside the area, so it must sit within the branch's
+  // maximum radius like the area itself does.
+  const center = branchPoint(branch);
+  if (!center) throw validationError({ shape: sk("errors.deliveryArea.branchHasNoLocation") });
+  const maxRadiusKm = Math.min(Number(branch.deliveryRadiusKm), MAX_CIRCLE_RADIUS_KM);
+  if (!shapeWithinRadius(shape, center, maxRadiusKm)) {
+    throw validationError({ shape: sk("errors.deliveryArea.exclusionOutside", { max: maxRadiusKm.toFixed(2) }) });
+  }
+  const reason = String(input.reason ?? "").trim();
+  if (reason.length > EXCLUSION_REASON_MAX) {
+    throw validationError({ reason: sk("errors.deliveryArea.exclusionReasonTooLong", { max: EXCLUSION_REASON_MAX }) });
+  }
+  let endsAt: Date | null = null;
+  if (input.endsAt !== undefined && input.endsAt !== null && input.endsAt !== "") {
+    endsAt = new Date(String(input.endsAt));
+    if (Number.isNaN(endsAt.getTime()) || endsAt.getTime() <= Date.now()) {
+      throw validationError({ ends_at: sk("errors.deliveryArea.exclusionEndsInPast") });
+    }
+  }
+  const exclusion = await prisma.deliveryAreaExclusion.create({
+    data: { areaId: area.id, shape: serializeShape(shape), reason, endsAt, createdById: user.id },
+  });
+  await logAreaChange(
+    user,
+    area.branchId,
+    `Blocked part of the delivery area of ${branch.name} (${describeShape(shape)})` +
+      (endsAt ? ` until ${endsAt.toISOString()}` : " until removed") +
+      (reason ? `. Reason: ${reason}` : ""),
+  );
+  return exclusion;
+}
+
+/** Remove an exclusion: the area is back exactly as drawn. */
+export async function removeExclusion(user: User, areaId: number, exclusionId: number) {
+  const area = await areaForManage(user, areaId);
+  const exclusion = await prisma.deliveryAreaExclusion.findUnique({ where: { id: exclusionId } });
+  if (!exclusion || exclusion.areaId !== area.id) throw notFound(sk("errors.deliveryArea.exclusionNotFound"));
+  await prisma.deliveryAreaExclusion.delete({ where: { id: exclusionId } });
+  await logAreaChange(
+    user,
+    area.branchId,
+    `Removed a temporary block from the delivery area of ${area.branch.name}${exclusion.reason ? ` (was: ${exclusion.reason})` : ""}`,
+  );
+  return exclusion;
 }

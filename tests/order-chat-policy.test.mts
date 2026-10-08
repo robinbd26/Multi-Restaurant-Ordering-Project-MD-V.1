@@ -85,7 +85,8 @@ const active: DeliveryContactFacts = {
 
 test("phones: shared only while an accepted delivery is in flight", () => {
   assert.equal(deliveryContactActive(active), true);
-  for (const status of ["accepted", "preparing", "ready", "picked_up", "on_the_way", "delayed"]) {
+  // ("delayed" is no longer a status: a delay is an announcement on on_the_way.)
+  for (const status of ["accepted", "preparing", "ready", "picked_up", "on_the_way"]) {
     assert.equal(deliveryContactActive({ ...active, status }), true, status);
   }
   for (const status of ["pending", "delivered", "cancelled"]) {

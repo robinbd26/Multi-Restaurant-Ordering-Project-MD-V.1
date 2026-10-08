@@ -42,7 +42,7 @@ export default async function MarketingFeedbackPage() {
   const complaintScope = await complaintsWhereForUser(me);
 
   const [foodReviews, riderReviews, riderComplaints, foodAgg, riderAgg] = await Promise.all([
-    prisma.foodReview.findMany({ include: { product: true, customer: true }, orderBy: { createdAt: "desc" }, take: 50 }),
+    prisma.foodReview.findMany({ where: { isHidden: false }, include: { product: true, customer: true }, orderBy: { createdAt: "desc" }, take: 50 }),
     prisma.riderReview.findMany({ include: { rider: true, customer: true }, orderBy: { createdAt: "desc" }, take: 50 }),
     prisma.complaint.findMany({
       where: { AND: [complaintScope, { complainant: { role: "rider" } }] },
@@ -50,7 +50,7 @@ export default async function MarketingFeedbackPage() {
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
-    prisma.foodReview.aggregate({ _avg: { rating: true }, _count: true }),
+    prisma.foodReview.aggregate({ where: { isHidden: false }, _avg: { rating: true }, _count: true }),
     prisma.riderReview.aggregate({ _avg: { rating: true }, _count: true }),
   ]);
 

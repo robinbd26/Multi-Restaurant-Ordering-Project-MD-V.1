@@ -1,39 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { DeliveryAreaExclusions } from "@/components/delivery/delivery-area-exclusions";
 import { PageHeader } from "@/components/layout/page-header";
 import { ShapeEditor } from "@/components/maps/shape-editor";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Checkbox, Field, Input, Select } from "@/components/ui/input";
+import { Checkbox, Field, Input } from "@/components/ui/input";
 import type { DeliveryAreaRow } from "@/lib/delivery-areas/query";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { parseFieldErrors, type FieldErrors } from "@/lib/validation/contract";
 import { LIMITS } from "@/lib/validation/limits";
-import {
-  integer,
-  max,
-  maxLength,
-  min,
-  minLength,
-  money,
-  required,
-  selectRequired,
-} from "@/lib/validation/rules";
-import {
-  useFormValidation,
-  type FieldRules,
-} from "@/lib/validation/use-form-validation";
-
-export interface DeliveryAreaBranchOption {
-  id: number;
-  name: string;
-}
 
 /** The branch this area is drawn around, and the ceiling it must stay inside. */
 export interface DeliveryAreaBranchGeometry {
@@ -44,310 +26,173 @@ export interface DeliveryAreaBranchGeometry {
   lng: number | null;
   /** Maximum coverage radius in km: no shape may reach past it. */
   maxRadiusKm: number;
-  /** This branch's other areas, drawn faintly so overlaps are visible. */
+  /**
+   * Other branches' areas nearby, drawn faintly so overlaps between branches
+   * stay visible while drawing (a branch has only one area of its own).
+   */
   siblings: { id: number; name: string; shape: string | null }[];
 }
 
-const BASE_RULES: FieldRules = {
-  name: [
-    required,
-    minLength(LIMITS.nameMin),
-    maxLength(LIMITS.nameMax),
-  ],
-  estimated_delivery_minutes: [
-    required,
-    integer,
-    min(LIMITS.minutesMin),
-    max(LIMITS.minutesMax),
-  ],
-  delivery_charge: [required, money],
-};
-
-function safeListReturn(value: string | undefined, listPath: string): string {
-  if (!value) return listPath;
-  return value === listPath || value.startsWith(`${listPath}?`)
-    ? value
-    : listPath;
-}
-
-function withResult(href: string, result: "created" | "updated"): string {
-  const [path, query = ""] = href.split("?", 2);
-  const params = new URLSearchParams(query);
-  params.set("result", result);
-  return `${path}?${params}`;
-}
-
+/**
+ * THE delivery area of one branch, edited on one full-width page.
+ *
+ * A branch has exactly one area, so there is no name to type and no list to
+ * pick from: the map is the area. The terms (charge, time, active) sit under
+ * the map, and the temporary blocks (road closed, flooding) below that, because
+ * they are laid ON TOP of the area rather than edits of it.
+ *
+ * Saves go to POST /api/delivery-areas, which creates the branch's area or
+ * updates it; the server enforces who may (BM own branch, SA any) and logs it.
+ */
 export function DeliveryAreaForm({
-  mode,
-  listPath,
-  isSuperAdmin,
-  branches = [],
-  geometry = null,
-  assignedBranch,
+  geometry,
   initial = null,
-  returnTo,
+  isSuperAdmin,
+  backHref,
 }: {
-  mode: "create" | "edit";
-  listPath: string;
-  isSuperAdmin: boolean;
-  branches?: DeliveryAreaBranchOption[];
-  geometry?: DeliveryAreaBranchGeometry | null;
-  assignedBranch?: DeliveryAreaBranchOption | null;
+  geometry: DeliveryAreaBranchGeometry;
   initial?: DeliveryAreaRow | null;
-  returnTo?: string;
+  isSuperAdmin: boolean;
+  /** Where "Back" goes (the super admin's all-branches list); none for a BM. */
+  backHref?: string;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [name, setName] = useState(initial?.name ?? "");
-  const [minutes, setMinutes] = useState(
-    String(initial?.estimated_delivery_minutes ?? 45),
-  );
+  const [minutes, setMinutes] = useState(String(initial?.estimated_delivery_minutes ?? 45));
   const [charge, setCharge] = useState(initial?.delivery_charge ?? "0");
-  const [branchId, setBranchId] = useState(
-    initial ? String(initial.branch) : "",
-  );
   const [isActive, setIsActive] = useState(initial?.is_active ?? true);
-  // Which shift this row covers. "both" keeps the pre-window behaviour, which is
-  // what every row created before shifts existed already does.
-  const [coverageWindow, setCoverageWindow] = useState(initial?.coverage_window ?? "both");
-  // THE SHAPE — the only thing that decides whether a customer's pin is inside
-  // this area. Stored JSON, produced by the map editor below. Empty means
-  // nothing has been drawn yet, which covers nobody.
+  // THE SHAPE — the only thing that decides whether a customer's pin is
+  // covered. Empty = nothing drawn yet, which covers nobody.
   const [shape, setShape] = useState(initial?.shape ?? "");
-  const [serverErrors, setServerErrors] = useState<FieldErrors>({});
-  const [submissionId, setSubmissionId] = useState(0);
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const cancelHref = safeListReturn(returnTo, listPath);
-  const rules = isSuperAdmin && mode === "create"
-    ? { ...BASE_RULES, branch_id: [selectRequired] }
-    : BASE_RULES;
+  const [saved, setSaved] = useState(false);
+  const [holdReason, setHoldReason] = useState("");
 
-  const submit = useCallback(
-    (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      setFormError(null);
-      startTransition(async () => {
-        const editing = mode === "edit" && initial;
-        const response = await fetch(
-          editing
-            ? `/api/delivery-areas/${initial.id}`
-            : "/api/delivery-areas",
-          {
-            method: editing ? "PATCH" : "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              name: name.trim(),
-              estimated_delivery_minutes: minutes,
-              delivery_charge: charge,
-              is_active: isActive,
-              coverage_window: coverageWindow,
-              shape: shape === "" ? null : shape,
-              ...(isSuperAdmin && !editing
-                ? { branch_id: Number(branchId) }
-                : {}),
-            }),
-          },
-        );
-        const body = (await response.json().catch(() => ({}))) as unknown;
-        setSubmissionId((value) => value + 1);
-        if (!response.ok) {
-          const parsed = parseFieldErrors(body, t("common.error"));
-          setServerErrors(parsed.fieldErrors);
-          setFormError(parsed.formError);
-          return;
-        }
-        setServerErrors({});
-        if (editing) {
-          router.replace(withResult(cancelHref, "updated"));
-          return;
-        }
-        const visibleBranch = Number(branchId || assignedBranch?.id);
-        const params = new URLSearchParams({
-          search: name.trim(),
-          result: "created",
-        });
-        if (isSuperAdmin && visibleBranch) {
-          params.set("branch", String(visibleBranch));
-        }
-        router.replace(`${listPath}?${params.toString()}`);
+  function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError(null);
+    setSaved(false);
+    startTransition(async () => {
+      const response = await fetch("/api/delivery-areas", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          branch_id: geometry.id,
+          estimated_delivery_minutes: minutes,
+          delivery_charge: charge,
+          is_active: isActive,
+          // One area per branch covers the whole day; opening hours decide
+          // when delivery runs.
+          coverage_window: "both",
+          shape: shape === "" ? null : shape,
+        }),
       });
-    },
-    [
-      assignedBranch?.id,
-      branchId,
-      cancelHref,
-      charge,
-      coverageWindow,
-      initial,
-      isActive,
-      shape,
-      isSuperAdmin,
-      listPath,
-      minutes,
-      mode,
-      name,
-      router,
-      t,
-    ],
-  );
+      const body = (await response.json().catch(() => ({}))) as unknown;
+      if (!response.ok) {
+        const parsed = parseFieldErrors(body, t("common.error"));
+        setErrors(parsed.fieldErrors);
+        setFormError(parsed.formError);
+        return;
+      }
+      setErrors({});
+      setSaved(true);
+      const row = body as DeliveryAreaRow;
+      // A super admin creating a branch's first area moves to its edit URL, so
+      // a reload keeps showing the same area.
+      if (isSuperAdmin && !initial) router.replace(`/admin/delivery-areas/${row.id}/edit`);
+      else router.refresh();
+    });
+  }
 
-  const { errors, formProps } = useFormValidation(rules, {
-    onSubmitValid: submit,
-    pending,
-    serverErrors,
-    serverFormError: formError,
-    submissionId,
-  });
+  function setHold(held: boolean) {
+    if (!initial) return;
+    setFormError(null);
+    startTransition(async () => {
+      const response = await fetch(`/api/delivery-areas/${initial.id}/${held ? "hold" : "resume"}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(held ? { reason: holdReason.trim() } : {}),
+      });
+      if (!response.ok) {
+        const parsed = parseFieldErrors(await response.json().catch(() => ({})), t("common.error"));
+        setFormError(parsed.formError ?? t("common.error"));
+        return;
+      }
+      setHoldReason("");
+      router.refresh();
+    });
+  }
 
-  const isEdit = mode === "edit";
-  const title = isEdit ? t("deliveryArea.editTitle") : t("deliveryArea.addTitle");
-  const subtitle = isEdit
-    ? t("deliveryArea.editSub")
-    : t("deliveryArea.addPageSub");
-  const branchContext =
-    initial?.branch_name ?? assignedBranch?.name ?? null;
+  const center = geometry.lat != null && geometry.lng != null ? { lat: geometry.lat, lng: geometry.lng } : null;
+  const fieldError = (key: string) => errors[key] ?? null;
 
   return (
     <>
-      <nav
-        aria-label={t("deliveryArea.breadcrumb")}
-        className="mb-3 flex flex-wrap items-center gap-2 text-sm text-fg-muted"
-      >
-        <Link className="hover:text-brand-500" href={listPath}>
-          {t("deliveryArea.title")}
-        </Link>
-        <span aria-hidden>›</span>
-        <span aria-current="page" className="text-fg-base">
-          {title}
-        </span>
-      </nav>
+      {backHref ? (
+        <nav aria-label={t("deliveryArea.breadcrumb")} className="mb-3 flex flex-wrap items-center gap-2 text-sm text-fg-muted">
+          <Link className="hover:text-brand-500" href={backHref}>
+            {t("deliveryArea.title")}
+          </Link>
+          <span aria-hidden>›</span>
+          <span aria-current="page" className="text-fg-base">
+            {geometry.name}
+          </span>
+        </nav>
+      ) : null}
 
       <PageHeader
-        title={title}
-        subtitle={subtitle}
+        title={t("deliveryArea.editorTitle", { branch: geometry.name })}
+        subtitle={t("deliveryArea.editorSub")}
         action={
-          <ButtonLink
-            href={cancelHref}
-            variant="outline"
-            className="w-full sm:w-auto"
-          >
-            {t("deliveryArea.backToAreas")}
-          </ButtonLink>
+          backHref ? (
+            <ButtonLink href={backHref} variant="outline" className="w-full sm:w-auto">
+              {t("deliveryArea.backToAreas")}
+            </ButtonLink>
+          ) : undefined
         }
       />
 
-      <Card className="max-w-2xl">
-        <CardHeader
-          title={t("deliveryArea.formDetails")}
-          subtitle={t("deliveryArea.formHint")}
-        />
-        <CardContent>
-          <form {...formProps} className="space-y-5">
-            <Alert tone="error" message={formError} />
+      <form onSubmit={save} className="space-y-5" data-testid="delivery-area-editor" noValidate>
+        <Alert tone="error" message={formError} />
+        {saved ? <Alert tone="success" message={t("deliveryArea.saved")} /> : null}
 
-            {isSuperAdmin && !isEdit ? (
-              <Field
-                label={t("deliveryArea.branch")}
-                name="branch_id"
-                required
-                error={errors.branch_id}
-              >
-                <Select
-                  name="branch_id"
-                  value={branchId}
-                  onChange={(event) => setBranchId(event.target.value)}
-                >
-                  <option value="">{t("deliveryArea.selectBranch")}</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            ) : (
-              <div className="rounded-xl border border-border-base bg-surface-muted px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
-                  {t("deliveryArea.branch")}
-                </p>
-                <p className="mt-1 font-medium text-fg-base">
-                  {branchContext ?? t("common.notAssigned")}
-                </p>
-              </div>
-            )}
-
-            <Field
-              label={t("deliveryArea.coverageWindow")}
-              name="coverage_window"
-              hint={t("deliveryArea.coverageWindowHint")}
-            >
-              <Select
-                name="coverage_window"
-                value={coverageWindow}
-                onChange={(event) => setCoverageWindow(event.target.value)}
-                data-testid="area-coverage-window"
-              >
-                <option value="both">{t("deliveryArea.windowBoth")}</option>
-                <option value="day">{t("deliveryArea.windowDay")}</option>
-                <option value="night">{t("deliveryArea.windowNight")}</option>
-              </Select>
-            </Field>
-
-            {/* THE MAP. Everything above is the terms of delivering here; this
-                is WHERE "here" is, and it is the only part coverage reads. */}
-            <div>
-              <p className="text-sm font-medium text-fg-base">{t("deliveryArea.shapeLabel")}</p>
-              <p className="mt-0.5 mb-2 text-xs text-fg-subtle">{t("deliveryArea.shapeHint")}</p>
-              <ShapeEditor
-                value={shape}
-                onChange={setShape}
-                branchCenter={
-                  geometry && geometry.lat != null && geometry.lng != null
-                    ? { lat: geometry.lat, lng: geometry.lng }
-                    : null
-                }
-                maxRadiusKm={geometry?.maxRadiusKm ?? 0}
-                siblings={geometry?.siblings ?? []}
-                error={errors.shape ?? serverErrors.shape}
-              />
-            </div>
-
-            {isEdit && initial ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-fg-muted">
-                  {t("deliveryArea.deliveryState")}:
-                </span>
-                <Badge dot tone={initial.is_held ? "red" : "green"}>
-                  {initial.is_held
-                    ? t("deliveryArea.onHold")
-                    : t("deliveryArea.available")}
+        <Card>
+          <CardHeader
+            title={t("deliveryArea.shapeLabel")}
+            subtitle={t("deliveryArea.shapeHint")}
+            action={
+              initial ? (
+                <Badge dot tone={!initial.is_active ? "slate" : initial.is_held ? "red" : "green"}>
+                  {!initial.is_active
+                    ? t("deliveryArea.inactiveBadge")
+                    : initial.is_held
+                      ? t("deliveryArea.onHold")
+                      : t("deliveryArea.available")}
                 </Badge>
-              </div>
-            ) : null}
+              ) : (
+                <Badge tone="amber">{t("deliveryArea.notCreatedYet")}</Badge>
+              )
+            }
+          />
+          <CardContent>
+            <ShapeEditor
+              value={shape}
+              onChange={setShape}
+              branchCenter={center}
+              maxRadiusKm={geometry.maxRadiusKm}
+              siblings={geometry.siblings}
+              error={fieldError("shape")}
+            />
+          </CardContent>
+        </Card>
 
-            <Field
-              label={t("deliveryArea.name")}
-              name="name"
-              required
-              error={errors.name}
-            >
-              <Input
-                name="name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder={t("deliveryArea.namePlaceholder")}
-                maxLength={LIMITS.nameMax}
-              />
-            </Field>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field
-                label={t("deliveryArea.minutes")}
-                name="estimated_delivery_minutes"
-                required
-                error={errors.estimated_delivery_minutes}
-              >
+        <Card>
+          <CardHeader title={t("deliveryArea.formDetails")} />
+          <CardContent className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Field label={t("deliveryArea.minutes")} name="estimated_delivery_minutes" required error={fieldError("estimated_delivery_minutes")}>
                 <Input
                   name="estimated_delivery_minutes"
                   type="number"
@@ -359,12 +204,7 @@ export function DeliveryAreaForm({
                   onChange={(event) => setMinutes(event.target.value)}
                 />
               </Field>
-              <Field
-                label={t("deliveryArea.charge")}
-                name="delivery_charge"
-                required
-                error={errors.delivery_charge}
-              >
+              <Field label={t("deliveryArea.charge")} name="delivery_charge" required error={fieldError("delivery_charge")}>
                 <Input
                   name="delivery_charge"
                   type="text"
@@ -373,30 +213,71 @@ export function DeliveryAreaForm({
                   onChange={(event) => setCharge(event.target.value)}
                 />
               </Field>
+              <div className="flex items-end pb-2">
+                <Checkbox
+                  name="is_active"
+                  checked={isActive}
+                  onChange={(event) => setIsActive(event.target.checked)}
+                  label={t("deliveryArea.activeLabel")}
+                />
+              </div>
             </div>
-
-            <Checkbox
-              name="is_active"
-              checked={isActive}
-              onChange={(event) => setIsActive(event.target.checked)}
-              label={t("deliveryArea.activeLabel")}
-            />
-
             <div className="flex flex-col-reverse gap-3 border-t border-border-base pt-5 sm:flex-row sm:justify-end">
-              <ButtonLink href={cancelHref} variant="outline">
-                {t("common.cancel")}
-              </ButtonLink>
-              <Button type="submit" disabled={pending}>
-                {pending
-                  ? t("common.saving")
-                  : isEdit
-                    ? t("deliveryArea.saveChanges")
-                    : t("deliveryArea.createArea")}
+              <Button type="submit" disabled={pending || !center} data-testid="delivery-area-save">
+                {pending ? t("common.saving") : initial ? t("deliveryArea.saveChanges") : t("deliveryArea.createArea")}
               </Button>
             </div>
-          </form>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </form>
+
+      {initial ? (
+        <div className="mt-5 space-y-5">
+          <Card>
+            <CardHeader title={t("deliveryArea.deliveryState")} subtitle={t("deliveryArea.holdHint")} />
+            <CardContent>
+              {initial.is_held ? (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-fg-base">
+                    {t("deliveryArea.heldNow")}
+                    {initial.hold_reason ? ` — ${initial.hold_reason}` : ""}
+                  </p>
+                  <Button type="button" variant="success" disabled={pending} onClick={() => setHold(false)} data-testid="delivery-area-resume">
+                    {t("deliveryArea.resumeDelivery")}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <Field label={t("deliveryArea.holdReasonLabel")} name="hold_reason">
+                      <Input
+                        name="hold_reason"
+                        value={holdReason}
+                        onChange={(event) => setHoldReason(event.target.value)}
+                        placeholder={t("deliveryArea.holdReasonPlaceholder")}
+                        maxLength={200}
+                      />
+                    </Field>
+                  </div>
+                  <Button type="button" variant="outline" disabled={pending} onClick={() => setHold(true)} data-testid="delivery-area-hold">
+                    {t("deliveryArea.holdDelivery")}
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {initial.shape && center ? (
+            <DeliveryAreaExclusions
+              areaId={initial.id}
+              areaShape={initial.shape}
+              branchCenter={center}
+              maxRadiusKm={geometry.maxRadiusKm}
+              exclusions={initial.exclusions}
+            />
+          ) : null}
+        </div>
+      ) : null}
     </>
   );
 }

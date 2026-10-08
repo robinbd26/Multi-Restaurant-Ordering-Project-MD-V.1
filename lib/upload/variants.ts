@@ -55,6 +55,11 @@ export const UPLOAD_PROFILES: Record<string, UploadProfile> = {
   // phone, with a thumbnail for the message bubble. Private, served only by the
   // chat route (lib/services/order-chat.ts).
   chat_photos: { maxSide: 1280, variants: [320] },
+  // Product review and complaint photos: the same pipeline and sizing as chat
+  // photos (lib/upload/photos.ts). Private folders, served only by routes that
+  // check access to the review / complaint.
+  review_photos: { maxSide: 1280, variants: [320] },
+  complaint_photos: { maxSide: 1280, variants: [320] },
 };
 
 /**

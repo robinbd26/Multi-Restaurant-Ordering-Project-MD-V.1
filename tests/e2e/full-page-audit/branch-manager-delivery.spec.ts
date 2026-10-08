@@ -27,7 +27,6 @@ test.describe("Full page audit — Branch Manager delivery configuration", () =>
     }
     for (const endpoint of [
       "/api/branch-manager/delivery-settings",
-      "/api/branch-manager/time-slots",
     ]) {
       expect((await page.request.get(endpoint)).status()).toBe(401);
     }
@@ -44,7 +43,6 @@ test.describe("Full page audit — Branch Manager delivery configuration", () =>
       }
       for (const endpoint of [
         "/api/branch-manager/delivery-settings",
-        "/api/branch-manager/time-slots",
       ]) {
         expect(
           (await req.get(endpoint)).status(),
@@ -161,13 +159,6 @@ test.describe("Full page audit — Branch Manager delivery configuration", () =>
       ).json(),
     ).toEqual(beforeBody);
 
-    expect(
-      (
-        await page.request.delete(
-          "/api/branch-manager/time-slots/not-a-number",
-        )
-      ).status(),
-    ).toBe(404);
     expect(
       (
         await page.request.patch("/api/delivery-zones/not-a-number", {

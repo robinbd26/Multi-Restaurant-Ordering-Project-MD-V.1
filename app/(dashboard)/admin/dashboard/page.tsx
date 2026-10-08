@@ -117,7 +117,7 @@ export default async function SuperAdminDashboardPage() {
               slices={[
                 { label: t("superAdmin.sliceWaiting"), value: b.pending + b.accepted, color: "#f4a261" },
                 { label: t("superAdmin.slicePreparing"), value: b.preparing + b.ready, color: "#8b5cf6" },
-                { label: t("superAdmin.sliceDelivering"), value: b.picked_up + b.on_the_way + b.delayed, color: "#3b82f6" },
+                { label: t("superAdmin.sliceDelivering"), value: b.picked_up + b.on_the_way, color: "#3b82f6" },
                 { label: t("superAdmin.sliceCompleted"), value: b.delivered, color: "#2dc653" },
                 { label: t("superAdmin.sliceCancelled"), value: b.cancelled, color: "#e63946" },
               ]}

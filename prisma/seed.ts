@@ -8,6 +8,8 @@ import bcrypt from "bcryptjs";
 
 import { syncAreaMaster } from "@/lib/services/area-master";
 
+import { DEMO_BRANCH_NAMES, seedDefaultDeliveryAreas } from "./seed-delivery-areas";
+
 const prisma = new PrismaClient();
 
 const SEED_PASSWORD = "Admin12345@##";
@@ -375,10 +377,12 @@ async function main() {
   // on until 4:00 AM with pickup to 11:00 PM; dine-in is shown as 11 AM–11 PM.
   // Only UNSET schedules are filled, so a manager's real hours survive a re-seed.
   //
-  // E2E_SEED=1 (set by scripts/with-test-db.mjs --seed) does the opposite for the
-  // demo branches: their schedules are cleared to "not set", which places no
-  // time limit, so the e2e suite can order at whatever Dhaka time it runs. Specs
-  // that need a genuinely open or closed brand set hours through the API.
+  // E2E_SEED=1 (set by scripts/with-test-db.mjs --seed) gives the demo branches
+  // an ALL-DAY schedule (00:00 to 00:00, both channels) instead, so the e2e
+  // suite can order at whatever Dhaka time it runs. ("Not set" used to mean "no
+  // time limit"; since no hours now means CLOSED, the e2e seed has to say
+  // "always open" explicitly.) Specs that need a genuinely open or closed brand
+  // set hours through the API.
   const e2eSeed = process.env.E2E_SEED === "1";
   const demoBranches = await prisma.branch.findMany({
     where: { name: { in: [BRANCH_NAME, ...brandBranches.map((b) => b.name)] } },
@@ -390,10 +394,11 @@ async function main() {
     madchef: { everyDay: [slot("11:00", "22:30", true, true)], days: {} },
   };
   const FALLBACK_HOURS = { everyDay: [slot("11:00", "23:00", true, true)], days: {} };
+  const ALL_DAY_HOURS = JSON.stringify({ everyDay: [slot("00:00", "00:00", true, true)], days: {} });
   for (const b of demoBranches) {
     for (const row of b.brands) {
       if (e2eSeed) {
-        await prisma.branchBrand.update({ where: { id: row.id }, data: { hours: "" } });
+        await prisma.branchBrand.update({ where: { id: row.id }, data: { hours: ALL_DAY_HOURS } });
       } else if (!row.hours) {
         const hours = DEFAULT_HOURS[row.brand.slug] ?? FALLBACK_HOURS;
         await prisma.branchBrand.update({ where: { id: row.id }, data: { hours: JSON.stringify(hours) } });
@@ -406,7 +411,7 @@ async function main() {
       });
     }
   }
-  console.log(e2eSeed ? "✔ Demo branch hours cleared for e2e (no time limit)" : "✔ Demo branch hours set where unset");
+  console.log(e2eSeed ? "✔ Demo branch hours set to all day for e2e" : "✔ Demo branch hours set where unset");
 
   // ── Phase B demo data: coverage, prep time, pickup, tables, employees, attendance ──
   await prisma.branch.update({
@@ -421,37 +426,32 @@ async function main() {
       pickupPhone: "01000000000",
     },
   });
-  // Delivery areas for the Main Branch — SHAPES, because coverage is now a
-  // customer's pin inside a drawn area (lib/coverage). One wide circle around
-  // the branch so a seeded customer can actually order, one cheaper pocket that
-  // OVERLAPS it (so the "cheapest wins" rule is exercised end to end), and one
-  // HELD area covering a third spot, so the pickup-only path has something real
-  // to hit. Shapes are written as JSON exactly as the editor stores them.
-  const circle = (lat: string, lng: string, radiusKm: number) =>
-    JSON.stringify({ type: "Circle", coordinates: [Number(lng), Number(lat)], radiusKm });
-  const seedAreas = [
-    // The branch pin is 23.78081, 90.4079 with a 5 km radius: this fills it.
-    { name: "Core (all round)", charge: "60.00", minutes: 45, held: false, shape: circle("23.7808100", "90.4079000", 5) },
-    // A cheaper pocket INSIDE the core area — overlapping on purpose.
-    { name: "Gulshan pocket", charge: "40.00", minutes: 35, held: false, shape: circle("23.7925000", "90.4078000", 1.5) },
-    // Held: covered, but delivery paused there, so checkout offers pickup.
-    { name: "Dhanmondi edge", charge: "90.00", minutes: 70, held: true, reason: "Temporarily paused (rider shortage)", shape: circle("23.7500000", "90.3800000", 1) },
-  ];
-  for (const a of seedAreas) {
-    const existingA = await prisma.branchDeliveryArea.findFirst({ where: { branchId: branch.id, name: a.name } });
-    const data = {
-      branchId: branch.id,
-      name: a.name,
-      shape: a.shape,
-      isActive: true,
-      isHeld: a.held,
-      holdReason: a.held ? (a.reason ?? "") : "",
-      estimatedDeliveryMinutes: a.minutes,
-      deliveryCharge: new Prisma.Decimal(a.charge),
-    };
-    if (existingA) await prisma.branchDeliveryArea.update({ where: { id: existingA.id }, data });
-    else await prisma.branchDeliveryArea.create({ data });
+  // Delivery areas: ONE per branch (20261008100000). Each seeded demo branch
+  // gets a circle around its pin when it has no area yet; a drawn area is
+  // never overwritten. See prisma/seed-delivery-areas.ts.
+  // The e2e database keeps the test world its specs were written for: only Main
+  // Branch delivers. The two brand branches share one pin, so areas for them
+  // would make them the "nearest branch" for many test points and change every
+  // nearest-branch expectation. Their areas are removed there (test DB only).
+  if (e2eSeed) {
+    await prisma.branchDeliveryArea.deleteMany({
+      where: { branch: { name: { in: DEMO_BRANCH_NAMES.filter((n) => n !== BRANCH_NAME) } } },
+    });
   }
+  const createdAreas = await seedDefaultDeliveryAreas(prisma, e2eSeed ? [BRANCH_NAME] : DEMO_BRANCH_NAMES);
+  if (e2eSeed) {
+    // The test DB persists between runs: a spec that stopped half way must not
+    // leave Main Branch's only area held, deactivated or partly blocked.
+    const mainArea = await prisma.branchDeliveryArea.findUnique({ where: { branchId: branch.id } });
+    if (mainArea) {
+      await prisma.deliveryAreaExclusion.deleteMany({ where: { areaId: mainArea.id } });
+      await prisma.branchDeliveryArea.update({
+        where: { id: mainArea.id },
+        data: { isHeld: false, holdReason: "", isActive: true },
+      });
+    }
+  }
+  console.log(createdAreas.length ? `✔ Delivery areas created: ${createdAreas.join(", ")}` : "✔ Delivery areas: nothing missing");
 
   // Graphical tables.
   const seedTables = [
@@ -770,11 +770,18 @@ async function main() {
       },
     });
     if (reviewable.items[0]) {
-      await prisma.foodReview.create({
-        data: {
+      // Branch + brand snapshot like a real review, so the branch manager's
+      // review list (filtered by branch) shows it. One per customer+product.
+      const line = reviewable.items[0];
+      await prisma.foodReview.upsert({
+        where: { customerId_productId: { customerId: customer.id, productId: line.productId } },
+        update: {},
+        create: {
           orderId: reviewable.id,
-          productId: reviewable.items[0].productId,
+          productId: line.productId,
           customerId: customer.id,
+          branchId: reviewable.branchId,
+          brand: line.brand,
           rating: 4,
           comment: "খাবার সুস্বাদু ছিল।",
         },
@@ -933,16 +940,7 @@ async function main() {
     console.log("• Complaints already exist — skipped");
   }
 
-  // ── Branch manager extras: hours, reservation, ramadan (idempotent) ──
-  if (!(await prisma.deliveryTimeSlot.findFirst({ where: { branchId: branch.id } }))) {
-    await prisma.deliveryTimeSlot.createMany({
-      data: [
-        { branchId: branch.id, label: "দুপুর", startTime: "12:00", endTime: "15:00" },
-        { branchId: branch.id, label: "রাত", startTime: "19:00", endTime: "23:00" },
-      ],
-    });
-    console.log("✔ Seeded 2 delivery time slots");
-  }
+  // ── Branch manager extras: reservation, ramadan (idempotent) ──
   if (!(await prisma.tableReservation.findFirst())) {
     const res = await prisma.tableReservation.create({
       data: {

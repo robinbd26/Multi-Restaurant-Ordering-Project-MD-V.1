@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, isDhakaFullClosureWindow, FULL_CLOSURE_REASON, activeZoneId, branchMap } from "./helpers";
+import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, isDhakaFullClosureWindow, FULL_CLOSURE_REASON, activeZoneId, branchMap, openBranchAllDay } from "./helpers";
 
 /**
  * req #20 (nearest branch enforced server-side in order creation) + req #6
@@ -86,6 +86,8 @@ async function createEligibleBranch(req: APIRequestContext, pt: { lat: number; l
   });
   expect(created.status(), "branch created").toBe(201);
   const branch = await created.json();
+  // No hours set = closed (reviews-complaints-addresses round): open it all day.
+  await openBranchAllDay(req, branch.id);
   const cat = await req.post(`${API_BASE}/api/categories/`, {
     data: { branch_id: branch.id, name: uniq("Cat") },
   });
@@ -130,7 +132,7 @@ test.describe("#20 server-derived delivery branch (order creation)", () => {
       product_id: mainProduct.id,
       ...INSIDE,
     });
-    expect(res.status(), "order accepted").toBe(201);
+    expect(res.status(), `order accepted: ${await res.text()}`).toBe(201);
     const order = await res.json();
     // Server resolves the branch from the product, not the spoofed branch_id.
     expect(order.branch, "branch derived from product").toBe(main);
@@ -182,7 +184,7 @@ test.describe("#20 server-derived delivery branch (order creation)", () => {
 
     // While active + covering the point → order succeeds and uses this branch.
     const ok = await placeDelivery(customer.req, { branch_id: branch.id, product_id: product.id, ...INSIDE });
-    expect(ok.status(), "eligible branch accepts the order").toBe(201);
+    expect(ok.status(), `eligible branch accepts the order: ${await ok.text()}`).toBe(201);
     expect((await ok.json()).branch).toBe(branch.id);
 
     // Deactivate it (SA) → the same delivery is now rejected (isActive guard).
@@ -200,7 +202,7 @@ test.describe("#20 server-derived delivery branch (order creation)", () => {
     await seedCustomerLocation(customer.req);
     const { branch, product } = await createEligibleBranch(admin.req, INSIDE);
     const ok = await placeDelivery(customer.req, { branch_id: branch.id, product_id: product.id, ...INSIDE });
-    expect(ok.status(), "eligible branch accepts the order").toBe(201);
+    expect(ok.status(), `eligible branch accepts the order: ${await ok.text()}`).toBe(201);
 
     // Archive it (SA). It now has an order, so archiving is the only removal.
     expect((await admin.req.post(`${API_BASE}/api/branches/${branch.id}/archive`)).status()).toBeLessThan(300);

@@ -38,8 +38,21 @@ export interface DeliveryAreaRow {
   shape: string | null;
   /** "day" | "night" | "both" — which shift this coverage row applies to. */
   coverage_window: string;
+  /** Temporary exclusions in force now (ended ones are left out). */
+  exclusions: DeliveryAreaExclusionRow[];
   created_at: string;
   updated_at: string;
+}
+
+/** A temporarily blocked piece of the area. */
+export interface DeliveryAreaExclusionRow {
+  id: number;
+  /** Stored shape JSON (same forms as the area's). */
+  shape: string;
+  reason: string;
+  /** ISO instant it stops counting; null = until someone removes it. */
+  ends_at: string | null;
+  created_at: string;
 }
 
 export interface DeliveryAreaSummary {

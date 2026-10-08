@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 
-import { newSession, setLocale, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, activeZoneId } from "./helpers";
+import { newSession, setLocale, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, activeZoneId, openBranchAllDay } from "./helpers";
 
 /**
  * ITEM 1 — the cart's fulfillment branch used to be deaf to "Browsing".
@@ -49,6 +49,8 @@ async function makeBranch(req: APIRequestContext) {
   });
   expect(res.status(), "branch created").toBe(201);
   const branch = (await res.json()) as { id: number; name: string };
+  // No hours set = closed (reviews-complaints-addresses round): open it all day.
+  await openBranchAllDay(req, branch.id);
   const point = pointForBranchId(branch.id);
   const moved = await req.patch(`/api/branches/${branch.id}/`, {
     data: { latitude: String(point.lat), longitude: String(point.lng) },

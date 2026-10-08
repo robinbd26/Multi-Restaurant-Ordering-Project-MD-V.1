@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { AssignManagerForm } from "@/components/branches/assign-manager-form";
 import { BranchActions } from "@/components/branches/branch-actions";
 import { PageHeader } from "@/components/layout/page-header";
+import { NoHoursWarning } from "@/components/branch/no-hours-warning";
+import { brandNamesWithoutHours } from "@/lib/services/branch-schedule";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -42,9 +44,10 @@ export default async function BranchDetailPage({ params }: { params: Promise<{ i
     throw err;
   }
 
-  const [managers, history] = await Promise.all([
+  const [managers, history, unscheduled] = await Promise.all([
     getJSON<Paginated<User>>("/auth/users/?role=branch_manager&status=approved&page_size=100"),
     getJSON<Paginated<ManagerAssignment>>(`/manager-assignments/?branch=${id}`),
+    brandNamesWithoutHours(branch.id),
   ]);
 
   return (
@@ -70,6 +73,8 @@ export default async function BranchDetailPage({ params }: { params: Promise<{ i
           </span>
         }
       />
+
+      <NoHoursWarning brandNames={unscheduled} href={`/admin/branches/${branch.id}/hours`} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">

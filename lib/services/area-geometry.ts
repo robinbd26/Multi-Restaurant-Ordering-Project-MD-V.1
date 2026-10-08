@@ -6,14 +6,10 @@ import type { DeliveryAreaBranchGeometry } from "@/components/delivery/delivery-
 /**
  * Everything the drawing editor needs about the branch an area belongs to: the
  * pin every shape is measured from, the maximum radius nothing may cross, and
- * the branch's OTHER areas so overlaps are visible while drawing.
- *
- * `excludeAreaId` keeps the area being edited out of its own backdrop.
+ * the OTHER branches' areas, drawn faintly so overlaps between branches are
+ * visible while drawing (a branch has only one area of its own).
  */
-export async function branchGeometryForAreas(
-  branchId: number,
-  excludeAreaId?: number,
-): Promise<DeliveryAreaBranchGeometry | null> {
+export async function branchGeometryForAreas(branchId: number): Promise<DeliveryAreaBranchGeometry | null> {
   const branch = await prisma.branch.findUnique({
     where: { id: branchId },
     select: { id: true, name: true, latitude: true, longitude: true, deliveryRadiusKm: true },
@@ -21,9 +17,10 @@ export async function branchGeometryForAreas(
   if (!branch) return null;
   const siblings = await prisma.branchDeliveryArea.findMany({
     where: {
-      branchId,
+      branchId: { not: branchId },
       shape: { not: null },
-      ...(excludeAreaId ? { id: { not: excludeAreaId } } : {}),
+      isActive: true,
+      branch: { isActive: true, isArchived: false },
     },
     select: { id: true, name: true, shape: true },
     orderBy: { name: "asc" },

@@ -8,6 +8,7 @@ import { OrderStatusActions } from "@/components/orders/order-status-actions";
 import { PaymentStatusCard, type OrderWithPayment } from "@/components/orders/payment-status-card";
 import { LiveOrderRefresher } from "@/components/customer/live-order-refresh";
 import { ReorderButton } from "@/components/customer/reorder-button";
+import { RateOrderItems } from "@/components/reviews/rate-order-items";
 import { LiveMap } from "@/components/rider/live-map";
 import { Alert } from "@/components/ui/alert";
 import { ButtonLink } from "@/components/ui/button";
@@ -81,7 +82,7 @@ export default async function CustomerOrderDetailPage({
         action={
           order.status === "delivered" ? (
             <span className="flex items-center gap-2">
-              <ButtonLink href="/customer/reviews" variant="outline" size="sm">
+              <ButtonLink href="#rate-items" variant="outline" size="sm">
                 {t("reviews.leaveReview")}
               </ButtonLink>
               <ReorderButton orderId={order.id} />
@@ -109,6 +110,9 @@ export default async function CustomerOrderDetailPage({
           nextStatuses={order.status === "pending" ? ["cancelled"] : []}
         />
       </OrderDetailCard>
+
+      {/* Delivered or Collected (both stored as delivered): rate the items. */}
+      {order.status === "delivered" ? <RateOrderItems orderId={order.id} customerId={Number(me.id)} /> : null}
 
       {!paymentNeedsAction ? (
         <div className="mt-6">

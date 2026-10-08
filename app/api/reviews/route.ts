@@ -5,9 +5,11 @@ import { handle, notFound, sk, validationError } from "@/lib/http/errors";
 import { created } from "@/lib/http/respond";
 import { prisma } from "@/lib/db";
 import { createNotification, notifyBranchManagers } from "@/lib/services/notifications";
+import { saveReview } from "@/lib/services/product-reviews";
 
 // POST /api/reviews  { order_id, type: "rider"|"food", rating, comment, product_id? }
-// Customer reviews own DELIVERED orders only; once per order (rider) / order+product (food).
+// Customer reviews own DELIVERED orders only; once per order (rider). Food
+// reviews are one per customer per product and editable (see product-reviews).
 export const POST = handle(async (req: Request) => {
   const me = await requireApiRole("customer");
   const body = (await req.json().catch(() => ({}))) as {
@@ -53,9 +55,11 @@ export const POST = handle(async (req: Request) => {
     if (!order.items.some((i) => i.productId === productId)) {
       throw validationError({ product_id: sk("errors.ops.productNotInOrder") });
     }
-    const review = await prisma.foodReview.create({
-      data: { orderId: order.id, productId, customerId: me.id, rating, comment },
-    });
+    // One review per customer per product now: this creates it or edits it,
+    // with the same eligibility, branch/brand snapshot and photo rules as
+    // POST /api/products/[id]/reviews (lib/services/product-reviews.ts).
+    const { review: saved } = await saveReview(me, productId, { rating, comment });
+    const review = { id: saved.id, rating: saved.rating, comment: saved.comment };
     // Let the branch's managers know a food/order review landed.
     await notifyBranchManagers(order.branchId, {
       type: "review",

@@ -217,8 +217,11 @@ export interface PublicHomeBranch {
     /** Per live brand, in display order. */
     brands: { slug: string; delivery: { start: string; end: string } | null; pickup: { start: string; end: string } | null }[];
   };
-  /** True when at least one live brand has no schedule (no time limit applies). */
+  /** True when at least one live brand has no schedule (it is closed: no hours set). */
   hasUnconfiguredBrand: boolean;
+  /** Self-pickup: offered at all, and where to collect (falls back to the address). */
+  pickupEnabled: boolean;
+  pickupAddress: string;
 }
 
 export async function publicHomeBranches(): Promise<PublicHomeBranch[]> {
@@ -281,6 +284,8 @@ export async function publicHomeBranches(): Promise<PublicHomeBranch[]> {
         })),
       },
       hasUnconfiguredBrand: b.brands.some((r) => live.includes(r.brand.slug) && !parseBrandHours(r.hours)),
+      pickupEnabled: b.pickupEnabled,
+      pickupAddress: b.pickupAddress.trim() || b.address,
     };
   });
 }

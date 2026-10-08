@@ -13,6 +13,7 @@ import {
 } from "@/lib/coverage/shape";
 import {
   coverageForBranch,
+  exclusionActive,
   rankBranchesForPoint,
   type CoverageAreaInput,
 } from "@/lib/coverage/resolve";
@@ -237,6 +238,69 @@ test("a held area never hides a live one that also covers the pin", () => {
   );
   assert.equal(result.status, "deliverable");
   assert.equal(result.area?.id, 2, "the cheap held area must not win on price");
+});
+
+// ── temporary exclusions (road closed, flooding) ─────────────────────────
+
+/** An exclusion row as the loader hands it over (already filtered to active). */
+function block(id: number, shape: CoverageShape, reason = "Road closed") {
+  return { id, shape: serializeShape(shape), reason };
+}
+
+test("a pin inside a temporary block is pickup only, and says why", () => {
+  const result = coverageForBranch(
+    GULSHAN,
+    [area({ id: 1, shape: circleShape(BANANI, 3), exclusions: [block(9, circleShape(GULSHAN, 0.3), "Flooding")] })],
+    "day",
+  );
+  assert.equal(result.status, "pickup_only");
+  assert.equal(result.reason, "area_excluded");
+  assert.equal(result.area, null, "a blocked pin must not be priced for delivery");
+  assert.equal(result.heldArea?.id, 1);
+  assert.equal(result.exclusion?.reason, "Flooding");
+});
+
+test("a block only covers its own piece: the rest of the area still delivers", () => {
+  const areas = [area({ id: 1, shape: circleShape(BANANI, 3), exclusions: [block(9, circleShape(GULSHAN, 0.05))] })];
+  // BANANI is about 170 m from GULSHAN, outside a 50 m block.
+  assert.equal(coverageForBranch(BANANI, areas, "day").status, "deliverable");
+});
+
+test("removing a block restores the area exactly as drawn", () => {
+  const shape = circleShape(BANANI, 3);
+  const blocked = coverageForBranch(GULSHAN, [area({ id: 1, shape, exclusions: [block(9, circleShape(GULSHAN, 0.3))] })], "day");
+  const restored = coverageForBranch(GULSHAN, [area({ id: 1, shape, exclusions: [] })], "day");
+  assert.equal(blocked.status, "pickup_only");
+  assert.equal(restored.status, "deliverable");
+  assert.equal(restored.area?.id, 1);
+});
+
+test("a corrupt block blocks nothing", () => {
+  const result = coverageForBranch(
+    GULSHAN,
+    [area({ id: 1, shape: circleShape(BANANI, 3), exclusions: [{ id: 9, shape: "{not json", reason: "" }] })],
+    "day",
+  );
+  assert.equal(result.status, "deliverable");
+});
+
+test("a block with an end time stops counting at that instant; no end means until removed", () => {
+  const now = new Date("2026-10-08T12:00:00Z");
+  assert.equal(exclusionActive({ endsAt: new Date("2026-10-08T12:00:01Z") }, now), true);
+  assert.equal(exclusionActive({ endsAt: new Date("2026-10-08T12:00:00Z") }, now), false, "ends exactly at its end time");
+  assert.equal(exclusionActive({ endsAt: new Date("2026-10-08T11:00:00Z") }, now), false);
+  assert.equal(exclusionActive({ endsAt: null }, now), true);
+});
+
+test("a paused branch is pickup only for a blocked pin too, never deliverable", () => {
+  const result = coverageForBranch(
+    GULSHAN,
+    [area({ id: 1, shape: circleShape(BANANI, 3), exclusions: [block(9, circleShape(GULSHAN, 0.3))] })],
+    "day",
+    { deliveryPaused: true },
+  );
+  assert.equal(result.status, "pickup_only");
+  assert.equal(result.reason, "delivery_paused");
 });
 
 test("overlapping areas of one branch resolve to the cheapest, then the fastest", () => {

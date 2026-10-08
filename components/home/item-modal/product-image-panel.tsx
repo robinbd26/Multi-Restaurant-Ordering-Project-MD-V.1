@@ -17,7 +17,7 @@ export function ProductImagePanel({
   description: string;
 }) {
   return (
-    <div className="flex h-50 w-full shrink-0 flex-col overflow-hidden bg-[#0E0E15] sm:h-auto sm:w-1/2 sm:self-stretch sm:rounded-l-[20px]">
+    <div className="flex h-50 w-full shrink-0 flex-col overflow-hidden bg-[#0E0E15] sm:h-auto sm:w-1/2 sm:self-stretch sm:rounded-tl-[20px]">
       <div className="relative min-h-50 w-full flex-1 sm:min-h-100">
         <FoodImage src={image} alt={name} sizes="(max-width: 640px) 100vw, 480px" />
       </div>

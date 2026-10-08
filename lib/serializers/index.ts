@@ -22,6 +22,7 @@ import type {
 } from "@prisma/client";
 import { branchBrandSlugsOf, branchLiveBrandSlugsOf, legacyBrandType, type BranchWithBrandRows } from "@/lib/brands/branch";
 import { Prisma } from "@prisma/client";
+import { parsePhotoKeys, PHOTO_THUMB_WIDTH } from "@/lib/upload/photos";
 
 import {
   ACTIVITY_DISPLAY,
@@ -658,6 +659,11 @@ export function serializeComplaint(c: ComplaintRel) {
     category_display: complaintCategoryDisplay(c.category),
     subject: c.subject,
     message: c.message,
+    // Access-checked urls (the folder itself is private).
+    photos: parsePhotoKeys(c.photos).map((_, i) => ({
+      url: `/api/complaints/${c.id}/photos/${i}`,
+      thumb: `/api/complaints/${c.id}/photos/${i}?w=${PHOTO_THUMB_WIDTH}`,
+    })),
     status: c.status,
     status_display: complaintStatusDisplay(c.status),
     assigned_to: c.assignedToId ?? null,

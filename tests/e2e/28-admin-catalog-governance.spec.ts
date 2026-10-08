@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, API_BASE, activeZoneId, branchMap } from "./helpers";
+import { newSession, apiLogin, API_BASE, activeZoneId, branchMap, freshDeliveryBranch, archiveBranch } from "./helpers";
 
 /**
  * REQ #1 Super Admin branch delete/archive · REQ #2 category delete/deactivate
@@ -12,7 +12,6 @@ import { newSession, apiLogin, API_BASE, activeZoneId, branchMap } from "./helpe
  */
 
 const uniq = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-const INSIDE = { lat: 23.781, lng: 90.408 };
 
 /** Create an unused branch (no products/orders/areas) — safe to hard delete. */
 async function createBareBranch(req: APIRequestContext) {
@@ -264,44 +263,44 @@ test.describe("#5 branch manager dashboard branch info", () => {
 
 // ── REQ #6 — Branch Manager delivery-area module ──────────────────────────
 test.describe("#6 branch manager delivery areas", () => {
-  test("BM manages ONLY their own branch's areas: add, edit, hold/resume, time + charge", async ({ browser }) => {
+  test("BM manages ONLY their own branch's single area: save, edit, hold/resume, time + charge", async ({ browser }) => {
     const bm = await newSession(browser, "branch_manager");
     const own = (await (await bm.req.get(`${API_BASE}/api/dashboard/branch-manager/`)).json()).branch.id;
 
-    // Add (branch id comes from the assignment, not the body).
-    const name = uniq("BMArea");
-    const created = await bm.req.post(`${API_BASE}/api/delivery-areas/`, {
-      data: { branch_id: 999999, name, estimated_delivery_minutes: 35, delivery_charge: 45 },
-    });
-    expect(created.status()).toBe(201);
-    const area = await created.json();
+    // Save (branch id comes from the assignment, not the body). One area per
+    // branch: this creates it (201) or updates the existing one (200).
+    const saved = await bm.req.post(`${API_BASE}/api/delivery-areas/`, { data: { branch_id: 999999 } });
+    expect([200, 201]).toContain(saved.status());
+    const area = await saved.json();
     expect(area.branch, "submitted branch_id ignored → own branch").toBe(own);
+    const before = { minutes: area.estimated_delivery_minutes, charge: area.delivery_charge };
 
-    // Edit name + time + charge.
-    const patched = await bm.req.patch(`${API_BASE}/api/delivery-areas/${area.id}/`, {
-      data: { name: `${name}-edited`, estimated_delivery_minutes: 50, delivery_charge: 75 },
-    });
-    expect(patched.status()).toBe(200);
-    const updated = await patched.json();
-    expect(updated.name).toBe(`${name}-edited`);
-    expect(updated.estimated_delivery_minutes).toBe(50);
-    expect(Number(updated.delivery_charge)).toBeCloseTo(75, 2);
+    try {
+      // Edit time + charge.
+      const patched = await bm.req.patch(`${API_BASE}/api/delivery-areas/${area.id}/`, {
+        data: { estimated_delivery_minutes: 50, delivery_charge: 75 },
+      });
+      expect(patched.status()).toBe(200);
+      const updated = await patched.json();
+      expect(updated.estimated_delivery_minutes).toBe(50);
+      expect(Number(updated.delivery_charge)).toBeCloseTo(75, 2);
 
-    // Hold → resume.
-    expect((await bm.req.post(`${API_BASE}/api/delivery-areas/${area.id}/hold/`, { data: { reason: "rain" } })).status()).toBe(200);
-    expect((await (await bm.req.get(`${API_BASE}/api/delivery-areas/?branch_id=${own}`)).json())
-      .results.find((a: { id: number }) => a.id === area.id).is_held).toBe(true);
-    expect((await bm.req.post(`${API_BASE}/api/delivery-areas/${area.id}/resume/`, { data: {} })).status()).toBe(200);
+      // A second save is the same area, never a second one.
+      const again = await bm.req.post(`${API_BASE}/api/delivery-areas/`, { data: {} });
+      expect(again.status()).toBe(200);
+      expect((await again.json()).id).toBe(area.id);
 
-    // Deactivate / reactivate.
-    expect((await bm.req.patch(`${API_BASE}/api/delivery-areas/${area.id}/`, { data: { is_active: false } })).status()).toBe(200);
-    expect((await bm.req.patch(`${API_BASE}/api/delivery-areas/${area.id}/`, { data: { is_active: true } })).status()).toBe(200);
-
-    // Duplicate normalized name inside the branch is rejected.
-    const dup = await bm.req.post(`${API_BASE}/api/delivery-areas/`, {
-      data: { name: `  ${name.toUpperCase()}-EDITED  `, estimated_delivery_minutes: 30, delivery_charge: 10 },
-    });
-    expect(dup.status(), "normalized duplicate rejected").toBe(400);
+      // Hold → resume.
+      expect((await bm.req.post(`${API_BASE}/api/delivery-areas/${area.id}/hold/`, { data: { reason: "rain" } })).status()).toBe(200);
+      expect((await (await bm.req.get(`${API_BASE}/api/delivery-areas/?branch_id=${own}`)).json())
+        .results.find((a: { id: number }) => a.id === area.id).is_held).toBe(true);
+    } finally {
+      // Main Branch's only area: always leave it serving, as the seed made it.
+      await bm.req.post(`${API_BASE}/api/delivery-areas/${area.id}/resume/`, { data: {} });
+      await bm.req.patch(`${API_BASE}/api/delivery-areas/${area.id}/`, {
+        data: { is_active: true, estimated_delivery_minutes: before.minutes, delivery_charge: before.charge },
+      });
+    }
   });
 
   test("cross-branch area access is refused", async ({ browser }) => {
@@ -331,42 +330,32 @@ test.describe("#6 branch manager delivery areas", () => {
   test("a held area blocks a NEW order but existing order snapshots are unchanged", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
     const customer = await newSession(browser, "customer");
-    const main = (await branchMap(admin.req))["Main Branch"];
-    const { results: products } = await (await customer.req.get(`${API_BASE}/api/products/?branch_id=${main}&page_size=50`)).json();
-    const product = products.find((p: { variation_type: string }) => p.variation_type !== "BOTH") ?? products[0];
+    const point = { lat: 22.3 + Math.random() * 0.3, lng: 91.75 + Math.random() * 0.3 };
+    const { branch, product, area } = await freshDeliveryBranch(admin.req, point, { charge: 65, minutes: 40 });
+    const order = () =>
+      customer.req.post(`${API_BASE}/api/orders/`, {
+        data: {
+          branch_id: branch.id, payment_method: "cash", delivery_address: "Snapshot test",
+          fulfillment_type: "delivery", lat: point.lat, lng: point.lng, delivery_area_id: area.id,
+          items: [{ product_id: product.id, quantity: 1, variation_type: "THICK" }],
+        },
+      });
 
-    const area = await (await admin.req.post(`${API_BASE}/api/delivery-areas/`, {
-      data: { branch_id: main, name: uniq("SnapArea"), estimated_delivery_minutes: 40, delivery_charge: 65 },
-    })).json();
-
-    const placed = await customer.req.post(`${API_BASE}/api/orders/`, {
-      data: {
-        branch_id: main, payment_method: "cash", delivery_address: "Snapshot test, Dhaka",
-        fulfillment_type: "delivery", ...INSIDE, delivery_area_id: area.id,
-        items: [{ product_id: product.id, quantity: 1, variation_type: product.variation_type }],
-      },
-    });
-    expect(placed.status()).toBe(201);
-    const order = await placed.json();
-    expect(Number(order.delivery_charge)).toBeCloseTo(65, 2);
-    expect(order.delivery_estimate_minutes).toBe(40);
+    const placed = await order();
+    expect(placed.status(), await placed.text()).toBe(201);
+    const created = await placed.json();
+    expect(Number(created.delivery_charge)).toBeCloseTo(65, 2);
+    expect(created.delivery_estimate_minutes).toBe(40);
 
     // Hold + change the area's charge/time — the existing order must not move.
     expect((await admin.req.post(`${API_BASE}/api/delivery-areas/${area.id}/hold/`, { data: { reason: "storm" } })).status()).toBe(200);
     await admin.req.patch(`${API_BASE}/api/delivery-areas/${area.id}/`, { data: { delivery_charge: 999, estimated_delivery_minutes: 5 } });
-
-    const reread = await (await customer.req.get(`${API_BASE}/api/orders/${order.id}/`)).json();
+    const reread = await (await customer.req.get(`${API_BASE}/api/orders/${created.id}/`)).json();
     expect(Number(reread.delivery_charge), "charge snapshot immutable").toBeCloseTo(65, 2);
     expect(reread.delivery_estimate_minutes, "time snapshot immutable").toBe(40);
 
-    // A NEW order into the held area is rejected.
-    const blocked = await customer.req.post(`${API_BASE}/api/orders/`, {
-      data: {
-        branch_id: main, payment_method: "cash", delivery_address: "Held area, Dhaka",
-        fulfillment_type: "delivery", ...INSIDE, delivery_area_id: area.id,
-        items: [{ product_id: product.id, quantity: 1, variation_type: product.variation_type }],
-      },
-    });
-    expect(blocked.status(), "held area blocks new orders").toBe(400);
+    // A NEW delivery order into the held area is rejected.
+    expect((await order()).status(), "held area blocks new orders").toBe(400);
+    await archiveBranch(admin.req, branch.id);
   });
 });

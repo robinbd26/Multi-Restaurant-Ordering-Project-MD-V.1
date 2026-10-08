@@ -16,7 +16,10 @@ import { parseShape, pointInShape } from "./shape";
  *      and the row applies to the shift running now (day / night / all day);
  *   2. a pin inside only HELD areas is PICKUP ONLY for that branch — a hold is
  *      a deliberate "not right now", not an invitation to price it from a
- *      neighbouring area;
+ *      neighbouring area. A pin inside an area but also inside one of that
+ *      area's active TEMPORARY EXCLUSIONS (road closed, flooding) is pickup
+ *      only in the same way; the caller passes only exclusions that have not
+ *      ended, so this module stays clock-free;
  *   3. a branch whose manager has PAUSED DELIVERY is pickup only too, however
  *      well its shapes cover the pin;
  *   4. inside several of one branch's areas, the CHEAPEST charge wins, then the
@@ -36,6 +39,18 @@ export interface CoverageAreaInput {
   /** Compared, never billed: money is read from the caller's own row. */
   deliveryCharge: unknown;
   estimatedDeliveryMinutes: number;
+  /**
+   * Temporary exclusions laid over this area that are in force NOW (the loader
+   * drops ended ones). Optional so callers without any stay unchanged.
+   */
+  exclusions?: readonly CoverageExclusionInput[];
+}
+
+/** A temporarily blocked piece of an area: its shape and why. */
+export interface CoverageExclusionInput {
+  id: number;
+  shape: string;
+  reason: string;
 }
 
 /** Why a branch came out the way it did — the UI says this to the customer. */
@@ -44,6 +59,8 @@ export type CoverageReason =
   | "covered"
   /** Inside an area, but that area is on hold: pickup only. */
   | "area_held"
+  /** Inside an area, but in a temporarily excluded part of it: pickup only. */
+  | "area_excluded"
   /** The branch manager paused delivery: pickup only. */
   | "delivery_paused"
   /** Outside every shape this branch has for this shift. */
@@ -60,6 +77,28 @@ export interface BranchCoverageResult<A extends CoverageAreaInput> {
   area: A | null;
   /** When pickup-only because of a hold: the held area, so the UI can say why. */
   heldArea: A | null;
+  /** When pickup-only because of a temporary exclusion: that exclusion. */
+  exclusion?: CoverageExclusionInput | null;
+}
+
+/**
+ * Is this exclusion still in force at `now`? No end = until removed. The one
+ * place "has it ended?" is decided, so the list screens and the coverage check
+ * can never disagree.
+ */
+export function exclusionActive(e: { endsAt: Date | null }, now: Date = new Date()): boolean {
+  return e.endsAt == null || e.endsAt.getTime() > now.getTime();
+}
+
+/** The first active exclusion of this area that contains the pin, if any. */
+function exclusionAt(point: LatLng, area: CoverageAreaInput): CoverageExclusionInput | null {
+  for (const exclusion of area.exclusions ?? []) {
+    const shape = parseShape(exclusion.shape);
+    // A corrupt exclusion excludes nothing: it may only ever NARROW coverage
+    // when it is a real shape, never take the check down.
+    if (shape && pointInShape(point, shape)) return exclusion;
+  }
+  return null;
 }
 
 /** Areas that could cover ANY pin for this branch on this shift. */
@@ -103,11 +142,21 @@ export function coverageForBranch<A extends CoverageAreaInput>(
 
   let best: A | null = null;
   let held: A | null = null;
+  let excludedArea: A | null = null;
+  let excludedBy: CoverageExclusionInput | null = null;
   for (const area of applicable) {
     const shape = parseShape(area.shape);
     // A shape that will not parse covers nothing: a corrupt row must never
     // widen coverage, and never take the whole check down either.
     if (!shape || !pointInShape(point, shape)) continue;
+    const exclusion = exclusionAt(point, area);
+    if (exclusion) {
+      if (!excludedArea) {
+        excludedArea = area;
+        excludedBy = exclusion;
+      }
+      continue;
+    }
     if (area.isHeld) {
       if (!held || betterArea(area, held)) held = area;
       continue;
@@ -118,7 +167,7 @@ export function coverageForBranch<A extends CoverageAreaInput>(
   // A manager's pause outranks a perfectly good shape, but never removes
   // pickup: "our riders are swamped" is not "we are closed".
   if (options.deliveryPaused) {
-    const inside = best ?? held;
+    const inside = best ?? held ?? excludedArea;
     return {
       status: inside ? "pickup_only" : "not_covered",
       reason: inside ? "delivery_paused" : "outside",
@@ -128,6 +177,9 @@ export function coverageForBranch<A extends CoverageAreaInput>(
   }
   if (best) return { status: "deliverable", reason: "covered", area: best, heldArea: null };
   if (held) return { status: "pickup_only", reason: "area_held", area: null, heldArea: held };
+  if (excludedArea) {
+    return { status: "pickup_only", reason: "area_excluded", area: null, heldArea: excludedArea, exclusion: excludedBy };
+  }
   return { status: "not_covered", reason: "outside", area: null, heldArea: null };
 }
 

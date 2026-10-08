@@ -45,10 +45,7 @@ export default async function RiderDashboardPage() {
 
   const online = data.is_online;
   const current =
-    // A delayed delivery is still in the rider's hands, so it stays "current".
-    data.active_orders.find(
-      (o) => o.status === "on_the_way" || o.status === "picked_up" || o.status === "delayed",
-    ) ??
+    data.active_orders.find((o) => o.status === "on_the_way" || o.status === "picked_up") ??
     data.active_orders.find((o) => o.status === "ready") ??
     data.active_orders[0];
 

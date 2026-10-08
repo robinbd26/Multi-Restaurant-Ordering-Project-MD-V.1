@@ -13,11 +13,12 @@
 //      pickup keeps working while it runs.
 // Pure: the caller loads the branch (BRANCH_HOURS_SELECT) and passes the clock.
 //
-// NOT CONFIGURED. A brand whose schedule was never set ("" in BranchBrand.hours)
-// places no time restriction, exactly like a branch without opening hours did
-// before schedules existed. Every existing branch got a real schedule from the
-// migration, and the hours editors flag an unconfigured brand loudly; this rule
-// only keeps a newly created branch orderable until someone sets its hours.
+// NOT CONFIGURED = CLOSED. A brand whose schedule was never set ("" or unreadable
+// BranchBrand.hours) takes NO orders on either channel until hours are added
+// (reason "hours_not_set"). It used to mean "any time"; migration 20261008130000
+// gave every live brand that relied on that an explicit all-day schedule, so
+// nothing that was open closed. The admin and branch manager screens warn
+// "No hours set, closed to customers" wherever such a brand appears.
 
 import { isDeliveryPaused } from "@/lib/coverage/pause";
 import {
@@ -40,6 +41,8 @@ export type ClosedReason =
   | "brand_not_served"
   | "brand_inactive"
   | "outside_hours"
+  /** The brand has no schedule at this branch: closed until hours are set. */
+  | "hours_not_set"
   | "delivery_paused";
 
 export interface ChannelStatus {
@@ -49,7 +52,7 @@ export interface ChannelStatus {
   opensAt: NextOpening | null;
   /** Minutes until the current slot's last order (open only, configured only). */
   closesInMinutes: number | null;
-  /** False when the brand has no schedule yet (no time restriction applies). */
+  /** False when the brand has no schedule yet (then it is closed: hours_not_set). */
   configured: boolean;
 }
 
@@ -87,14 +90,12 @@ export function channelStatus(
   if (!row.brand.isActive || row.brand.isArchived) return closed("brand_inactive");
 
   const hours = parseBrandHours(row.hours);
-  let closesInMinutes: number | null = null;
-  if (hours) {
-    if (!openSlotAt(hours, channel, at)) return closed("outside_hours", true, nextOpening(hours, channel, at));
-    closesInMinutes = minutesUntilClose(hours, channel, at);
-  }
+  if (!hours) return closed("hours_not_set", false);
+  if (!openSlotAt(hours, channel, at)) return closed("outside_hours", true, nextOpening(hours, channel, at));
+  const closesInMinutes = minutesUntilClose(hours, channel, at);
   // The delivery pause sits ON TOP of the schedule and only stops delivery.
-  if (channel === "delivery" && isDeliveryPaused(branch, now)) return closed("delivery_paused", Boolean(hours));
-  return { open: true, reason: null, opensAt: null, closesInMinutes, configured: Boolean(hours) };
+  if (channel === "delivery" && isDeliveryPaused(branch, now)) return closed("delivery_paused", true);
+  return { open: true, reason: null, opensAt: null, closesInMinutes, configured: true };
 }
 
 export interface BrandStatus {
@@ -194,4 +195,16 @@ export function branchTodaySpan(
   const start = Math.min(...spans.map((x) => x.start));
   const end = Math.max(...spans.map((x) => x.end));
   return { start: fromMinutes(start), end: fromMinutes(end) };
+}
+
+/**
+ * The live brands of a branch that have NO schedule, so they are closed to
+ * customers until hours are set. Drives the "No hours set" warnings on the
+ * admin and branch manager screens.
+ */
+export function brandsWithoutHours(branch: Pick<AvailabilityBranch, "brands">): string[] {
+  const live = new Set(liveBrandSlugs(branch));
+  return branch.brands
+    .filter((row) => live.has(row.brand.slug) && !parseBrandHours(row.hours))
+    .map((row) => row.brand.slug);
 }

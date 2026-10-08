@@ -94,6 +94,9 @@ export function MapPicker({
   defaultOpen = false,
   gpsLabel,
   searchPlaceholder,
+  prominentGps = false,
+  alwaysOpen = false,
+  coordinateEntry = true,
   testId = "map-picker",
   className,
 }: {
@@ -128,12 +131,27 @@ export function MapPicker({
   gpsLabel?: string;
   /** Overrides the search placeholder without touching the shared wording. */
   searchPlaceholder?: string;
+  /**
+   * Show "use my current location" as the first, full-width primary button
+   * instead of a small outline one under the search (the address book, where
+   * it is the fastest way to a correct pin).
+   */
+  prominentGps?: boolean;
+  /** Always show the map: no Open / Close toggle (implies defaultOpen). */
+  alwaysOpen?: boolean;
+  /**
+   * Offer the "enter coordinates" toggle when the map works. Off in the address
+   * book, where it sat confusingly next to the form's own "Enter manually"
+   * mode. Without a usable map the decimal inputs still appear regardless.
+   */
+  coordinateEntry?: boolean;
   testId?: string;
   className?: string;
 }) {
   const { t } = useTranslation();
 
-  const [open, setOpen] = useState(defaultOpen);
+  const [openState, setOpen] = useState(defaultOpen || alwaysOpen);
+  const open = alwaysOpen || openState;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -467,15 +485,17 @@ export function MapPicker({
     <div className={cn("rounded-xl border border-border-strong p-4", className)} data-testid={testId}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-fg-base">{label}</p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setOpen((v) => !v)}
-          data-testid={`${testId}-toggle`}
-        >
-          {open ? t("mapPicker.close") : t("mapPicker.open")}
-        </Button>
+        {alwaysOpen ? null : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen((v) => !v)}
+            data-testid={`${testId}-toggle`}
+          >
+            {open ? t("mapPicker.close") : t("mapPicker.open")}
+          </Button>
+        )}
       </div>
       {hint ? <p className="mt-1 text-xs text-fg-subtle">{hint}</p> : null}
 
@@ -494,6 +514,19 @@ export function MapPicker({
 
       {open ? (
         <div className="mt-3 space-y-3">
+          {prominentGps ? (
+            <Button
+              type="button"
+              size="lg"
+              className="w-full"
+              onClick={useMyLocation}
+              disabled={locating}
+              data-testid={`${testId}-gps`}
+            >
+              {locating ? <Spinner className="size-4" /> : <span aria-hidden="true">📍</span>}
+              {locating ? t("mapPicker.locating") : (gpsLabel ?? t("location.enable"))}
+            </Button>
+          ) : null}
           {/* Search — server-geocoded, so it works with or without a map. */}
           <div>
             <Field label={t("mapPicker.searchLabel")} name={`${testId}-search`}>
@@ -540,11 +573,13 @@ export function MapPicker({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={useMyLocation} disabled={locating} data-testid={`${testId}-gps`}>
-              {locating ? <Spinner className="size-4" /> : null}
-              {locating ? t("mapPicker.locating") : (gpsLabel ?? t("location.enable"))}
-            </Button>
-            {!mapFailed ? (
+            {prominentGps ? null : (
+              <Button type="button" variant="outline" size="sm" onClick={useMyLocation} disabled={locating} data-testid={`${testId}-gps`}>
+                {locating ? <Spinner className="size-4" /> : null}
+                {locating ? t("mapPicker.locating") : (gpsLabel ?? t("location.enable"))}
+              </Button>
+            )}
+            {!mapFailed && coordinateEntry ? (
               <Button type="button" variant="outline" size="sm" onClick={() => setManual((v) => !v)} data-testid={`${testId}-manual-toggle`}>
                 {manual ? t("mapPicker.manualHide") : t("mapPicker.manualToggle")}
               </Button>

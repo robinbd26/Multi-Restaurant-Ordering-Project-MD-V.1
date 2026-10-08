@@ -8,7 +8,10 @@ import {
   COMPLAINT_RECIPIENTS,
   COMPLAINT_STATUSES,
 } from "@/lib/constants/enums";
+import { customerComplaintRoute } from "@/lib/complaints/routing";
+import { deleteUpload, saveUpload } from "@/lib/http/upload";
 import { branchForManager } from "@/lib/selectors";
+import { COMPLAINT_PHOTO_MAX, COMPLAINT_PHOTO_SUBDIR, PHOTO_MAX_BYTES, PHOTO_MAX_MB, parsePhotoKeys } from "@/lib/upload/photos";
 import { createNotification, notifyUsers } from "@/lib/services/notifications";
 import { activeDutySession } from "@/lib/services/rider-duty";
 import type { Role } from "@/types";
@@ -88,6 +91,14 @@ export async function isComplaintHandler(
   return true;
 }
 
+/** Does this branch have an active, approved manager right now? */
+export async function branchHasManager(branchId: number): Promise<boolean> {
+  const count = await prisma.user.count({
+    where: { status: "approved", isActive: true, managedBranches: { some: { id: branchId } } },
+  });
+  return count > 0;
+}
+
 export async function createComplaint(input: {
   complainantId: number;
   recipientRole: string;
@@ -96,8 +107,14 @@ export async function createComplaint(input: {
   category: string;
   subject: string;
   message: string;
+  /** Up to COMPLAINT_PHOTO_MAX images (customers' Add New form). */
+  photos?: File[];
 }) {
-  if (!COMPLAINT_RECIPIENTS.includes(input.recipientRole as Role)) {
+  const complainantRow = await prisma.user.findUnique({ where: { id: input.complainantId }, select: { role: true } });
+  const isCustomer = complainantRow?.role === "customer";
+  // Customers never pick a recipient (the form shows it as fixed text), so a
+  // submitted recipient_role is ignored for them and decided below.
+  if (!isCustomer && !COMPLAINT_RECIPIENTS.includes(input.recipientRole as Role)) {
     throw validationError({ recipient_role: sk("errors.ops.recipientInvalid") });
   }
   if (!COMPLAINT_CATEGORIES.includes(input.category as (typeof COMPLAINT_CATEGORIES)[number])) {
@@ -109,27 +126,60 @@ export async function createComplaint(input: {
   const complainant = await prisma.user.findUnique({ where: { id: input.complainantId } });
   if (!complainant) throw notFound();
 
+  const files = (input.photos ?? []).filter((f) => f && f.size > 0);
+  if (files.length > COMPLAINT_PHOTO_MAX) {
+    throw validationError({ photos: sk("errors.complaints.tooManyPhotos", { max: COMPLAINT_PHOTO_MAX }) });
+  }
+  for (const file of files) {
+    if (file.size > PHOTO_MAX_BYTES) throw validationError({ photos: sk("errors.orderChat.photoTooLarge", { mb: PHOTO_MAX_MB }) });
+  }
+
   // WS-5.4 — the branch is resolved SERVER-SIDE from the complainant's own
   // context for every recipient role (not only branch_manager, and never from
   // the client's copy of it), so a complaint always lands on a real desk.
   const order = await complaintOrderFor(complainant, input.orderId ?? null);
-  const branchId = await resolveComplaintBranchId(complainant, order, input.branchId ?? null);
+  let recipientRole = input.recipientRole;
+  let branchId: number | null;
+  if (isCustomer) {
+    // A customer's complaint goes ONLY to the manager of the selected order's
+    // branch (lib/complaints/routing.ts): no fallback to "their latest order"
+    // and never a broadcast to every manager. No manager there, or no order
+    // chosen: the super admin.
+    const route = customerComplaintRoute(
+      order ? { branchId: order.branchId, branchHasManager: await branchHasManager(order.branchId) } : null,
+    );
+    recipientRole = route.recipientRole;
+    branchId = route.branchId;
+  } else {
+    branchId = await resolveComplaintBranchId(complainant, order, input.branchId ?? null);
+  }
+
+  // Photos through the shared pipeline (WebP, downscaled, thumbnail), into a
+  // private folder served only to people who may read this complaint.
+  const photoKeys: string[] = [];
+  try {
+    for (const file of files) photoKeys.push(await saveUpload(file, COMPLAINT_PHOTO_SUBDIR, "photos"));
+  } catch (error) {
+    for (const key of photoKeys) await deleteUpload(key);
+    throw error;
+  }
 
   const complaint = await prisma.complaint.create({
     data: {
       complainantId: input.complainantId,
-      recipientRole: input.recipientRole,
+      recipientRole,
       branchId,
       orderId: order?.id ?? null,
       category: input.category,
       subject: input.subject.trim(),
       message: input.message.trim(),
+      photos: JSON.stringify(photoKeys),
     },
     include: COMPLAINT_INCLUDE,
   });
 
   // Notify the recipient side + Super Admin (who oversees all complaints).
-  const handlers = await recipientUserIds(input.recipientRole, branchId);
+  const handlers = await recipientUserIds(recipientRole, branchId);
   await notifyUsers(handlers, {
     type: "complaint",
     titleKey: "notifications.complaint.new.title",
@@ -310,4 +360,18 @@ export async function changeComplaintStatus(complaintId: number, status: string,
     link: `/complaints/${complaint.id}`,
   });
   return updated;
+}
+
+/**
+ * The storage key of one complaint photo, for whoever may read the complaint
+ * (the same scope as the complaint itself: complaintsWhereForUser).
+ */
+export async function complaintPhotoKey(user: User, complaintId: number, index: number): Promise<string> {
+  if (!Number.isSafeInteger(complaintId) || complaintId <= 0) throw notFound();
+  const scope = await complaintsWhereForUser(user);
+  const complaint = await prisma.complaint.findFirst({ where: { AND: [{ id: complaintId }, scope] }, select: { photos: true } });
+  if (!complaint) throw notFound();
+  const key = parsePhotoKeys(complaint.photos)[index];
+  if (!key) throw notFound();
+  return key;
 }

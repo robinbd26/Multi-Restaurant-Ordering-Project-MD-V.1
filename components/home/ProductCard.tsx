@@ -137,6 +137,18 @@ export function ProductCard({
 
       <div className="flex flex-1 flex-col gap-1.5 p-3.5">
         <h4 className="text-[0.95rem] font-bold leading-tight text-white">{item.name}</h4>
+        {/* One quiet line, only when there are reviews: no "0 reviews" noise. */}
+        {item.rating && item.rating.count > 0 ? (
+          <p
+            className="flex items-center gap-1 text-[0.72rem] font-semibold text-[#a0a0b0]"
+            data-testid="card-rating"
+            aria-label={t("reviews.cardAria", { avg: fmt.num(item.rating.average.toFixed(1)), n: fmt.num(item.rating.count) })}
+          >
+            <span aria-hidden className="text-[#F5A623]">★</span>
+            <span className="text-white">{fmt.num(item.rating.average.toFixed(1))}</span>
+            <span aria-hidden>({fmt.num(item.rating.count)})</span>
+          </p>
+        ) : null}
         {showBranch && item.branchName ? (
           <p className="text-[0.7rem] font-medium text-[#606070]" data-testid="card-branch">
             📍 {item.branchName}

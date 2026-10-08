@@ -7,7 +7,9 @@ import { UsernameField } from "@/components/auth/username-field";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/forms/password-input";
-import { Field, Input, Select, Textarea } from "@/components/ui/input";
+import { Field, FieldGroup, Input, Select, Textarea } from "@/components/ui/input";
+import { ImageUpload } from "@/components/ui/image-upload";
+import { mediaUrl } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import type { ActionState } from "@/lib/api/action-state";
 import { saveUserAction } from "@/lib/api/actions";
@@ -179,9 +181,15 @@ export function UserForm({ user }: { user?: User }) {
         </Field>
       </div>
 
-      <Field label={t("users.profilePhoto")} name="profile_photo" error={errors.profile_photo}>
-        <Input name="profile_photo" type="file" accept="image/*" className="py-2" />
-      </Field>
+      <FieldGroup label={t("users.profilePhoto")} name="profile_photo" error={errors.profile_photo}>
+        <ImageUpload
+          name="profile_photo"
+          variant="avatar"
+          initialPreview={user?.profile_photo ? mediaUrl(user.profile_photo, user.updated_at) : null}
+          testId="upload-user-photo"
+          ariaLabel={t("users.profilePhoto")}
+        />
+      </FieldGroup>
 
       <Field
         label={isEdit ? t("users.newPassword") : t("users.password")}

@@ -6,7 +6,8 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
-import { Checkbox, Field, Input, Select } from "@/components/ui/input";
+import { Checkbox, Field, FieldGroup, Input, Select } from "@/components/ui/input";
+import { ImageUpload } from "@/components/ui/image-upload";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { parseFieldErrors, type FieldErrors } from "@/lib/validation/contract";
 import { LIMITS } from "@/lib/validation/limits";
@@ -323,9 +324,9 @@ export function RamadanManagePanel() {
           <Field label={t("ramadan.items")} name="items" hint={t("ramadan.itemsHint")} error={menuForm.errors.items}>
             <Input name="items" placeholder="Haleem, Biryani, Jilapi" />
           </Field>
-          <Field label={t("ramadan.menus")} name="image" error={menuForm.errors.image}>
-            <Input name="image" type="file" accept="image/*" className="py-2" />
-          </Field>
+          <FieldGroup label={t("ramadan.menus")} name="image" error={menuForm.errors.image}>
+            <ImageUpload name="image" variant="compact" testId="upload-ramadan-menu" ariaLabel={t("ramadan.menus")} />
+          </FieldGroup>
           <div className="flex items-end"><Button type="submit" size="sm">+ {t("ramadan.addMenu")}</Button></div>
         </form>
       </section>

@@ -15,6 +15,31 @@ async function endDutyIfAny(req: APIRequestContext) {
   if (duty.active_session) await req.post(`${API_BASE}/api/rider/duty/end`, { data: {} });
 }
 
+/**
+ * Leave courier2 exactly as a fresh database has it: no open order assigned
+ * and off duty. Runs before AND after every test, so a test that fails half
+ * way (or a previous run that did) can never leave an order assigned to
+ * courier2, which used to block "go off duty" on every later run.
+ * Override to Cancelled is used because it works from any open step,
+ * including the rider leg (a normal cancel there is the rider's to make).
+ */
+async function releaseCourier2(browser: Browser) {
+  const rider = await apiLogin(browser, "courier2");
+  const admin = await apiLogin(browser, "super_admin");
+  const riderId = (await (await rider.req.get(`${API_BASE}/api/auth/me`)).json()).id as number;
+  const OPEN = ["pending", "accepted", "preparing", "ready", "picked_up", "on_the_way"];
+  const list = await (await admin.req.get(`${API_BASE}/api/orders/?page_size=500`)).json();
+  for (const o of (list.results ?? []) as { id: number; rider: number | null; status: string }[]) {
+    if (o.rider !== riderId || !OPEN.includes(o.status)) continue;
+    await admin.req.post(`${API_BASE}/api/orders/${o.id}/override-status`, {
+      data: { status: "cancelled", reason: "e2e spec 22 cleanup" },
+    });
+  }
+  await endDutyIfAny(rider.req);
+  await rider.context.close();
+  await admin.context.close();
+}
+
 /** Create an order at a branch and walk it to "ready" (BM pipeline). */
 async function readyOrder(browser: Browser, branchId: number): Promise<number> {
   // API-only sessions (no UI page load) — this helper only calls the API, and
@@ -33,6 +58,13 @@ async function readyOrder(browser: Browser, branchId: number): Promise<number> {
 }
 
 test.describe("Part C — rider workflow", () => {
+  test.beforeEach(async ({ browser }) => {
+    await releaseCourier2(browser);
+  });
+  test.afterEach(async ({ browser }) => {
+    await releaseCourier2(browser);
+  });
+
   // ── C1: dynamic branch selection ───────────────────────────────────────
   test("C1: rider cannot go online without selecting a branch", async ({ browser }) => {
     const s = await newSession(browser, "courier2");

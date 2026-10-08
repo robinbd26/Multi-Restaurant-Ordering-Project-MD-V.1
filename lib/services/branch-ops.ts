@@ -10,7 +10,6 @@ import { resolveConfigurableBranch } from "@/lib/services/branches";
 import { createNotification, notifyRole, notifyUsers, notifyBranchManagers } from "@/lib/services/notifications";
 import { LIMITS } from "@/lib/validation/limits";
 
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 type ReservationRel = {
   id: number;
@@ -311,19 +310,6 @@ export async function releaseBranchHold(
   });
   const row = await prisma.branch.findUniqueOrThrow({ where: { id: branch.id }, select: HOLD_SELECT });
   return serializeHold(row);
-}
-
-// ── Delivery hours / time slots ─────────────────────────────────────────
-export async function addTimeSlot(branchId: number, input: { label: string; startTime: string; endTime: string }) {
-  if (!TIME_RE.test(input.startTime) || !TIME_RE.test(input.endTime)) {
-    throw validationError({ time: sk("errors.ops.timeInvalid") });
-  }
-  if (input.endTime <= input.startTime) {
-    throw validationError({ end_time: sk("errors.ops.endTimeAfterStart") });
-  }
-  return prisma.deliveryTimeSlot.create({
-    data: { branchId, label: input.label.trim(), startTime: input.startTime, endTime: input.endTime },
-  });
 }
 
 // ── Staff attendance ────────────────────────────────────────────────────

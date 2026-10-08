@@ -99,23 +99,22 @@ test.describe("Phase I — real branch-scoped counts", () => {
     expect(typeof snapshot.staff.active).toBe("number");
     expect(typeof snapshot.notifications.unread).toBe("number");
 
-    // Holding an area is reflected in the very next snapshot. The area is
-    // created here so the test does not depend on what the seed happens to
-    // contain (the branch id comes from the assignment, not the body).
-    const created = await bm.req.post(`${API_BASE}/api/delivery-areas/`, {
-      data: { name: `LiveArea-${Date.now()}`, estimated_delivery_minutes: 30, delivery_charge: 40 },
-    });
-    expect(created.status(), "delivery area created").toBe(201);
-    const area = await created.json();
+    // Holding the branch's area is reflected in the very next snapshot. One
+    // area per branch: the save creates it or updates the existing one.
+    const saved = await bm.req.post(`${API_BASE}/api/delivery-areas/`, { data: {} });
+    expect([200, 201], "delivery area saved").toContain(saved.status());
+    const area = await saved.json();
 
     const withArea = await (await bm.req.get(LIVE)).json();
-    expect(withArea.delivery_areas.total, "the new area is counted").toBe(snapshot.delivery_areas.total + 1);
+    expect(withArea.delivery_areas.total, "the branch has exactly one area").toBe(1);
 
     expect((await bm.req.post(`${API_BASE}/api/delivery-areas/${area.id}/hold/`, { data: { reason: "rain" } })).status()).toBe(200);
-    const held = await (await bm.req.get(LIVE)).json();
-    expect(held.delivery_areas.held, "the hold is visible on the board").toBe(withArea.delivery_areas.held + 1);
-
-    expect((await bm.req.post(`${API_BASE}/api/delivery-areas/${area.id}/resume/`, { data: {} })).status()).toBe(200);
+    try {
+      const held = await (await bm.req.get(LIVE)).json();
+      expect(held.delivery_areas.held, "the hold is visible on the board").toBe(withArea.delivery_areas.held + 1);
+    } finally {
+      expect((await bm.req.post(`${API_BASE}/api/delivery-areas/${area.id}/resume/`, { data: {} })).status()).toBe(200);
+    }
     const resumed = await (await bm.req.get(LIVE)).json();
     expect(resumed.delivery_areas.held, "resuming clears it again").toBe(withArea.delivery_areas.held);
   });

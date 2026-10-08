@@ -9,6 +9,7 @@ import {
   productSaleBrands,
   type CustomerProduct,
 } from "@/lib/services/product-eligibility";
+import { ratingSummaries } from "@/lib/services/product-reviews";
 import { mediaUrl } from "@/lib/utils";
 
 /**
@@ -156,6 +157,8 @@ async function buildMenu(branchId?: number): Promise<PublicMenu> {
   const items: MenuItem[] = [];
   const categories: PublicCategory[] = [];
   const seenCategory = new Set<string>();
+  // One grouped query for every product's visible-review average.
+  const ratings = await ratingSummaries(products.map((p) => p.id));
 
   for (const product of products) {
     const label = product.category?.name ?? "";
@@ -163,7 +166,10 @@ async function buildMenu(branchId?: number): Promise<PublicMenu> {
     // Listed once per brand it is sold under (its own, or every live brand of
     // its branch); a product whose brand its branch no longer serves is skipped.
     for (const brand of productSaleBrands(product)) {
-      items.push(toMenuItem(product, brand, label));
+      const item = toMenuItem(product, brand, label);
+      const rating = ratings.get(product.id);
+      if (rating && rating.count > 0) item.rating = rating;
+      items.push(item);
       const dedupe = `${brand}:${key}`;
       if (product.categoryId != null && !seenCategory.has(dedupe)) {
         seenCategory.add(dedupe);

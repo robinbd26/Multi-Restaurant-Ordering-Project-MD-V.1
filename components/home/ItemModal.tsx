@@ -7,6 +7,7 @@ import { ModalActionBar } from "@/components/home/item-modal/modal-action-bar";
 import { OptionGroup } from "@/components/home/item-modal/option-group";
 import { ProductImagePanel } from "@/components/home/item-modal/product-image-panel";
 import { SizeOptionCard } from "@/components/home/item-modal/size-option-card";
+import { ProductReviewsSection } from "@/components/reviews/product-reviews-section";
 import type { MenuItem } from "@/lib/home/types";
 import { useTranslation } from "@/lib/i18n/use-translation";
 
@@ -166,218 +167,226 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="animate-modal-in relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-[20px] bg-[#16161E] shadow-2xl sm:m-4 sm:max-w-4xl sm:flex-row sm:rounded-[20px] sm:border sm:border-white/10"
+        className="animate-modal-in relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-[20px] bg-[#16161E] shadow-2xl sm:m-4 sm:max-w-4xl sm:rounded-[20px] sm:border sm:border-white/10"
       >
         {/* Drag handle (mobile) */}
         <div className="flex justify-center pb-1 pt-2.5 sm:hidden">
           <span className="h-1 w-10 rounded-full bg-white/20" />
         </div>
 
-        <ProductImagePanel image={item.image} name={item.name} description={item.description} />
+        {/* One scroll area: photo | details side by side on desktop (stacked on
+            mobile), then the reviews full width underneath. The action bar
+            stays pinned below it. */}
+        <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
+          <div className="flex flex-col sm:flex-row">
+            <ProductImagePanel image={item.image} name={item.name} description={item.description} />
 
-        {/* Content panel */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="scrollbar-thin flex-1 overflow-y-auto p-4.5 sm:p-6">
-            <div className="mb-2.5 flex items-center justify-between gap-3">
-              <p className="text-[0.68rem] font-bold uppercase tracking-widest" style={{ color: accent }}>
-                {eyebrow}
-              </p>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label={t("home.modal.close")}
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-surface-dark text-white hover:bg-[#23232e]"
-              >
-                ✕
-              </button>
-            </div>
-
-            <h2 id={titleId} className="font-display text-[1.7rem] font-black leading-tight text-white">
-              {item.name}
-            </h2>
-            <p className="mt-1 font-display text-[1.3rem] font-extrabold" style={{ color: accent }}>
-              {item.fromPrice || item.sizes?.length ? `${t("home.product.from")} ` : ""}
-              {fmt.money(item.sizes?.length ? Math.min(...item.sizes.map((s) => s.price)) : item.price)}
-            </p>
-
-            {(badgeLabel && tone) || item.spicy ? (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {badgeLabel && tone ? (
-                  <span
-                    className="rounded-full border px-2.5 py-0.75 text-[0.68rem] font-bold uppercase tracking-wide"
-                    style={{ background: tone.bg, color: tone.color, borderColor: tone.border }}
+            {/* Content panel */}
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="p-4.5 sm:p-6">
+                <div className="mb-2.5 flex items-center justify-between gap-3">
+                  <p className="text-[0.68rem] font-bold uppercase tracking-widest" style={{ color: accent }}>
+                    {eyebrow}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label={t("home.modal.close")}
+                    className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-surface-dark text-white hover:bg-[#23232e]"
                   >
-                    {badgeLabel}
-                  </span>
-                ) : null}
-                {item.spicy ? (
-                  <span className="rounded-[5px] bg-[#E8192C] px-2.5 py-0.75 text-[0.65rem] font-extrabold uppercase tracking-wide text-white">
-                    {t("home.product.spicy")}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-
-            <p className="mt-3 text-[0.82rem] italic leading-6 text-[#a0a0b0] sm:hidden">{item.description}</p>
-
-            {item.about ? (
-              <div className="mt-4">
-                <p className="mb-1.5 text-[0.68rem] font-bold uppercase tracking-widest text-[#606070]">
-                  {t("home.modal.about")}
-                </p>
-                <p className="text-[0.82rem] leading-6 text-[#a0a0b0]">{item.about}</p>
-              </div>
-            ) : null}
-
-            {ingredientChips.length > 0 ? (
-              <div className="mt-4">
-                <p className="mb-2 text-[0.68rem] font-bold uppercase tracking-widest text-[#606070]">
-                  🏷️ {t("home.modal.ingredients")}
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {ingredientChips.map((part) => (
-                    <span
-                      key={part}
-                      className="rounded-full border border-white/10 bg-surface-dark px-2.5 py-1 text-[0.72rem] text-[#a0a0b0]"
-                    >
-                      {part}
-                    </span>
-                  ))}
+                    ✕
+                  </button>
                 </div>
-              </div>
-            ) : null}
 
-            {item.sizes && item.sizes.length > 0 ? (
-              <OptionGroup ref={sizeGroupRef} title={t("home.modal.sizesPrices")} emoji="📐" error={errors.size}>
-                {item.sizes.map((s) => (
-                  <SizeOptionCard
-                    key={s.key}
-                    label={s.label}
-                    sub={s.sub}
-                    price={fmt.money(s.price)}
-                    active={s.key === sizeKey}
-                    accent={accent}
-                    onSelect={() => {
-                      setSizeKey(s.key);
-                      setErrors((prev) => ({ ...prev, size: "" }));
-                    }}
-                  />
-                ))}
-              </OptionGroup>
-            ) : null}
-
-            {mustChooseCrust ? (
-              <OptionGroup
-                ref={crustGroupRef}
-                title={t("variationType.chooseCrust")}
-                emoji="🍕"
-                error={errors.crust}
-              >
-                {(["THICK", "THIN"] as const).map((option) => (
-                  <SizeOptionCard
-                    key={option}
-                    label={t(`variationType.${option}`)}
-                    active={crust === option}
-                    accent={accent}
-                    testId={`home-crust-${option}`}
-                    onSelect={() => {
-                      setCrust(option);
-                      setErrors((prev) => ({ ...prev, crust: "" }));
-                    }}
-                  />
-                ))}
-              </OptionGroup>
-            ) : null}
-
-            {(item.choiceGroups ?? []).map((group) => (
-              <OptionGroup
-                key={group.key}
-                title={t(`home.modal.groups.${group.label}`)}
-                emoji={group.emoji}
-                error={errors[group.key]}
-              >
-                {group.options.map((opt) => (
-                  <SizeOptionCard
-                    key={opt}
-                    label={opt}
-                    active={choices[group.key] === opt}
-                    accent={accent}
-                    onSelect={() => {
-                      setChoices((prev) => ({ ...prev, [group.key]: opt }));
-                      setErrors((prev) => ({ ...prev, [group.key]: "" }));
-                    }}
-                  />
-                ))}
-              </OptionGroup>
-            ))}
-
-            {item.options && item.options.length > 0 ? (
-              <OptionGroup title={t("home.modal.chooseFlavour")}>
-                {item.options.map((opt) => (
-                  <SizeOptionCard
-                    key={opt}
-                    label={opt}
-                    active={opt === option}
-                    accent={accent}
-                    onSelect={() => setOption(opt)}
-                  />
-                ))}
-              </OptionGroup>
-            ) : null}
-
-            {item.addOns && item.addOns.length > 0 ? (
-              <div className="mt-4.5">
-                <p className="mb-2 text-[0.68rem] font-bold uppercase tracking-widest text-[#606070]">
-                  ＋ {t("home.modal.addOns")}
+                <h2 id={titleId} className="font-display text-[1.7rem] font-black leading-tight text-white">
+                  {item.name}
+                </h2>
+                <p className="mt-1 font-display text-[1.3rem] font-extrabold" style={{ color: accent }}>
+                  {item.fromPrice || item.sizes?.length ? `${t("home.product.from")} ` : ""}
+                  {fmt.money(item.sizes?.length ? Math.min(...item.sizes.map((s) => s.price)) : item.price)}
                 </p>
-                <div className="flex flex-col gap-1.75">
-                  {item.addOns.map((a) => {
-                    const active = addOns.has(a.name);
-                    return (
-                      <button
-                        key={a.name}
-                        type="button"
-                        role="checkbox"
-                        aria-checked={active}
-                        onClick={() =>
-                          setAddOns((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(a.name)) next.delete(a.name);
-                            else next.add(a.name);
-                            return next;
-                          })
-                        }
-                        className="flex w-full items-center justify-between gap-3 rounded-[10px] border px-3 py-2.75 text-left transition-colors"
-                        style={{
-                          borderColor: active ? accent : "rgba(255,255,255,0.07)",
-                          background: active ? `${accent}14` : "#1c1c24",
-                        }}
+
+                {(badgeLabel && tone) || item.spicy ? (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {badgeLabel && tone ? (
+                      <span
+                        className="rounded-full border px-2.5 py-0.75 text-[0.68rem] font-bold uppercase tracking-wide"
+                        style={{ background: tone.bg, color: tone.color, borderColor: tone.border }}
                       >
-                        <span className="flex items-center gap-2.5">
-                          <span
-                            aria-hidden
-                            className="flex size-4 shrink-0 items-center justify-center rounded border text-[0.6rem] font-bold"
+                        {badgeLabel}
+                      </span>
+                    ) : null}
+                    {item.spicy ? (
+                      <span className="rounded-[5px] bg-[#E8192C] px-2.5 py-0.75 text-[0.65rem] font-extrabold uppercase tracking-wide text-white">
+                        {t("home.product.spicy")}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <p className="mt-3 text-[0.82rem] italic leading-6 text-[#a0a0b0] sm:hidden">{item.description}</p>
+
+                {item.about ? (
+                  <div className="mt-4">
+                    <p className="mb-1.5 text-[0.68rem] font-bold uppercase tracking-widest text-[#606070]">
+                      {t("home.modal.about")}
+                    </p>
+                    <p className="text-[0.82rem] leading-6 text-[#a0a0b0]">{item.about}</p>
+                  </div>
+                ) : null}
+
+                {ingredientChips.length > 0 ? (
+                  <div className="mt-4">
+                    <p className="mb-2 text-[0.68rem] font-bold uppercase tracking-widest text-[#606070]">
+                      🏷️ {t("home.modal.ingredients")}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ingredientChips.map((part) => (
+                        <span
+                          key={part}
+                          className="rounded-full border border-white/10 bg-surface-dark px-2.5 py-1 text-[0.72rem] text-[#a0a0b0]"
+                        >
+                          {part}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {item.sizes && item.sizes.length > 0 ? (
+                  <OptionGroup ref={sizeGroupRef} title={t("home.modal.sizesPrices")} emoji="📐" error={errors.size}>
+                    {item.sizes.map((s) => (
+                      <SizeOptionCard
+                        key={s.key}
+                        label={s.label}
+                        sub={s.sub}
+                        price={fmt.money(s.price)}
+                        active={s.key === sizeKey}
+                        accent={accent}
+                        onSelect={() => {
+                          setSizeKey(s.key);
+                          setErrors((prev) => ({ ...prev, size: "" }));
+                        }}
+                      />
+                    ))}
+                  </OptionGroup>
+                ) : null}
+
+                {mustChooseCrust ? (
+                  <OptionGroup
+                    ref={crustGroupRef}
+                    title={t("variationType.chooseCrust")}
+                    emoji="🍕"
+                    error={errors.crust}
+                  >
+                    {(["THICK", "THIN"] as const).map((option) => (
+                      <SizeOptionCard
+                        key={option}
+                        label={t(`variationType.${option}`)}
+                        active={crust === option}
+                        accent={accent}
+                        testId={`home-crust-${option}`}
+                        onSelect={() => {
+                          setCrust(option);
+                          setErrors((prev) => ({ ...prev, crust: "" }));
+                        }}
+                      />
+                    ))}
+                  </OptionGroup>
+                ) : null}
+
+                {(item.choiceGroups ?? []).map((group) => (
+                  <OptionGroup
+                    key={group.key}
+                    title={t(`home.modal.groups.${group.label}`)}
+                    emoji={group.emoji}
+                    error={errors[group.key]}
+                  >
+                    {group.options.map((opt) => (
+                      <SizeOptionCard
+                        key={opt}
+                        label={opt}
+                        active={choices[group.key] === opt}
+                        accent={accent}
+                        onSelect={() => {
+                          setChoices((prev) => ({ ...prev, [group.key]: opt }));
+                          setErrors((prev) => ({ ...prev, [group.key]: "" }));
+                        }}
+                      />
+                    ))}
+                  </OptionGroup>
+                ))}
+
+                {item.options && item.options.length > 0 ? (
+                  <OptionGroup title={t("home.modal.chooseFlavour")}>
+                    {item.options.map((opt) => (
+                      <SizeOptionCard
+                        key={opt}
+                        label={opt}
+                        active={opt === option}
+                        accent={accent}
+                        onSelect={() => setOption(opt)}
+                      />
+                    ))}
+                  </OptionGroup>
+                ) : null}
+
+                {item.addOns && item.addOns.length > 0 ? (
+                  <div className="mt-4.5">
+                    <p className="mb-2 text-[0.68rem] font-bold uppercase tracking-widest text-[#606070]">
+                      ＋ {t("home.modal.addOns")}
+                    </p>
+                    <div className="flex flex-col gap-1.75">
+                      {item.addOns.map((a) => {
+                        const active = addOns.has(a.name);
+                        return (
+                          <button
+                            key={a.name}
+                            type="button"
+                            role="checkbox"
+                            aria-checked={active}
+                            onClick={() =>
+                              setAddOns((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(a.name)) next.delete(a.name);
+                                else next.add(a.name);
+                                return next;
+                              })
+                            }
+                            className="flex w-full items-center justify-between gap-3 rounded-[10px] border px-3 py-2.75 text-left transition-colors"
                             style={{
-                              borderColor: active ? accent : "#606070",
-                              background: active ? accent : "transparent",
-                              color: active ? "#fff" : "transparent",
+                              borderColor: active ? accent : "rgba(255,255,255,0.07)",
+                              background: active ? `${accent}14` : "#1c1c24",
                             }}
                           >
-                            ✓
-                          </span>
-                          <span className="text-[0.82rem] font-semibold text-white">{a.name}</span>
-                        </span>
-                        <span className="text-[0.8rem] font-semibold text-[#a0a0b0]">+{fmt.money(a.price)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                            <span className="flex items-center gap-2.5">
+                              <span
+                                aria-hidden
+                                className="flex size-4 shrink-0 items-center justify-center rounded border text-[0.6rem] font-bold"
+                                style={{
+                                  borderColor: active ? accent : "#606070",
+                                  background: active ? accent : "transparent",
+                                  color: active ? "#fff" : "transparent",
+                                }}
+                              >
+                                ✓
+                              </span>
+                              <span className="text-[0.82rem] font-semibold text-white">{a.name}</span>
+                            </span>
+                            <span className="text-[0.8rem] font-semibold text-[#a0a0b0]">+{fmt.money(a.price)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+            </div>
           </div>
-
-          <ModalActionBar qty={qty} onQtyChange={setQty} total={unitPrice * qty} accent={accent} onAdd={handleAdd} />
+          <ProductReviewsSection productId={item.id} />
         </div>
+
+        <ModalActionBar qty={qty} onQtyChange={setQty} total={unitPrice * qty} accent={accent} onAdd={handleAdd} />
       </div>
     </div>
   );

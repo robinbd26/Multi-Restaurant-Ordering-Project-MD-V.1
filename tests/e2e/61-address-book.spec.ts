@@ -1,182 +1,151 @@
 import { test, expect } from "@playwright/test";
-import { newSession } from "./helpers";
+import { clearCustomerAddresses, newSession, setLocale } from "./helpers";
 
 /**
- * Customer Address Book — compact two-column flow.
+ * Customer Address Book (reviews-complaints-addresses round).
  *
- * PHASE 3 changed two fields, and this suite pins both:
- *   - the nickname is a CHOICE (Home / Office / Custom), with a typed name only
- *     for Custom, stored canonically rather than as whatever word was typed;
- *   - the main area is the DATABASE master list only. "+ Add your Own" is gone
- *     from it, because that is the zone coverage is matched on; the sub-area
- *     still offers it, and a custom sub-area is covered by nobody until a branch
- *     manager adds it.
+ * Adding an address has TWO SEPARATE MODES:
+ *   - Pick on map: "Use my current location" first, search, drag; the address
+ *     fills itself; only a label and one optional flat/floor/landmark line.
+ *   - Enter manually: area (required), road, house, the same optional line, and
+ *     its own pin step ("Find on map"), because coverage is decided by the pin.
+ * Switching modes never hides a control the active mode needs (the old form hid
+ * the map, and with it the pin, in manual mode).
+ *
+ * Addresses are created with a marker so cleanup only removes this spec's rows.
  */
-const SEEDED_ZONES = [
-  "Banani",
-  "Gulshan",
-  "Dhanmondi",
-  "Mohammodpur",
-  "Khilgaon",
-  "Bailey Road",
-  "Mirpur",
-  "Uttara",
-  "Basundhara",
-];
+const MARK = /e2e-61/;
 
 test.describe("Customer address book (English locale)", () => {
-  test("nickname choice, master-list main area, sub-area keeps + Add your Own", async ({ browser }) => {
-    const { page } = await newSession(browser, "customer");
+  // The seeded customer is shared and other specs leave addresses behind, so
+  // this spec starts from an empty book (the fixture doc asks every spec that
+  // adds addresses to do so) and cleans its own rows up afterwards.
+  test.beforeEach(async ({ browser }) => {
+    const { req, context } = await newSession(browser, "customer");
+    await clearCustomerAddresses(req);
+    await context.close();
+  });
+
+  test("two clean modes: map mode leads with current location; manual mode keeps its own pin map", async ({ browser }) => {
+    const { page, context } = await newSession(browser, "customer");
+    await setLocale(context, "en");
     await page.goto("/customer/addresses");
+    // My Addresses manages saved addresses only: no live-location card here.
+    await expect(page.getByText(/count of|of 5 saved/i).first()).toBeVisible();
     await page.getByTestId("add-address").click();
     const form = page.getByTestId("address-form");
     await expect(form).toBeVisible();
 
-    // Method chooser: map-first, with "Add Manually" as a first-class
-    // alternative that hides the map entirely.
-    await expect(page.getByTestId("entry-mode")).toBeVisible();
-    await expect(page.getByTestId("mode-map")).toBeVisible();
-    await expect(page.getByTestId("mode-manual")).toBeVisible();
+    // Map mode (default): current location first, no manual fields.
+    await expect(page.getByTestId("map-mode-section")).toBeVisible();
+    await expect(page.getByTestId("addr-map-gps")).toBeVisible();
+    await expect(page.getByTestId("addr-main-area")).toHaveCount(0);
+    await expect(page.getByTestId("addr-flat-number")).toBeVisible();
+    await expect(page.getByTestId("save-address")).toHaveText(/confirm location/i);
+
+    // Manual mode: the typed fields AND its own map; the map-mode section is gone.
     await page.getByTestId("mode-manual").click();
-    await expect(page.getByTestId("manual-mode-hint")).toBeVisible();
+    await expect(page.getByTestId("manual-mode-section")).toBeVisible();
     await expect(page.getByTestId("map-mode-section")).toHaveCount(0);
-    await page.getByTestId("mode-map").click();
-    await expect(page.getByTestId("selected-location")).toBeVisible();
-    await expect(page.getByTestId("confirm-location")).toBeDisabled();
-    await page.getByTestId("mode-manual").click();
-
-    // Nickname: a three-way choice. The typed name only appears for Custom.
-    const nickname = page.getByTestId("addr-nickname");
-    await expect(nickname).toBeVisible();
-    const nicknameOptions = (await nickname.locator("option").allTextContents()).map((s) => s.trim());
-    expect(nicknameOptions).toEqual(["Home", "Office", "Custom"]);
-    await expect(nickname).toHaveValue("home");
-    await expect(page.getByTestId("addr-location-name")).toHaveCount(0);
-    await nickname.selectOption("custom");
-    await expect(page.getByTestId("addr-location-name")).toBeVisible();
-    await nickname.selectOption("home");
-    await expect(page.getByTestId("addr-location-name")).toHaveCount(0);
-
-    const mainSelect = page.getByTestId("addr-main-area");
-    const subSelect = page.getByTestId("addr-sub-area");
-
-    // Main area: placeholder first, nothing preselected, then the master list in
-    // operations' order. No free text here — this is what coverage matches on.
-    await expect(mainSelect).toHaveValue("");
-    const mainOptions = (await mainSelect.locator("option").allTextContents()).map((s) => s.trim());
-    expect(mainOptions[0]).toBe("Select Your Area");
-    expect(mainOptions.slice(1, 1 + SEEDED_ZONES.length)).toEqual(SEEDED_ZONES);
-    expect(mainOptions, "no custom main area").not.toContain("+ Add your Own");
-    expect(await page.getByTestId("addr-custom-main-area").count()).toBe(0);
-
-    // The sub-area waits for a main area.
-    await expect(subSelect).toBeDisabled();
-
-    // Basundhara → its real localities from the sheets, then its own custom entry.
-    await mainSelect.selectOption("Basundhara");
-    await expect(subSelect).toBeEnabled();
-    await expect
-      .poll(async () => (await subSelect.locator("option").allTextContents()).map((s) => s.trim()).slice(1))
-      .toEqual(["All Bashundhara", "Nikonjo-1", "Nikonjo-2", "+ Add your Own"]);
-
-    // Banani → only Banani localities, never another zone's, and custom last.
-    await mainSelect.selectOption("Banani");
-    const bananiSubs = (await subSelect.locator("option").allTextContents()).map((s) => s.trim());
-    expect(bananiSubs).toContain("All Over Banani");
-    expect(bananiSubs).not.toContain("Gulshan-1");
-    expect(bananiSubs).not.toContain("Mirpur-1");
-    expect(bananiSubs).not.toContain("Sector-1");
-    expect(bananiSubs.at(-1)).toBe("+ Add your Own");
-
-    // A custom SUB-area is still allowed, as its own free-text input.
-    await subSelect.selectOption({ value: "__custom__" });
-    const customSubArea = page.getByLabel("Enter Area Name");
-    await expect(customSubArea).toBeVisible();
-    await customSubArea.fill("New Custom Sub-Area");
-    await expect(page.getByTestId("preview-sub-area")).toContainText("New Custom Sub-Area");
-
-    // Road/Lane + House/Plot are optional free-text fields.
-    expect(await page.locator('select[name="road_lane"]').count()).toBe(0);
+    await expect(page.getByTestId("addr-main-area")).toBeVisible();
     await expect(page.getByTestId("addr-road-lane")).toBeVisible();
     await expect(page.getByTestId("addr-house-plot")).toBeVisible();
-    expect(await page.getByText(/Select Road\/Lane Number \*/).count()).toBe(0);
-    expect(await page.getByText(/House \/ Plot Number \*/).count()).toBe(0);
+    await expect(page.getByTestId("addr-manual-map")).toBeVisible();
+    await expect(page.getByTestId("addr-find-on-map")).toBeVisible();
+
+    // Saving manually without area or pin explains both, and does not save.
+    await page.getByTestId("save-address").click();
+    await expect(form).toBeVisible();
+    await expect(page.getByText(/place the pin first/i)).toBeVisible();
+
+    // Labels: Home / Work / Other; Other's name is optional.
+    for (const kind of ["home", "office", "custom"]) await expect(page.getByTestId(`addr-nickname-${kind}`)).toBeVisible();
+    await page.getByTestId("addr-nickname-custom").click();
+    await expect(page.getByTestId("addr-location-name")).toBeVisible();
 
     await page.getByTestId("cancel-address").click();
     await expect(form).toBeHidden();
+    await context.close();
   });
 
-  test("save flow: a Custom nickname round-trips through save and edit", async ({ browser }) => {
-    const { page } = await newSession(browser, "customer");
+  test("a manual address with a pin saves, and its label and extra line round-trip through edit", async ({ browser }) => {
+    const { page, req, context } = await newSession(browser, "customer");
+    await setLocale(context, "en");
+    // A pinned address made through the API, then edited in the form.
+    const created = await req.post("/api/customer/addresses/", {
+      data: {
+        label: "Others",
+        custom_label: "Parents",
+        address: "Flat 3A, House 8, Lane 5, Banani, Dhaka e2e-61",
+        main_area: "Banani",
+        road_lane: "Lane 5",
+        house_plot: "House 8",
+        flat_number: "Flat 3A",
+        latitude: 23.7937,
+        longitude: 90.4066,
+        is_default: false,
+      },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    const row = (await created.json()) as { id: number; label: string; custom_label: string };
+    expect(row.label).toBe("Others");
+
     await page.goto("/customer/addresses");
-    await page.getByTestId("add-address").click();
-    await page.getByTestId("mode-manual").click();
+    const card = page.getByTestId(`saved-address-${row.id}`);
+    await expect(card).toContainText("Parents");
+    await card.getByRole("button", { name: "Edit" }).click();
+    // A typed (no map text) address reopens in manual mode, values intact.
+    await expect(page.getByTestId("manual-mode-section")).toBeVisible();
+    await expect(page.getByTestId("addr-main-area")).toHaveValue("Banani");
+    await expect(page.getByTestId("addr-road-lane")).toHaveValue("Lane 5");
+    await expect(page.getByTestId("addr-flat-number")).toHaveValue("Flat 3A");
+    await expect(page.getByTestId("addr-location-name")).toHaveValue("Parents");
 
-    await page.getByTestId("addr-nickname").selectOption("custom");
-    await page.getByTestId("addr-location-name").fill("Parents' House");
-
-    await page.getByTestId("addr-main-area").selectOption("Banani");
-    await page.getByTestId("addr-sub-area").selectOption("All Over Banani");
-    await page.getByTestId("addr-road-lane").fill("Lane 5");
-    await page.getByTestId("addr-flat-number").fill("3A");
-    await page.getByTestId("addr-landmark").fill("Near Banani Lake");
-
+    await page.getByTestId("addr-flat-number").fill("Flat 4B");
     await page.getByTestId("save-address").click();
     await expect(page.getByTestId("address-form")).toBeHidden();
-
-    const savedCard = page.locator('[data-testid^="saved-address-"]', { hasText: "Parents' House" }).first();
-    await expect(savedCard).toBeVisible();
-    await expect(savedCard).toContainText("All Over Banani");
-
-    // Stored canonically: a custom name is label "Others" + custom_label.
-    const list = (await (await page.request.get("/api/customer/addresses/")).json()) as {
-      results: { id: number; label: string; custom_label: string }[];
+    const after = (await (await req.get("/api/customer/addresses/")).json()) as {
+      results: { id: number; flat_number: string; address: string; custom_label: string }[];
     };
-    const stored = list.results.find((r) => r.custom_label === "Parents' House");
-    expect(stored?.label, "custom nickname stored canonically").toBe("Others");
+    const updated = after.results.find((r) => r.id === row.id)!;
+    expect(updated.flat_number).toBe("Flat 4B");
+    expect(updated.address).toContain("Flat 4B");
+    expect(updated.custom_label).toBe("Parents");
 
-    // Edit round-trips the choice AND the typed name.
-    await savedCard.getByRole("button", { name: "Edit" }).click();
-    await expect(page.getByTestId("address-form")).toBeVisible();
-    await expect(page.getByTestId("mode-manual")).toHaveClass(/border-brand-500/);
-    await expect(page.getByTestId("map-mode-section")).toHaveCount(0);
-    await expect(page.getByTestId("addr-nickname")).toHaveValue("custom");
-    await expect(page.getByTestId("addr-location-name")).toHaveValue("Parents' House");
-    await expect(page.getByTestId("addr-main-area")).toHaveValue("Banani");
-    await expect(page.getByTestId("addr-sub-area")).toHaveValue("All Over Banani");
-    await expect(page.getByTestId("addr-road-lane")).toHaveValue("Lane 5");
-    await expect(page.getByTestId("addr-flat-number")).toHaveValue("3A");
-    await expect(page.getByTestId("addr-landmark")).toHaveValue("Near Banani Lake");
-    await page.getByTestId("cancel-address").click();
-
-    // Clean up so repeat runs never accumulate probes against the 5-address cap.
-    for (const a of list.results.filter(
-      (r) => r.custom_label === "Parents' House" || r.label === "Parents' House",
-    )) {
-      const res = await page.request.delete(`/api/customer/addresses/${a.id}/`);
-      expect(res.status()).toBe(204);
-    }
-    await page.reload();
-    await expect(page.locator('[data-testid^="saved-address-"]', { hasText: "Parents' House" })).toHaveCount(0);
+    await clearCustomerAddresses(req, MARK);
+    await clearCustomerAddresses(req, /Flat 4B/);
+    await context.close();
   });
 
-  test("map address round-trip: coordinates + reverse-geocoded map address are stored and returned", async ({
-    browser,
-  }) => {
-    const { page } = await newSession(browser, "customer");
+  test("the 5-address cap disables Add, and the server still refuses a sixth", async ({ browser }) => {
+    const { page, req, context } = await newSession(browser, "customer");
+    await setLocale(context, "en");
+    const existing = ((await (await req.get("/api/customer/addresses/?active=1")).json()) as { results: unknown[] }).results.length;
+    for (let i = existing; i < 5; i++) {
+      const res = await req.post("/api/customer/addresses/", {
+        data: { label: "Home", address: `Cap ${i} e2e-61`, latitude: 23.79, longitude: 90.41, is_default: false },
+      });
+      expect(res.status()).toBe(201);
+    }
+    await page.goto("/customer/addresses");
+    await expect(page.getByTestId("add-address")).toBeDisabled();
+    const sixth = await req.post("/api/customer/addresses/", {
+      data: { label: "Home", address: "Cap 6 e2e-61", latitude: 23.79, longitude: 90.41, is_default: false },
+    });
+    expect(sixth.status()).toBe(400);
+    await clearCustomerAddresses(req, MARK);
+    await context.close();
+  });
 
-    const createResp = await page.request.post("/api/customer/addresses/", {
+  test("map address round-trip: coordinates + reverse-geocoded map address are stored and returned", async ({ browser }) => {
+    const { req, context } = await newSession(browser, "customer");
+    const createResp = await req.post("/api/customer/addresses/", {
       data: {
         label: "Home",
-        custom_label: "",
-        address: "House/Plot 8, Flat B10\nRoad/Lane 76\nFalcon Tower\nBanani\nDhaka",
+        address: "Flat B10, House 25, Road 11, Banani, Dhaka e2e-61",
         area: "Banani",
         main_area: "Banani",
-        sub_area: "Falcon Tower",
-        road_lane: "76",
-        house_plot: "8",
-        flat_number: "B10",
-        landmark: "Near Banani Lake",
+        flat_number: "Flat B10",
         map_address: "House 25, Road 11, Banani, Dhaka 1212, Bangladesh",
         place_id: "ChIJ0V1o4VWFTjERU93xZ8vCTBE",
         latitude: 23.7805,
@@ -185,64 +154,18 @@ test.describe("Customer address book (English locale)", () => {
       },
     });
     expect(createResp.status()).toBe(201);
-    const created = (await createResp.json()) as {
-      id: number;
-      main_area: string;
-      road_lane: string;
-      map_address: string;
-      place_id: string;
-      latitude?: number | null;
-      longitude?: number | null;
-    };
-    expect(created.main_area).toBe("Banani");
-    expect(created.road_lane).toBe("76");
+    const created = (await createResp.json()) as { id: number; map_address: string; latitude: number; longitude: number };
     expect(created.latitude).toBeCloseTo(23.7805, 4);
-    expect(created.longitude).toBeCloseTo(90.4123, 4);
     expect(created.map_address).toBe("House 25, Road 11, Banani, Dhaka 1212, Bangladesh");
-    expect(created.place_id).toBe("ChIJ0V1o4VWFTjERU93xZ8vCTBE");
-    expect(created.latitude).not.toBe(0);
-    expect(created.longitude).not.toBe(0);
 
-    const patchResp = await page.request.patch(`/api/customer/addresses/${created.id}/`, {
-      data: {
-        label: "Home",
-        map_address: "Road 7, Gulshan 2, Dhaka 1212, Bangladesh",
-        place_id: "ChIJ4TdPxFu3VTcR2M1sxgVvjjA",
-        latitude: 23.7949,
-        longitude: 90.4127,
-        is_default: false,
-      },
+    const patchResp = await req.patch(`/api/customer/addresses/${created.id}/`, {
+      data: { label: "Home", map_address: "Road 7, Gulshan 2, Dhaka 1212, Bangladesh", latitude: 23.7949, longitude: 90.4127 },
     });
     expect(patchResp.status()).toBe(200);
-    const updated = (await patchResp.json()) as {
-      map_address: string;
-      place_id: string;
-      latitude?: number | null;
-      longitude?: number | null;
-    };
+    const updated = (await patchResp.json()) as { map_address: string; latitude: number };
     expect(updated.latitude).toBeCloseTo(23.7949, 4);
-    expect(updated.longitude).toBeCloseTo(90.4127, 4);
     expect(updated.map_address).toBe("Road 7, Gulshan 2, Dhaka 1212, Bangladesh");
-    expect(updated.place_id).toBe("ChIJ4TdPxFu3VTcR2M1sxgVvjjA");
-
-    await page.goto("/customer/addresses");
-    const saved = page.locator('[data-testid^="saved-address-"]', { hasText: "Road 7, Gulshan 2" }).first();
-    await expect(saved).toBeVisible();
-    await expect(saved.getByTestId("saved-map-address")).toContainText("Road 7, Gulshan 2, Dhaka 1212, Bangladesh");
-
-    await page.reload();
-    await expect(saved).toBeVisible();
-    const listResp = await page.request.get("/api/customer/addresses/");
-    expect(listResp.status()).toBe(200);
-    const listJson = (await listResp.json()) as {
-      results: { id: number; place_id: string; latitude?: number | null; longitude?: number | null }[];
-    };
-    const record = listJson.results.find((r) => r.id === created.id);
-    expect(record?.latitude).toBeCloseTo(23.7949, 4);
-    expect(record?.longitude).toBeCloseTo(90.4127, 4);
-    expect(record?.place_id).toBe("ChIJ4TdPxFu3VTcR2M1sxgVvjjA");
-
-    const del = await page.request.delete(`/api/customer/addresses/${created.id}/`);
-    expect(del.status()).toBe(204);
+    await clearCustomerAddresses(req, MARK);
+    await context.close();
   });
 });

@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, apiLogin, API_BASE, activeZoneId, branchMap } from "./helpers";
+import { newSession, apiLogin, API_BASE, activeZoneId, branchMap, openBranchAllDay } from "./helpers";
 
 /**
  * PHASE J — the Branch Manager order workflow is a SERVER-ENFORCED state
@@ -178,6 +178,8 @@ test.describe("Phase J — authorization", () => {
       },
     })).json();
     expect(created.id).not.toBe(own);
+    // No hours set = closed (reviews-complaints-addresses round): open it all day.
+    await openBranchAllDay(admin.req, created.id);
     await admin.req.post(`${API_BASE}/api/products/`, {
       multipart: {
         branch_id: String(created.id), name: `WfP-${Date.now()}`, variation_type: "THICK",

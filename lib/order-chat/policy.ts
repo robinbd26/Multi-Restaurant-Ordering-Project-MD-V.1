@@ -27,7 +27,6 @@ export const IN_FLIGHT_DELIVERY_STATUSES: readonly string[] = [
   "ready",
   "picked_up",
   "on_the_way",
-  "delayed",
 ];
 
 /**
