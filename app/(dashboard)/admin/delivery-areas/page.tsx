@@ -27,20 +27,20 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function AdminDeliveryAreasPage() {
   const { t, fmt } = await getT();
   await requireRole("super_admin");
-  const [branches, shapes] = await Promise.all([
-    prisma.branch.findMany({
-      where: { isActive: true, isArchived: false },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        latitude: true,
-        longitude: true,
-        deliveryAreas: { include: { exclusions: { select: { endsAt: true } } } },
-      },
-    }),
-    areaShapesForBranches(),
-  ]);
+  const branches = await prisma.branch.findMany({
+    where: { isActive: true, isArchived: false },
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      latitude: true,
+      longitude: true,
+      deliveryAreas: { include: { exclusions: { select: { endsAt: true } } } },
+    },
+  });
+  // Live branches only: an archived or deactivated branch's area is not
+  // coverage, so it must not be drawn or counted as "not drawn yet".
+  const shapes = await areaShapesForBranches(branches.map((b) => b.id));
 
   return (
     <>
