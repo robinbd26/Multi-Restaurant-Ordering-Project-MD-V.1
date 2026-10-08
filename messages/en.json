@@ -131,7 +131,8 @@
     "deductions": "Deductions",
     "inventory": "Inventory",
     "deliveryZones": "Delivery Zones",
-    "brands": "Brands"
+    "brands": "Brands",
+    "productReviews": "Product Reviews"
   },
   "navGroup": {
     "people": "People",
@@ -2152,6 +2153,15 @@
       "notYourBranch": "You can only change the hours of your own branch.",
       "brandNotServed": "This branch does not serve that brand.",
       "useHoursPage": "Branch hours are now set per brand on the Hours page."
+    },
+    "reviews": {
+      "customersOnly": "Only customers can write product reviews.",
+      "productNotFound": "Product not found.",
+      "notEligible": "You can review a dish once an order with it has been delivered or collected.",
+      "tooManyPhotos": "You can add up to {max} photos.",
+      "forbidden": "You are not allowed to manage reviews.",
+      "notFound": "Review not found.",
+      "flagForbidden": "Only the branch manager of this product's branch can flag this review."
     }
   },
   "states": {
@@ -2370,6 +2380,14 @@
       "received": {
         "title": "New rating received",
         "body": "Order #{id} — {rating}/5 rating"
+      },
+      "flagged": {
+        "title": "Review flagged",
+        "body": "{branch} flagged a review of {product} for you to look at."
+      },
+      "invite": {
+        "title": "How was your order?",
+        "body": "Order #{id} is complete. Rate the items you got."
       }
     },
     "reservation": {
@@ -2879,22 +2897,87 @@
   },
   "reviews": {
     "title": "Reviews & Ratings",
-    "subtitle": "Rate riders and review food",
+    "subtitle": "Rate the dishes you ordered and the riders who brought them",
     "submitted": "Review submitted",
     "submit": "Submit review",
     "leaveReview": "Leave a review",
     "pendingTitle": "Pending reviews",
-    "pendingSub": "Review your delivered orders",
+    "pendingSub": "Dishes from your delivered and collected orders",
     "nonePending": "Nothing to review",
     "nonePendingDesc": "Reviews unlock after your next delivery.",
     "givenTitle": "Your reviews",
     "noneGiven": "No reviews yet",
     "noneGivenDesc": "Rate riders and food after delivery.",
     "riderLabel": "Rider: {name}",
-    "commentPlaceholder": "Write your feedback (optional)…",
+    "commentPlaceholder": "What did you like? Anything we could do better?",
     "errRating": "Select a rating",
     "ratingLabel": "Rating",
-    "starLabel": "{n} out of 5 stars"
+    "starLabel": "{n} out of 5 stars",
+    "cardAria": "Rated {avg} out of 5 from {n} reviews",
+    "sectionTitle": "Reviews",
+    "noneYet": "No reviews yet. Order it and be the first to rate it.",
+    "basedOn": "{n} reviews",
+    "breakdown": "Rating breakdown",
+    "starsOf": "{n} out of 5 stars",
+    "edited": "edited",
+    "openPhoto": "Open photo {n}",
+    "seeAll": "See all reviews ({n})",
+    "showMore": "Show more reviews",
+    "photo": "Review photo",
+    "starLabel1": "Poor",
+    "starLabel2": "Fair",
+    "starLabel3": "Good",
+    "starLabel4": "Very good",
+    "starLabel5": "Excellent",
+    "pickStars": "Tap the stars to rate it.",
+    "editReview": "Edit review",
+    "hiddenNotice": "Hidden by our team",
+    "thanks": "Thanks! Your review is published.",
+    "yourRating": "Your rating for {name}",
+    "commentLabel": "Your review (optional)",
+    "photosLabel": "Photos (optional, up to {max})",
+    "updateReview": "Update review",
+    "submitReview": "Publish review",
+    "rateItemsTitle": "Rate your items",
+    "rateItemsSub": "How was it? Your rating helps other customers choose.",
+    "restore": "Restore",
+    "hide": "Hide",
+    "flag": "Flag for marketing",
+    "flaggedForMarketing": "Flagged for marketing",
+    "hideReasonPlaceholder": "Reason (spam, abuse, irrelevant…)",
+    "flagReasonPlaceholder": "What should marketing look at? (optional)",
+    "reasonLabel": "Reason",
+    "adminTitle": "Product Reviews",
+    "adminSubModerator": "Every product review across branches. Hide spam, abuse or irrelevant reviews; hidden reviews don't count toward ratings.",
+    "adminSubManager": "Reviews of your branch's products. Flag a review for the marketing team to look at.",
+    "filterBranch": "Filter by branch",
+    "allBranches": "All branches",
+    "filterBrand": "Filter by brand",
+    "allBrands": "All brands",
+    "filterRating": "Filter by rating",
+    "allRatings": "All ratings",
+    "nStars": "{n} stars",
+    "filterHidden": "Filter by visibility",
+    "visibleAndHidden": "Visible and hidden",
+    "visibleOnly": "Visible only",
+    "hiddenOnly": "Hidden only",
+    "filterFlagged": "Filter by flag",
+    "flaggedAny": "Flagged or not",
+    "flaggedOnly": "Flagged only",
+    "notFlagged": "Not flagged",
+    "applyFilters": "Apply",
+    "clear": "Clear",
+    "countN": "{n} reviews",
+    "adminEmpty": "No reviews match",
+    "adminEmptyDesc": "Try other filters, or check back after more orders are delivered.",
+    "hiddenBadge": "Hidden",
+    "flaggedBadge": "Flagged",
+    "flagReasonShown": "Flag: {reason}",
+    "hiddenReasonShown": "Hidden: {reason}",
+    "pagination": "Reviews pages",
+    "pageOf": "Page {page} of {pages}",
+    "basedOnOne": "1 review",
+    "countOne": "1 review"
   },
   "settings": {
     "title": "Settings",
@@ -4699,5 +4782,18 @@
   },
   "orderStatusDelivery": {
     "ready": "Ready for rider"
+  },
+  "upload": {
+    "clickOrDrag": "Click or drag to upload",
+    "replace": "Click or drag to replace",
+    "preview": "Selected image",
+    "previewN": "Image {n}",
+    "removeN": "Remove image {n}",
+    "removeNew": "Remove {name}",
+    "wrongType": "That file type isn't supported. Use {types}.",
+    "tooLarge": "{name} is too large. The limit is {mb} MB per image.",
+    "tooMany": "You can add up to {max} images.",
+    "countOf": "{n} of {max} images",
+    "photoHint": "JPG, PNG, WebP or AVIF, up to {mb} MB each"
   }
 }

@@ -34,7 +34,7 @@ const PUBLIC_SUBDIRS = new Set(["products", "branch_logos", "branding", "ramadan
  * through /api/orders/[id]/chat/messages/[messageId]/image, which applies the
  * order chat's membership rule. "Any approved user" is far too wide for them.
  */
-const ROUTED_ELSEWHERE_SUBDIRS = new Set(["chat_photos"]);
+const ROUTED_ELSEWHERE_SUBDIRS = new Set(["chat_photos", "review_photos", "complaint_photos"]);
 
 export const GET = handle(async (_req: Request, ctx: Ctx): Promise<Response> => {
   const { path: segments } = await ctx.params;

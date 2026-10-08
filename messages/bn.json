@@ -131,7 +131,8 @@
     "deductions": "কর্তন ও চার্জ",
     "inventory": "ইনভেন্টরি",
     "deliveryZones": "ডেলিভারি জোন",
-    "brands": "ব্র্যান্ড"
+    "brands": "ব্র্যান্ড",
+    "productReviews": "পণ্যের রিভিউ"
   },
   "navGroup": {
     "people": "ব্যবহারকারী",
@@ -2152,6 +2153,15 @@
       "notYourBranch": "আপনি শুধু নিজের শাখার সময় বদলাতে পারেন।",
       "brandNotServed": "এই শাখা ওই ব্র্যান্ড পরিবেশন করে না।",
       "useHoursPage": "শাখার সময় এখন সময় পাতায় ব্র্যান্ড অনুযায়ী ঠিক করা হয়।"
+    },
+    "reviews": {
+      "customersOnly": "শুধু গ্রাহকরা পণ্যের রিভিউ লিখতে পারেন।",
+      "productNotFound": "পণ্য পাওয়া যায়নি।",
+      "notEligible": "খাবারসহ কোনো অর্ডার ডেলিভারি বা সংগ্রহ হলে তবেই রিভিউ দেওয়া যায়।",
+      "tooManyPhotos": "সর্বোচ্চ {max}টি ছবি যোগ করা যায়।",
+      "forbidden": "আপনার রিভিউ পরিচালনার অনুমতি নেই।",
+      "notFound": "রিভিউ পাওয়া যায়নি।",
+      "flagForbidden": "শুধু এই পণ্যের ব্রাঞ্চের ম্যানেজার রিভিউটি চিহ্নিত করতে পারেন।"
     }
   },
   "states": {
@@ -2370,6 +2380,14 @@
       "received": {
         "title": "নতুন রেটিং পেয়েছেন",
         "body": "অর্ডার #{id} — {rating}/৫ রেটিং"
+      },
+      "flagged": {
+        "title": "রিভিউ চিহ্নিত",
+        "body": "{branch} {product}-এর একটি রিভিউ দেখার জন্য চিহ্নিত করেছে।"
+      },
+      "invite": {
+        "title": "অর্ডার কেমন ছিল?",
+        "body": "অর্ডার #{id} সম্পন্ন। পাওয়া খাবারগুলোর রেটিং দিন।"
       }
     },
     "reservation": {
@@ -2879,22 +2897,87 @@
   },
   "reviews": {
     "title": "রিভিউ ও রেটিং",
-    "subtitle": "রাইডার ও খাবারের রিভিউ দিন",
+    "subtitle": "অর্ডার করা খাবার ও রাইডারদের রেটিং দিন",
     "submitted": "রিভিউ জমা হয়েছে",
     "submit": "রিভিউ দিন",
     "leaveReview": "রিভিউ দিন",
     "pendingTitle": "রিভিউ বাকি",
-    "pendingSub": "ডেলিভারি সম্পন্ন অর্ডারে রিভিউ দিন",
+    "pendingSub": "ডেলিভারি হওয়া ও সংগ্রহ করা অর্ডারের খাবার",
     "nonePending": "কোনো রিভিউ বাকি নেই",
     "nonePendingDesc": "নতুন অর্ডার ডেলিভারি হলে এখানে রিভিউ দিতে পারবেন।",
     "givenTitle": "আপনার রিভিউ",
     "noneGiven": "এখনও কোনো রিভিউ দেননি",
     "noneGivenDesc": "ডেলিভারি সম্পন্ন হলে রাইডার ও খাবারের রিভিউ দিন।",
     "riderLabel": "রাইডার: {name}",
-    "commentPlaceholder": "আপনার মতামত লিখুন (ঐচ্ছিক)…",
+    "commentPlaceholder": "কী ভালো লেগেছে? আরও ভালো কী করা যায়?",
     "errRating": "রেটিং নির্বাচন করুন",
     "ratingLabel": "রেটিং",
-    "starLabel": "৫ এর মধ্যে {n} তারা"
+    "starLabel": "৫ এর মধ্যে {n} তারা",
+    "cardAria": "{n}টি রিভিউ থেকে ৫-এর মধ্যে {avg}",
+    "sectionTitle": "রিভিউ",
+    "noneYet": "এখনও কোনো রিভিউ নেই। অর্ডার করে প্রথম রেটিং দিন।",
+    "basedOn": "{n}টি রিভিউ",
+    "breakdown": "রেটিং বিভাজন",
+    "starsOf": "৫-এর মধ্যে {n} তারা",
+    "edited": "সম্পাদিত",
+    "openPhoto": "ছবি {n} খুলুন",
+    "seeAll": "সব রিভিউ দেখুন ({n})",
+    "showMore": "আরও রিভিউ দেখুন",
+    "photo": "রিভিউয়ের ছবি",
+    "starLabel1": "খারাপ",
+    "starLabel2": "মোটামুটি",
+    "starLabel3": "ভালো",
+    "starLabel4": "খুব ভালো",
+    "starLabel5": "চমৎকার",
+    "pickStars": "রেটিং দিতে তারায় ট্যাপ করুন।",
+    "editReview": "রিভিউ সম্পাদনা",
+    "hiddenNotice": "আমাদের টিম লুকিয়েছে",
+    "thanks": "ধন্যবাদ! আপনার রিভিউ প্রকাশিত হয়েছে।",
+    "yourRating": "{name}-এর জন্য আপনার রেটিং",
+    "commentLabel": "আপনার রিভিউ (ঐচ্ছিক)",
+    "photosLabel": "ছবি (ঐচ্ছিক, সর্বোচ্চ {max}টি)",
+    "updateReview": "রিভিউ আপডেট করুন",
+    "submitReview": "রিভিউ প্রকাশ করুন",
+    "rateItemsTitle": "আপনার খাবার রেটিং দিন",
+    "rateItemsSub": "কেমন ছিল? আপনার রেটিং অন্য গ্রাহকদের বেছে নিতে সাহায্য করে।",
+    "restore": "ফিরিয়ে আনুন",
+    "hide": "লুকান",
+    "flag": "মার্কেটিংকে জানান",
+    "flaggedForMarketing": "মার্কেটিংকে জানানো হয়েছে",
+    "hideReasonPlaceholder": "কারণ (স্প্যাম, গালাগালি, অপ্রাসঙ্গিক…)",
+    "flagReasonPlaceholder": "মার্কেটিং কী দেখবে? (ঐচ্ছিক)",
+    "reasonLabel": "কারণ",
+    "adminTitle": "পণ্যের রিভিউ",
+    "adminSubModerator": "সব ব্রাঞ্চের পণ্যের রিভিউ। স্প্যাম, গালাগালি বা অপ্রাসঙ্গিক রিভিউ লুকান; লুকানো রিভিউ রেটিংয়ে গোনা হয় না।",
+    "adminSubManager": "আপনার ব্রাঞ্চের পণ্যের রিভিউ। মার্কেটিং টিমকে দেখার জন্য রিভিউ চিহ্নিত করুন।",
+    "filterBranch": "ব্রাঞ্চ অনুযায়ী",
+    "allBranches": "সব ব্রাঞ্চ",
+    "filterBrand": "ব্র্যান্ড অনুযায়ী",
+    "allBrands": "সব ব্র্যান্ড",
+    "filterRating": "রেটিং অনুযায়ী",
+    "allRatings": "সব রেটিং",
+    "nStars": "{n} তারা",
+    "filterHidden": "দৃশ্যমানতা অনুযায়ী",
+    "visibleAndHidden": "দৃশ্যমান ও লুকানো",
+    "visibleOnly": "শুধু দৃশ্যমান",
+    "hiddenOnly": "শুধু লুকানো",
+    "filterFlagged": "চিহ্ন অনুযায়ী",
+    "flaggedAny": "চিহ্নিত বা না",
+    "flaggedOnly": "শুধু চিহ্নিত",
+    "notFlagged": "চিহ্নিত নয়",
+    "applyFilters": "প্রয়োগ",
+    "clear": "মুছুন",
+    "countN": "{n}টি রিভিউ",
+    "adminEmpty": "কোনো রিভিউ মেলেনি",
+    "adminEmptyDesc": "অন্য ফিল্টার দিন, বা আরও অর্ডার ডেলিভারির পর দেখুন।",
+    "hiddenBadge": "লুকানো",
+    "flaggedBadge": "চিহ্নিত",
+    "flagReasonShown": "চিহ্ন: {reason}",
+    "hiddenReasonShown": "লুকানোর কারণ: {reason}",
+    "pagination": "রিভিউ পাতা",
+    "pageOf": "পাতা {page} / {pages}",
+    "basedOnOne": "১টি রিভিউ",
+    "countOne": "১টি রিভিউ"
   },
   "settings": {
     "title": "সেটিংস",
@@ -4699,5 +4782,18 @@
   },
   "orderStatusDelivery": {
     "ready": "রাইডারের জন্য প্রস্তুত"
+  },
+  "upload": {
+    "clickOrDrag": "আপলোড করতে ক্লিক করুন বা টেনে আনুন",
+    "replace": "বদলাতে ক্লিক করুন বা টেনে আনুন",
+    "preview": "নির্বাচিত ছবি",
+    "previewN": "ছবি {n}",
+    "removeN": "ছবি {n} সরান",
+    "removeNew": "{name} সরান",
+    "wrongType": "এই ধরনের ফাইল চলবে না। {types} ব্যবহার করুন।",
+    "tooLarge": "{name} খুব বড়। প্রতিটি ছবির সীমা {mb} এমবি।",
+    "tooMany": "সর্বোচ্চ {max}টি ছবি যোগ করা যায়।",
+    "countOf": "{max}টির মধ্যে {n}টি ছবি",
+    "photoHint": "JPG, PNG, WebP বা AVIF, প্রতিটি সর্বোচ্চ {mb} এমবি"
   }
 }

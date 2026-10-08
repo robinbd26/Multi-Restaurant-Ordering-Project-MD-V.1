@@ -37,6 +37,7 @@ import { markChatEndedInTx, openChatInTx, recordRiderChangeInTx } from "@/lib/se
 import { nextOrderNumber } from "@/lib/services/order-number";
 import { customerProductWhere } from "@/lib/services/product-eligibility";
 import { resolveOrderDeliveryArea } from "@/lib/services/delivery-areas";
+import { inviteToReview } from "@/lib/services/product-reviews";
 import { BRANCH_BRANDS_INCLUDE } from "@/lib/brands/branch";
 import { productSaleBrands } from "@/lib/services/product-eligibility";
 import type { OrderStatus } from "@/types";
@@ -1044,6 +1045,9 @@ async function afterStatusChange(args: {
     params: { id: order.id, status: statusParam(newStatus, order) },
     link: `/customer/orders/${order.id}`,
   });
+  // Delivered / Collected: invite the customer to rate what they ate. Runs in
+  // afterStatusChange, which a repeated status (a no-op) never reaches.
+  if (newStatus === "delivered") await inviteToReview(order);
 
   // The branch's managers follow the rider leg live.
   if (actor.role === "rider") {

@@ -68,6 +68,11 @@ export interface MenuItem {
    * card never renders an untranslated label or a raw key.
    */
   badgeKey?: "popular" | "recommended";
+  /**
+   * Average of the product's VISIBLE reviews (one decimal) and how many there
+   * are. Absent when it has none, so the card shows nothing rather than "0".
+   */
+  rating?: { average: number; count: number };
   spicy?: boolean;
   /** When present, the card opens a "Choose Size" modal instead of adding directly. */
   sizes?: SizeOption[];

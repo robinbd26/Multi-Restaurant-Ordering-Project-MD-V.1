@@ -306,20 +306,48 @@ model RiderReview {
   @@index([riderId])
 }
 
+// PRODUCT REVIEW (the table kept its original name). One per customer per
+// product (20261008110000): a customer who ordered the dish again edits their
+// review instead of piling up duplicates. Eligibility (enforced in
+// lib/services/product-reviews.ts): the customer has a Delivered or Collected
+// order (both stored as "delivered") containing this product. `orderId` is the
+// order that made them eligible most recently.
+//
+// A product belongs to one branch, so a review belongs to that product, branch
+// and brand; `branchId` / `brand` are snapshots taken at write time so the
+// moderation filters do not depend on later catalogue edits.
 model FoodReview {
-  id         Int      @id @default(autoincrement())
-  orderId    Int
-  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId  Int
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  customerId Int
-  customer   User     @relation("FoodReviewCustomer", fields: [customerId], references: [id], onDelete: Cascade)
-  rating     Int // 1-5
-  comment    String   @default("")
-  createdAt  DateTime @default(now())
+  id           Int       @id @default(autoincrement())
+  orderId      Int
+  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    Int
+  product      Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customerId   Int
+  customer     User      @relation("FoodReviewCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  rating       Int // 1-5
+  comment      String    @default("")
+  // JSON array of up to 3 storage keys in "review_photos/" (private folder,
+  // served by /api/reviews/[id]/photos/[n], which refuses hidden reviews).
+  photos       String    @default("[]")
+  branchId     Int?
+  brand        String    @default("")
+  // Moderation. Hidden reviews stay in the database but never count toward
+  // the rating and are never shown to customers. Marketing / super admin only.
+  isHidden     Boolean   @default(false)
+  hiddenAt     DateTime?
+  hiddenById   Int?
+  hiddenReason String    @default("")
+  // A branch manager's "please look at this" for marketing. Cleared when
+  // marketing hides or restores the review.
+  flaggedAt    DateTime?
+  flaggedById  Int?
+  flagReason   String    @default("")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
 
-  @@unique([orderId, productId])
-  @@index([productId])
+  @@unique([customerId, productId])
+  @@index([productId, isHidden])
+  @@index([branchId])
 }
 
 // ── Money flow ──────────────────────────────────────────────────────────
