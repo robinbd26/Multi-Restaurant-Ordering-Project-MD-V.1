@@ -4782,7 +4782,7 @@
     "notSetTitle": "No hours set, closed to customers",
     "notSetBody": "Customers cannot order this brand here until you set its hours.",
     "setHours": "Set hours",
-    "clearHours": "Clear these hours (no time limit)",
+    "clearHours": "Clear these hours (closed until hours are set again)",
     "dineInTitle": "Dine-in hours",
     "dineInSub": "Shown to customers only. The app does not take dine-in orders.",
     "showDineIn": "Show dine-in hours",
