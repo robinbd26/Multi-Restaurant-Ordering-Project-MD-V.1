@@ -57,7 +57,9 @@ If this session was interrupted: read the Status list, continue at the first unc
 - [x] New/updated e2e: `bbd3d71` (spec 76 + delivery-areas-management rewrite). 76: 5/5 pass.
 - [x] Finishing: related e2e runs against a main baseline (`308399e`, `ec73c4f`), role walkthrough on a production
       build (bug found and fixed in `61fed09`), final checks, this report.
-- [ ] Follow-up: Bengali guide + screenshots, push branch, conditional merge to main (see the last section).
+- [x] Follow-up: Bengali guide + 29 screenshots (`8b8ff25`). Three small bugs found while taking the screenshots,
+      fixed in their own commits: `00e98e1`, `ad6b7d2`, `8d36237` (see "Found while writing the guide").
+- [ ] Follow-up: push branch, conditional merge to main (see the last section).
 
 ## Decisions
 
@@ -208,6 +210,30 @@ If this session was interrupted: read the Status list, continue at the first unc
   build folder). A stale `.next-e2e/types` from 26 Sep still listed the deleted time-slot routes and broke
   `npm run build`. I deleted only `.next-e2e/types` (generated, git-ignored). If Robin's build fails the same way:
   delete `.next-e2e/types` (or the whole `.next-e2e` folder).
+
+## Found while writing the guide (fixed)
+- `00e98e1` **hours editor label:** "Clear these hours (no time limit)" still described the old meaning. Since
+  `f3edb12` no hours = closed, so a manager pressing it closed the brand while told it would be open around the
+  clock. Label (en + bn) now says it stays closed until hours are set again.
+- `ad6b7d2` **seed sample review:** the seed created its food review without the `branchId`/`brand` that
+  `4990a60` added, so on a freshly seeded DB the branch manager's Product Reviews did not list it (marketing did).
+  It now snapshots both and upserts on the one-per-customer-per-product key. Existing DBs were already backfilled by
+  the migration; only fresh seeds were affected.
+- `8d36237` **Night Pickup note:** `10432aa` said "Home delivery ends at {time}. After that, order for pickup" without
+  checking pickup runs later. With the demo hours (Cheez delivery to 4 AM, pickup to 11 PM) the homepage told
+  customers to pick up after 4 AM while the cards said pickup closes at 11 PM. The note now shows only when pickup
+  really closes after delivery.
+- Re-verified after these: `npx tsc --noEmit` clean, eslint on the touched files clean, `npm run build` passes,
+  `npm run test:unit` 82/82, `npm run test:e2e:prepare` (seed on the test DB) OK, e2e 74 + 76: 8/8 pass.
+
+## Bengali guide
+- `docs/guide/mad-delivery-guide-bn.md` + `docs/guide/images/` (29 PNGs, 1440x900, ~6 MB).
+- Screenshots come from a scratch `prisma/guide.db` (git-ignored): `migrate deploy` + the normal `npm run seed`, served by
+  the production build through Playwright. `dev.db` was not touched (checksum compared before/after; an extra backup
+  `backups/dev.db.2026-10-08T17-39-24Z.pre-guide-screenshots.bak` was taken anyway). Only seeded demo data is visible;
+  no keys or .env values. The demo password is not written in the guide (it points to `docs/HANDOVER.md`).
+- The screenshot script was temporary and is not committed.
+- `docs/location-zones-checkout-fees-coupons-bn.md` got a top note pointing to the new guide for the rules that changed.
 
 ## Backups (not committed)
 - `backups/dev.db.2026-10-08T11-04-54Z.pre-reviews-complaints-addresses.bak` (before any migration this round).
