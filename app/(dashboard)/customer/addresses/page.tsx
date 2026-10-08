@@ -2,11 +2,8 @@ import type { Metadata } from "next";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { AddressManager, type AddressT } from "@/components/customer/address-manager";
-import { LocationPermissionCard } from "@/components/customer/location-permission-card";
 import { getJSON } from "@/lib/api/client";
 import { requireRole } from "@/lib/auth/session";
-import { getSessionUser } from "@/lib/auth/current-user";
-import { customerLocationStatus } from "@/lib/services/customer-location";
 import { getT } from "@/lib/i18n/server";
 import type { Paginated } from "@/types";
 
@@ -15,25 +12,19 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("pages.addressesTitle") };
 }
 
-/** /customer/addresses — multi-address book (Home / Office / Second Home / custom). */
+/**
+ * /customer/addresses — the saved-address book (up to 5), and only that. Live
+ * location is chosen on the storefront ("Choose your current location"), so
+ * this page no longer carries its own live-location card.
+ */
 export default async function CustomerAddressesPage() {
   const { t } = await getT();
   await requireRole("customer");
-  const me = (await getSessionUser())!;
-  const [data, location] = await Promise.all([
-    getJSON<Paginated<AddressT>>("/customer/addresses/"),
-    customerLocationStatus(me.id),
-    // The master list the coverage rules match against, so the area a customer
-    // picks here is the same name a branch ticks in Delivery Areas.
-  ]);
+  const data = await getJSON<Paginated<AddressT>>("/customer/addresses/");
 
   return (
     <>
       <PageHeader title={t("pages.addressesTitle")} subtitle={t("addresses.subtitle")} />
-      {/* Live GPS location — kept SEPARATE from the saved-address book (req #12/#21). */}
-      <div className="mb-6">
-        <LocationPermissionCard initial={location} />
-      </div>
       <AddressManager addresses={data.results} />
     </>
   );

@@ -49,5 +49,7 @@ export function nicknameDisplay(
   const { kind, custom } = nicknameFromLabel(address.label, address.custom_label);
   if (kind === "home") return t("addresses.nicknameHome");
   if (kind === "office") return t("addresses.nicknameOffice");
+  // "Other" saved without a name reads as "Other", not the stored "Others".
+  if (address.label === "Others") return custom || t("addresses.nicknameCustom");
   return custom || address.display_label || address.label;
 }
