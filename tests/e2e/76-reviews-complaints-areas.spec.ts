@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { activeZoneId, apiLogin, branchMap, openBranchAllDay } from "./helpers";
+import { activeZoneId, apiLogin, archiveBranch, branchMap, openBranchAllDay } from "./helpers";
 
 /**
  * Reviews, complaints and delivery areas round (server rules, API level):
@@ -18,6 +18,17 @@ import { activeZoneId, apiLogin, branchMap, openBranchAllDay } from "./helpers";
  */
 
 const uniq = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+
+// Fresh branches sit far from every Dhaka fixture (so they never become another
+// spec's nearest branch) and are archived after each test.
+const FAR = { lat: 22.35, lng: 91.8 };
+const created: number[] = [];
+test.afterEach(async ({ browser }) => {
+  if (!created.length) return;
+  const admin = await apiLogin(browser, "super_admin");
+  for (const id of created.splice(0)) await archiveBranch(admin.req, id);
+  await admin.context.close();
+});
 
 async function product(admin: APIRequestContext, branchId: number, brand = "madchef") {
   const res = await admin.post("/api/products/", {
@@ -47,13 +58,14 @@ async function newBranch(admin: APIRequestContext, open: boolean) {
       address: "Dhaka",
       phone: "01711119991",
       brands: "madchef",
-      latitude: "23.78",
-      longitude: "90.41",
+      latitude: String(FAR.lat),
+      longitude: String(FAR.lng),
       pickup_enabled: "true",
     },
   });
   expect(res.status(), await res.text()).toBe(201);
   const branch = (await res.json()) as { id: number; name: string };
+  created.push(branch.id);
   if (open) await openBranchAllDay(admin, branch.id, ["madchef"]);
   return branch;
 }
@@ -210,7 +222,7 @@ test.describe("reviews, complaints and delivery areas", () => {
     const admin = await apiLogin(browser, "super_admin");
     const customer = await apiLogin(browser, "customer");
     const branch = await newBranch(admin.req, true);
-    const circle = (km: number) => JSON.stringify({ type: "Circle", coordinates: [90.41, 23.78], radiusKm: km });
+    const circle = (km: number) => JSON.stringify({ type: "Circle", coordinates: [FAR.lng, FAR.lat], radiusKm: km });
 
     const first = await admin.req.post("/api/delivery-areas/", { data: { branch_id: branch.id, shape: circle(2), delivery_charge: "50", estimated_delivery_minutes: 40 } });
     expect(first.status(), await first.text()).toBe(201);
@@ -222,7 +234,7 @@ test.describe("reviews, complaints and delivery areas", () => {
     expect(((await again.json()) as { id: number }).id).toBe(area.id);
 
     const check = async () =>
-      (await (await customer.req.post("/api/delivery/address-coverage", { data: { branch_id: branch.id, lat: 23.78, lng: 90.41 } })).json()) as {
+      (await (await customer.req.post("/api/delivery/address-coverage", { data: { branch_id: branch.id, lat: FAR.lat, lng: FAR.lng } })).json()) as {
         covered: boolean;
         status: string;
         reason: string;
@@ -231,7 +243,7 @@ test.describe("reviews, complaints and delivery areas", () => {
     expect((await check()).covered).toBe(true);
 
     const block = await admin.req.post(`/api/delivery-areas/${area.id}/exclusions`, {
-      data: { shape: JSON.stringify({ type: "Circle", coordinates: [90.41, 23.78], radiusKm: 0.3 }), reason: "Road closed" },
+      data: { shape: JSON.stringify({ type: "Circle", coordinates: [FAR.lng, FAR.lat], radiusKm: 0.3 }), reason: "Road closed" },
     });
     expect(block.status(), await block.text()).toBe(201);
     const blocked = await check();

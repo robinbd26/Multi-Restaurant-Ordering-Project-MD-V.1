@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, isDhakaFullClosureWindow, FULL_CLOSURE_REASON, activeZoneId, branchMap } from "./helpers";
+import { newSession, API_BASE, inNightOrderBlackout, NIGHT_BLACKOUT_REASON, isDhakaFullClosureWindow, FULL_CLOSURE_REASON, activeZoneId, branchMap, openBranchAllDay } from "./helpers";
 
 /**
  * REQ #4  product variation type (Thick / Thin / Both)
@@ -331,18 +331,23 @@ test.describe("#11 customer branch search", () => {
     }
   });
 
-  test("a delivery-area name finds its branch", async ({ browser }) => {
+  // Delivery areas have no names of their own any more (one area per branch,
+  // named after the branch), so "find a branch by its area's name" is the same
+  // as finding it by its own name, and a typed area name is ignored.
+  test("a branch's area carries the branch name, and that name finds the branch", async ({ browser }) => {
     const admin = await newSession(browser, "super_admin");
     const customer = await newSession(browser, "customer");
     await seedCustomerLocation(customer.req);
     const main = (await branchMap(admin.req))["Main Branch"];
-    const areaName = uniq("SearchArea");
-    await admin.req.post(`${API_BASE}/api/delivery-areas/`, {
-      data: { branch_id: main, name: areaName, estimated_delivery_minutes: 30, delivery_charge: 20 },
+    const saved = await admin.req.post(`${API_BASE}/api/delivery-areas/`, {
+      data: { branch_id: main, name: uniq("TypedName") },
     });
+    expect(saved.status()).toBe(200);
+    const area = (await saved.json()) as { name: string };
+    expect(area.name, "the typed name is ignored").toBe("Main Branch");
 
-    const { results } = await (await customer.req.get(`${API_BASE}/api/branches/?search=${encodeURIComponent(areaName)}`)).json();
-    expect(results.some((b: { id: number }) => b.id === main), "found by delivery-area name").toBe(true);
+    const { results } = await (await customer.req.get(`${API_BASE}/api/branches/?search=${encodeURIComponent(area.name)}`)).json();
+    expect(results.some((b: { id: number }) => b.id === main), "found by its (area) name").toBe(true);
   });
 
   test("no-results is empty (never a fallback branch) and search cannot bypass archived/inactive filters", async ({ browser }) => {
@@ -459,6 +464,8 @@ test.describe("#7/#10 nearest branch + delivery area validation", () => {
       },
     })).json();
     expect(foreignBranch.id, "fresh foreign branch").toBeTruthy();
+    // No hours set = closed (reviews-complaints-addresses round): open it all day.
+    await openBranchAllDay(admin.req, foreignBranch.id);
 
     const { results: products } = await (await admin.req.get(`${API_BASE}/api/products/?branch_id=${main}&page_size=50`)).json();
     const product = products.find((p: { variation_type: string }) => p.variation_type !== "BOTH") ?? products[0];

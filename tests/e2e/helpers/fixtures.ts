@@ -154,3 +154,62 @@ export async function openBranchAllDay(req: APIRequestContext, branchId: number,
   });
   if (!res.ok()) throw new Error(`openBranchAllDay(${branchId}) failed: ${res.status()} ${await res.text()}`);
 }
+
+/**
+ * A fresh, open (all-day hours) single-brand branch centred on `point`, with
+ * one orderable product and its ONE delivery area: a circle of `radiusKm`
+ * around the branch. Since a branch has exactly one area, tests that hold,
+ * edit or block an area use this instead of touching a seeded branch, whose
+ * area every other spec depends on. `req` must be a super admin.
+ */
+export async function freshDeliveryBranch(
+  req: APIRequestContext,
+  point: { lat: number; lng: number },
+  opts: { radiusKm?: number; charge?: number; minutes?: number } = {},
+): Promise<{ branch: { id: number; name: string }; product: { id: number }; area: { id: number; name: string } }> {
+  const stamp = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+  const created = await req.post(`${API_BASE}/api/branches/`, {
+    multipart: {
+      zone_id: String(await activeZoneId(req)),
+      name: `AreaBr-${stamp}`,
+      address: "Area Rd, Dhaka",
+      phone: `017${Math.floor(10000000 + Math.random() * 89999999)}`,
+      brand_type: "cheez",
+      latitude: String(point.lat),
+      longitude: String(point.lng),
+      delivery_radius_km: "5",
+      pickup_enabled: "true",
+    },
+  });
+  if (created.status() !== 201) throw new Error(`branch: ${created.status()} ${await created.text()}`);
+  const branch = (await created.json()) as { id: number; name: string };
+  await openBranchAllDay(req, branch.id);
+  const prod = await req.post(`${API_BASE}/api/products/`, {
+    multipart: {
+      branch_id: String(branch.id),
+      name: `AreaP-${stamp}`,
+      variation_type: "THICK",
+      variations: JSON.stringify([{ name: "Regular", price: 200, isDefault: true, isEnabled: true }]),
+    },
+  });
+  if (prod.status() !== 201) throw new Error(`product: ${prod.status()} ${await prod.text()}`);
+  const area = await req.post(`${API_BASE}/api/delivery-areas/`, {
+    data: {
+      branch_id: branch.id,
+      shape: JSON.stringify({ type: "Circle", coordinates: [point.lng, point.lat], radiusKm: opts.radiusKm ?? 2 }),
+      delivery_charge: String(opts.charge ?? 60),
+      estimated_delivery_minutes: opts.minutes ?? 40,
+    },
+  });
+  if (area.status() !== 201) throw new Error(`area: ${area.status()} ${await area.text()}`);
+  return { branch, product: (await prod.json()) as { id: number }, area: (await area.json()) as { id: number; name: string } };
+}
+
+/**
+ * Archive a branch a spec created, so the persistent test DB does not pile up
+ * live fixture branches (they would crowd the customer's branch list and, if
+ * they deliver, compete in nearest-branch ranking for other specs).
+ */
+export async function archiveBranch(req: APIRequestContext, branchId: number): Promise<void> {
+  await req.post(`${API_BASE}/api/branches/${branchId}/archive`);
+}
