@@ -126,6 +126,49 @@ function rng(seed: number) {
 const rand = rng(20261012);
 const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)];
 
+// ── Opening hours on the Dhaka clock, for dating "today's" sample orders ──
+const DHAKA_OFFSET_MS = 6 * 3_600_000;
+const DAY_MS = 86_400_000;
+const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
+const dhakaMinute = (t: number) => Math.floor(((t + DHAKA_OFFSET_MS) % DAY_MS) / 60_000);
+
+/** Is this brand taking orders at instant t (seed:real hours, Dhaka clock)? */
+function brandOpenAt(slug: string, t: number): boolean {
+  const h = BRAND_HOURS[slug as keyof typeof BRAND_HOURS];
+  if (!h) return false;
+  const start = toMinutes(h.start);
+  const end = toMinutes(h.end);
+  const m = dhakaMinute(t);
+  return end > start ? m >= start && m < end : m >= start || m < end;
+}
+const allOpenAt = (brands: string[], t: number) => brands.every((b) => brandOpenAt(b, t));
+
+/** How many minutes (up to cap) every brand has been open, without a break, until now. */
+function openFor(brands: string[], now: number, cap: number): number {
+  let m = 0;
+  while (m < cap && allOpenAt(brands, now - (m + 1) * 60_000)) m += 1;
+  return m;
+}
+
+/**
+ * A moment earlier TODAY (Dhaka) when every brand was open for the whole
+ * `span` minutes, finished at least 10 minutes before now. Searches back from
+ * `fromAgo` minutes ago. Null when there is none.
+ */
+function earlierToday(brands: string[], now: number, span: number, fromAgo: number): number | null {
+  const midnight = now - ((now + DHAKA_OFFSET_MS) % DAY_MS);
+  const fits: number[] = [];
+  for (let ago = fromAgo; now - ago * 60_000 >= midnight; ago += 7) {
+    const t = now - ago * 60_000;
+    if (t + (span + 10) * 60_000 > now) continue;
+    let ok = true;
+    for (let m = 0; m <= span && ok; m += 5) ok = allOpenAt(brands, t + m * 60_000);
+    if (ok) fits.push(t);
+  }
+  // Spread the orders over the window rather than stacking them on one minute.
+  return fits.length ? fits[Math.floor(rand() * Math.min(fits.length, 30))] : null;
+}
+
 // ── Guards ────────────────────────────────────────────────────────────────
 function assertAllowedHere(): void {
   if (process.env.NODE_ENV !== "production") return;
@@ -450,6 +493,8 @@ interface PlacedOrder {
   placedAt: Date;
   /** Minutes after placedAt for each status event, in order. */
   steps: number[];
+  /** When set, the steps are squeezed to end within this many minutes. */
+  maxSpan?: number;
 }
 
 async function orderWithBranch(id: number) {
@@ -642,17 +687,35 @@ async function main() {
 
     for (const [j, plan] of plans.entries()) {
       const isActive = ["pending", "accepted", "preparing", "ready", "on_the_way"].includes(plan);
-      // A few deliveries finished earlier today, so "today" on the dashboards is not empty.
-      const doneToday = plan === "delivered" && j === 0 && (def.key === "uttara" || i % 4 === 1);
       const customer = near[(i + j) % near.length];
-      const daysAgo = isActive || doneToday ? 0 : 1 + Math.floor(rand() * 13);
-      // Active orders: placed 40–100 minutes ago, so every step is in the past;
-      // today's finished ones 2.5–4 hours ago. Older ones: between noon and
-      // 9 PM Dhaka time (UTC+6) on their day.
-      const placedAt = isActive
-        ? new Date(now - (40 + Math.floor(rand() * 60)) * 60_000)
-        : doneToday
-          ? new Date(now - (150 + Math.floor(rand() * 90)) * 60_000)
+      // Every "today" timestamp sits inside the real opening hours of the
+      // brands in the cart (Dhaka clock), whatever time the seed runs.
+      let cartBrands: string[] = def.brands;
+      let todayAt: number | null = null;
+      let maxSpan: number | undefined;
+      if (isActive) {
+        // Placed 40–100 minutes ago, but never before the brands opened; a
+        // branch that opened recently gets its steps squeezed into that time.
+        const wanted = 40 + Math.floor(rand() * 60);
+        const open = openFor(def.brands, now, 100);
+        const ago = wanted <= open ? wanted : Math.max(5, open - Math.floor(rand() * Math.min(20, Math.max(0, open - 5))));
+        todayAt = now - ago * 60_000;
+        maxSpan = ago - 2;
+      } else if (plan === "delivered" && j === 0 && (def.key === "uttara" || i % 4 === 1)) {
+        // A few deliveries finished earlier today, so "today" on the dashboards
+        // is not ৳0. Shortly after opening that is Cheez's overnight window
+        // (it delivers until 4 AM), so those carts are Cheez only.
+        todayAt = earlierToday(def.brands, now, 52, 150);
+        if (todayAt == null && def.brands.includes("cheez")) {
+          todayAt = earlierToday(["cheez"], now, 52, 150);
+          if (todayAt != null) cartBrands = ["cheez"];
+        }
+      }
+      // Older orders: between noon and 9 PM Dhaka time (UTC+6) on their day.
+      const daysAgo = 1 + Math.floor(rand() * 13);
+      const placedAt =
+        todayAt != null
+          ? new Date(todayAt)
           : new Date(new Date(now - daysAgo * 86_400_000).setUTCHours(12 + Math.floor(rand() * 9) - 6, Math.floor(rand() * 60), 0, 0));
       const useCoupon = plan === "delivered" && (i + j) % 3 === 0 && couponUses < 7;
       if (useCoupon) couponUses += 1;
@@ -661,7 +724,7 @@ async function main() {
       const order = await createOrder({
         customerId: customer.user.id,
         branchId: bId,
-        items: await cartFor(bId, def.brands, 1 + Math.floor(rand() * 2)),
+        items: await cartFor(bId, cartBrands, 1 + Math.floor(rand() * 2)),
         paymentMethod: "cash",
         deliveryAddress: pickup ? "" : customer.address.address,
         fulfillmentType: pickup ? "pickup" : "delivery",
@@ -674,33 +737,33 @@ async function main() {
       const customerUser = customer.user;
 
       if (plan === "pending") {
-        placed.push({ id: order.id, plan, placedAt, steps });
+        placed.push({ id: order.id, plan, placedAt, steps, maxSpan });
         continue;
       }
       if (plan === "cancelled") {
         await move(order.id, "cancelled", manager, pick(["এই আইটেমটি এখন স্টকে নেই।", "Kitchen closed early due to a power cut.", "গ্রাহকের ফোন বন্ধ, ঠিকানা নিশ্চিত করা যায়নি।"]));
         steps.push(6);
-        placed.push({ id: order.id, plan, placedAt, steps });
+        placed.push({ id: order.id, plan, placedAt, steps, maxSpan });
         continue;
       }
       await move(order.id, "accepted", manager);
       steps.push(3);
       if (!pickup) await sendChatMessage(manager, order.id, { text: CHAT.manager[0] });
       if (plan === "accepted") {
-        placed.push({ id: order.id, plan, placedAt, steps });
+        placed.push({ id: order.id, plan, placedAt, steps, maxSpan });
         continue;
       }
       await move(order.id, "preparing", manager);
       steps.push(6);
       if (plan === "preparing") {
-        placed.push({ id: order.id, plan, placedAt, steps });
+        placed.push({ id: order.id, plan, placedAt, steps, maxSpan });
         continue;
       }
       if (pickup) {
         await move(order.id, "ready", manager);
         await move(order.id, "delivered", manager);
         steps.push(24, 41);
-        placed.push({ id: order.id, plan, placedAt, steps });
+        placed.push({ id: order.id, plan, placedAt, steps, maxSpan });
         continue;
       }
       // Delivery: the rider leg.
@@ -709,7 +772,7 @@ async function main() {
       await move(order.id, "ready", manager);
       steps.push(24);
       if (plan === "ready") {
-        placed.push({ id: order.id, plan, placedAt, steps });
+        placed.push({ id: order.id, plan, placedAt, steps, maxSpan });
         continue;
       }
       await move(order.id, "picked_up", rider);
@@ -718,12 +781,12 @@ async function main() {
       await sendChatMessage(rider, order.id, { text: pick(CHAT.rider) });
       steps.push(31, 33);
       if (plan === "on_the_way") {
-        placed.push({ id: order.id, plan, placedAt, steps });
+        placed.push({ id: order.id, plan, placedAt, steps, maxSpan });
         continue;
       }
       await move(order.id, "delivered", rider);
       steps.push(52);
-      placed.push({ id: order.id, plan, placedAt, steps });
+      placed.push({ id: order.id, plan, placedAt, steps, maxSpan });
     }
   }
 
@@ -808,7 +871,9 @@ async function backdate(orders: PlacedOrder[]): Promise<void> {
     // The events in order; picked_up/on_the_way share the steps list with the
     // implicit ones, so stretch the times over however many there are.
     const events = order.statusEvents;
-    const times = events.map((_, i) => at(o, o.steps[Math.min(i, o.steps.length - 1)] ?? 3 + i * 5));
+    const lastStep = o.steps[o.steps.length - 1] ?? 0;
+    const squeeze = o.maxSpan != null && lastStep > o.maxSpan ? o.maxSpan / lastStep : 1;
+    const times = events.map((_, i) => at(o, (o.steps[Math.min(i, o.steps.length - 1)] ?? 3 + i * 5) * squeeze));
     for (const [i, e] of events.entries()) await prisma.orderStatusEvent.update({ where: { id: e.id }, data: { createdAt: times[i] } });
     const last = times.length ? times[times.length - 1] : o.placedAt;
     await prisma.order.update({ where: { id: o.id }, data: { createdAt: o.placedAt, updatedAt: last } });
@@ -842,15 +907,17 @@ async function backdate(orders: PlacedOrder[]): Promise<void> {
 
 /** Order numbers carry the date (ORD-YYYYMMDD-NNNNNN): renumber after backdating. */
 async function renumberOrders(): Promise<void> {
-  const orders = await prisma.order.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, createdAt: true } });
-  for (const o of orders) await prisma.order.update({ where: { id: o.id }, data: { orderNumber: `TMP-${o.id}` } });
+  // updatedAt is passed back unchanged: Prisma's @updatedAt would otherwise
+  // stamp every order with "now" and undo the backdating.
+  const orders = await prisma.order.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, createdAt: true, updatedAt: true } });
+  for (const o of orders) await prisma.order.update({ where: { id: o.id }, data: { orderNumber: `TMP-${o.id}`, updatedAt: o.updatedAt } });
   const counters = new Map<string, number>();
   for (const o of orders) {
     const d = o.createdAt;
     const key = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
     const seq = (counters.get(key) ?? 0) + 1;
     counters.set(key, seq);
-    await prisma.order.update({ where: { id: o.id }, data: { orderNumber: `ORD-${key}-${String(seq).padStart(6, "0")}` } });
+    await prisma.order.update({ where: { id: o.id }, data: { orderNumber: `ORD-${key}-${String(seq).padStart(6, "0")}`, updatedAt: o.updatedAt } });
   }
   await prisma.orderNumberCounter.deleteMany();
   for (const [dateKey, seq] of counters) await prisma.orderNumberCounter.create({ data: { dateKey, seq } });
