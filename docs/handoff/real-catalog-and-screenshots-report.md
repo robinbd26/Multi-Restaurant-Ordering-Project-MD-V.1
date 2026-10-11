@@ -9,9 +9,9 @@ If this session is resumed, read the **Status** section first and continue from 
 - [x] Setup: tree clean, on main, pulled (already up to date), branch `real-catalog-seed` created.
 - [x] Last-entry field: `Branch.dineInLastEntry` + migration `20261012100000` + editor + homepage display (commit `07d1d4b`).
 - [x] Parts 1–5 built as `npm run seed:real` (commits `8c7cc1a` menu content, `a34ea13` seed, `409559b` zone spelling, `c3bc4c7` README). Verified twice on a scratch copy of dev.db (`prisma/scratch-seed.db`, gitignored).
-- [ ] Run `npm run seed:real` on the real dev.db. **Waiting on purpose:** at 04:37 Dhaka both brands are closed (Cheez stops at 04:00, Madchef at 22:30) until 11:00. The seed dates "active" orders 40–100 minutes before it runs, so it is run after ~12:45 Dhaka; the customer screenshots and the order journey also need open brands.
+- [ ] Run `npm run seed:real` on the real dev.db at **11:30 Dhaka (05:30 UTC)**, per the developer's instruction (replaces the earlier 14:00 plan; that timer was cancelled). Before starting: `scripts/_opencheck.tmp.ts --planned` must show all 38 brand×channel combinations open (else wait until they open); after seeding, the same check against dev.db with the app's own `channelStatus`. Seed timestamps follow the real hours (commit `2500c74`): open orders after 11:00, today's finished orders in Cheez's overnight window (until 04:00), so today's sales are not ৳0.
 - [x] Part 6 tooling: `scripts/presentation/capture.mjs` (commit `15961c9`), dry-run end to end on the scratch DB (63 shots incl. the full journey).
-- [ ] Part 6: the real capture on dev.db (after re-seeding at ~14:00 Dhaka) + manifest, commit.
+- [ ] Part 6: the real capture on dev.db right after the 11:30 re-seed + manifest, commit.
 - [ ] Finishing: checks, push, tag, merge, push main
 
 ## Decisions log
