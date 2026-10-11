@@ -467,15 +467,19 @@ const CHAT = {
 };
 
 const REVIEWS: [number, string][] = [
-  [5, "পিৎজাটা একদম গরম আর চিজি ছিল, দারুণ!"],
+  [5, "দারুণ স্বাদ, আবার অর্ডার করব।"],
   [5, "Loved it. Will order again."],
   [4, "খুব ভালো, তবে আরেকটু ঝাল হলে ভালো লাগত।"],
-  [5, "Perfectly crispy, great sauce."],
+  [5, "Exactly like the picture, and still hot."],
   [4, "Good portion for the price."],
   [3, "স্বাদ ভালো, কিন্তু ডেলিভারিতে একটু দেরি হয়েছে।"],
-  [5, "বার্গারের প্যাটি খুব জুসি ছিল।"],
-  [4, "Nice and fresh."],
+  [5, "গরম গরম পেয়েছি, খুব ভালো লেগেছে।"],
+  [4, "Fresh and well packed."],
 ];
+
+/** Categories of the dishes people order (and review); not drinks, extras or sauces. */
+const MAIN_CATEGORIES = /^(Classic Pizzas|More For Less Pizzas|Gourmet Pizzas|Pizza Combos|Pasta|Pizza Boats|Appetizers|Classic Burgers|Gourmet Burgers|Wraps|Poutines|Rice Meals|Teasers|Crispy Chicken)$/;
+const DRINK_CATEGORIES = /^(Drinks|Mocktails|Shakes|Carbonated Beverages)$/;
 
 /** A couple of dishes from what the branch sells, deterministic per order. */
 async function cartFor(branchId: number, brands: string[], n: number): Promise<OrderItemInput[]> {
@@ -484,7 +488,7 @@ async function cartFor(branchId: number, brands: string[], n: number): Promise<O
     include: { category: true, variations: { where: { isEnabled: true }, orderBy: { sortOrder: "asc" } } },
     orderBy: { id: "asc" },
   });
-  const mains = products.filter((p) => /Pizza|Burger|Rice|Wrap|Poutine|Combo|Pasta|Crispy|Boat/.test(p.category?.name ?? ""));
+  const mains = products.filter((p) => MAIN_CATEGORIES.test(p.category?.name ?? ""));
   const pool = mains.length ? mains : products;
   const lines: OrderItemInput[] = [];
   const used = new Set<number>();
@@ -501,7 +505,7 @@ async function cartFor(branchId: number, brands: string[], n: number): Promise<O
     });
   }
   // A drink with most orders.
-  const drinks = products.filter((p) => /Tea|Lime|Mojito|Shake|Coffee|Can|Punk|Limeade|Caipirinha|Special|Milo/.test(p.name));
+  const drinks = products.filter((p) => DRINK_CATEGORIES.test(p.category?.name ?? ""));
   if (drinks.length && rand() < 0.7) lines.push({ product_id: pick(drinks).id, quantity: 1 });
   return lines;
 }
@@ -638,13 +642,18 @@ async function main() {
 
     for (const [j, plan] of plans.entries()) {
       const isActive = ["pending", "accepted", "preparing", "ready", "on_the_way"].includes(plan);
+      // A few deliveries finished earlier today, so "today" on the dashboards is not empty.
+      const doneToday = plan === "delivered" && j === 0 && (def.key === "uttara" || i % 4 === 1);
       const customer = near[(i + j) % near.length];
-      const daysAgo = isActive ? 0 : 1 + Math.floor(rand() * 13);
-      // Active orders: placed 40–100 minutes ago, so every step is in the past.
-      // Older ones: between noon and 9 PM Dhaka time (UTC+6) on their day.
+      const daysAgo = isActive || doneToday ? 0 : 1 + Math.floor(rand() * 13);
+      // Active orders: placed 40–100 minutes ago, so every step is in the past;
+      // today's finished ones 2.5–4 hours ago. Older ones: between noon and
+      // 9 PM Dhaka time (UTC+6) on their day.
       const placedAt = isActive
         ? new Date(now - (40 + Math.floor(rand() * 60)) * 60_000)
-        : new Date(new Date(now - daysAgo * 86_400_000).setUTCHours(12 + Math.floor(rand() * 9) - 6, Math.floor(rand() * 60), 0, 0));
+        : doneToday
+          ? new Date(now - (150 + Math.floor(rand() * 90)) * 60_000)
+          : new Date(new Date(now - daysAgo * 86_400_000).setUTCHours(12 + Math.floor(rand() * 9) - 6, Math.floor(rand() * 60), 0, 0));
       const useCoupon = plan === "delivered" && (i + j) % 3 === 0 && couponUses < 7;
       if (useCoupon) couponUses += 1;
       const pickup = plan === "pickup";
@@ -720,10 +729,15 @@ async function main() {
 
   // ── Reviews on delivered / collected orders ──
   let reviewCount = 0;
-  const done = await prisma.order.findMany({ where: { status: "delivered" }, include: { items: true, customer: true }, orderBy: { id: "asc" } });
+  const done = await prisma.order.findMany({
+    where: { status: "delivered" },
+    include: { items: { include: { product: { include: { category: true } } } }, customer: true },
+    orderBy: { id: "asc" },
+  });
   for (const [i, o] of done.entries()) {
     if (i % 4 === 3) continue; // not everyone leaves a review
-    for (const line of o.items.slice(0, i % 3 === 0 ? 2 : 1)) {
+    const dishes = o.items.filter((l) => MAIN_CATEGORIES.test(l.product.category?.name ?? ""));
+    for (const line of dishes.slice(0, i % 3 === 0 ? 2 : 1)) {
       const already = await prisma.foodReview.findUnique({ where: { customerId_productId: { customerId: o.customerId, productId: line.productId } } });
       if (already) continue;
       const [rating, comment] = REVIEWS[(i + reviewCount) % REVIEWS.length];
