@@ -179,6 +179,7 @@ function branchHoursFields(b: Branch & BranchWithBrandRows) {
   return {
     hours_today: branchTodaySpan({ brands: rows }, "any", dhakaMoment().day),
     dine_in_hours: parseDineInHours(b.dineInHours),
+    dine_in_last_entry: b.dineInLastEntry,
   };
 }
 

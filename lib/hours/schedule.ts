@@ -173,6 +173,17 @@ export function normaliseDineInHours(input: unknown): { hours: DineInHours | nul
   return { hours: { everyDay, days }, problems };
 }
 
+/**
+ * The dine-in "last guest entry" time: "HH:MM", or "" for none (display only).
+ * Anything else is a problem, reported like a bad slot time.
+ */
+export function normaliseLastEntry(input: unknown): { value: string; problem: HoursProblem | null } {
+  const value = typeof input === "string" ? input.trim() : "";
+  if (input == null || value === "") return { value: "", problem: null };
+  if (!TIME.test(value)) return { value: "", problem: { at: "dineIn.lastEntry", key: "errors.hours.badTime" } };
+  return { value, problem: null };
+}
+
 // ── Evaluation ───────────────────────────────────────────────────────────
 
 /** The slots that apply to a weekday: its override if it has one, else every-day. */

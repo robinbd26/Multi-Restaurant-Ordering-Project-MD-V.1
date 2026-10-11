@@ -54,9 +54,11 @@ export interface HoursEditorProps {
   businessType: string;
   brands: { brand: BrandInfo; hours: BrandHours | null }[];
   dineIn: DineInHours | null;
+  /** Dine-in last guest entry, "HH:MM" or "" (display only). */
+  dineInLastEntry: string;
 }
 
-export function HoursEditor({ branchId, branchName, businessType, brands, dineIn }: HoursEditorProps) {
+export function HoursEditor({ branchId, branchName, businessType, brands, dineIn, dineInLastEntry }: HoursEditorProps) {
   const { t, fmt, locale } = useTranslation();
   const router = useRouter();
   const [drafts, setDrafts] = useState<Record<string, BrandDraft>>(() =>
@@ -66,6 +68,7 @@ export function HoursEditor({ branchId, branchName, businessType, brands, dineIn
     shown: Boolean(dineIn?.everyDay.length),
     slots: dineIn?.everyDay.length ? dineIn.everyDay.map((s) => ({ ...s, key: k() })) : [{ key: k(), start: "11:00", end: "23:00" }],
   }));
+  const [lastEntry, setLastEntry] = useState(dineInLastEntry);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
@@ -92,6 +95,7 @@ export function HoursEditor({ branchId, branchName, businessType, brands, dineIn
         ]),
       ),
       dine_in: dine.shown ? { everyDay: dine.slots.map(({ start, end }) => ({ start, end })), days: {} } : null,
+      dine_in_last_entry: dine.shown ? lastEntry : "",
     };
     try {
       const res = await fetch(`/api/branches/${branchId}/hours`, {
@@ -310,6 +314,27 @@ export function HoursEditor({ branchId, branchName, businessType, brands, dineIn
               >
                 + {t("hours.addSlot")}
               </Button>
+              <div className="flex flex-wrap items-center gap-3 border-t border-border-base pt-3" data-testid="hours-dine-in-last-entry">
+                <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+                  {t("hours.lastEntry")}
+                  <Input
+                    type="time"
+                    value={lastEntry}
+                    className="h-9 w-32"
+                    aria-label={t("hours.lastEntry")}
+                    onChange={(e) => {
+                      setSaved(null);
+                      setLastEntry(e.target.value);
+                    }}
+                  />
+                </label>
+                {lastEntry ? (
+                  <button type="button" className="text-xs text-fg-muted hover:underline" onClick={() => setLastEntry("")}>
+                    {t("hours.lastEntryClear")}
+                  </button>
+                ) : null}
+                <span className="text-xs text-fg-subtle">{t("hours.lastEntryHint")}</span>
+              </div>
             </div>
           ) : null}
         </CardContent>

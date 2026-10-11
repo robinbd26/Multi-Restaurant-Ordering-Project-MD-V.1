@@ -214,6 +214,8 @@ export interface PublicHomeBranch {
     delivery: { start: string; end: string } | null;
     pickup: { start: string; end: string } | null;
     dineIn: { start: string; end: string } | null;
+    /** Dine-in last guest entry, "HH:MM"; null when dine-in is not shown today or none is set. */
+    dineInLastEntry: string | null;
     /** Per live brand, in display order. */
     brands: { slug: string; delivery: { start: string; end: string } | null; pickup: { start: string; end: string } | null }[];
   };
@@ -277,6 +279,7 @@ export async function publicHomeBranches(): Promise<PublicHomeBranch[]> {
         dineIn: dineInSlots.length
           ? { start: dineInSlots[0].start, end: dineInSlots[dineInSlots.length - 1].end }
           : null,
+        dineInLastEntry: dineInSlots.length && b.dineInLastEntry ? b.dineInLastEntry : null,
         brands: live.map((slug) => ({
           slug,
           delivery: branchTodaySpan(brandRow(slug), "delivery", at.day),
