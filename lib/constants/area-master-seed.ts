@@ -32,12 +32,13 @@ export const AREA_MASTER: AreaMasterZone[] = [
   { name: "Banani" },
   { name: "Gulshan" },
   { name: "Dhanmondi" },
-  { name: "Mohammodpur" },
+  { name: "Mohammadpur" },
   { name: "Khilgaon" },
   { name: "Bailey Road" },
   { name: "Mirpur" },
   { name: "Uttara" },
-  { name: "Basundhara" },
+  { name: "Bashundhara" },
+  { name: "Banasree" },
 ];
 
 /** Case/space-insensitive key for zone lookups. */
