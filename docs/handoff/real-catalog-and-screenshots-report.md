@@ -10,7 +10,8 @@ If this session is resumed, read the **Status** section first and continue from 
 - [x] Last-entry field: `Branch.dineInLastEntry` + migration `20261012100000` + editor + homepage display (commit `07d1d4b`).
 - [x] Parts 1–5 built as `npm run seed:real` (commits `8c7cc1a` menu content, `a34ea13` seed, `409559b` zone spelling, `c3bc4c7` README). Verified twice on a scratch copy of dev.db (`prisma/scratch-seed.db`, gitignored).
 - [ ] Run `npm run seed:real` on the real dev.db. **Waiting on purpose:** at 04:37 Dhaka both brands are closed (Cheez stops at 04:00, Madchef at 22:30) until 11:00. The seed dates "active" orders 40–100 minutes before it runs, so it is run after ~12:45 Dhaka; the customer screenshots and the order journey also need open brands.
-- [ ] Part 6: screenshots + manifest (script: `scripts/presentation/capture.mjs`)
+- [x] Part 6 tooling: `scripts/presentation/capture.mjs` (commit `15961c9`), dry-run end to end on the scratch DB (63 shots incl. the full journey).
+- [ ] Part 6: the real capture on dev.db (after re-seeding at ~14:00 Dhaka) + manifest, commit.
 - [ ] Finishing: checks, push, tag, merge, push main
 
 ## Decisions log
@@ -55,3 +56,9 @@ Every branch was searched on Barikoi (server side, `lib/services/geocoding.ts`, 
 **Please check by eye:** Cheez Mohammadpur (low) and the two Mirpur branches (Barikoi's name listings disagree with the client's addresses).
 
 **Identical-address pairs** (kept as separate branches with the address text as given; floors to be corrected in admin): Cheez/Madchef Dhanmondi, Cheez/Madchef Banani, Cheez/Madchef Bashundhara, Cheez/Madchef Khilgaon, Cheez/Madchef Banasree.
+
+## Verification so far
+
+- `npx tsc --noEmit`: passes. `npx eslint` on every touched file: passes. `npm run test:unit`: 83/83 pass (incl. the new last-entry test). `npm run check:i18n`: passes. `npm run build`: passes.
+- Related e2e specs (`74-brand-hours`, `full-page-audit/branch-manager-delivery`, `62-delivery-zones`, `55-nearest-branch-homepage`): 20 pass, 26 fail. **The same 26 fail on `main`** (I built main and ran the same specs as a baseline: identical list). They are pre-existing: spec 62 tests the retired locality list, spec 55 and the delivery audit expect older behaviour. Not caused by this branch; not fixed here.
+- seed:real ran 3 times on a scratch copy of dev.db: identical results, no leftover upload files (3648 = 1216 photos × 3 sizes).
