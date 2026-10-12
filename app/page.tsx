@@ -21,6 +21,7 @@ import { activeBrands } from "@/lib/services/brands";
 import type { Brand } from "@/lib/home/types";
 import { getCompanyLogoUrl } from "@/lib/services/settings";
 import { BranchBar, type BranchBarContext } from "@/components/home/BranchBar";
+import { GuestBranchBar } from "@/components/home/GuestBranchBar";
 import { readBrowseScope } from "@/lib/browse-scope/server";
 import { storefrontAvailability, storefrontCutoffs } from "@/lib/home/brand-availability";
 import { widest } from "@/lib/hours/spans";
@@ -129,8 +130,14 @@ export default async function HomePage() {
   // What the customer chose to look at — a saved address, or any live branch —
   // rides in a cookie. Absent or invalid, this resolves exactly as it did before.
   const branchContext = isCustomer ? await resolveHomeBranch(user.id, await readBrowseScope()) : null;
-  const menu =
-    catalogueMode === "customer_nearest_branch"
+  // A guest may also pick whose menu to look at (same cookie, view lens only),
+  // validated against the live public branch list; an unknown id is ignored and
+  // the guest sees the one-menu-per-brand showcase.
+  const guestBranchId = !user ? (await readBrowseScope()).branchId : null;
+  const guestBranch = guestBranchId != null ? (branches.find((b) => b.id === guestBranchId) ?? null) : null;
+  const menu = guestBranch
+    ? await branchMenu(guestBranch.id)
+    : catalogueMode === "customer_nearest_branch"
       ? branchContext?.branchId != null
         ? await branchMenu(branchContext.branchId)
         : branchContext != null && browsesWithoutLocation(branchContext)
@@ -151,7 +158,7 @@ export default async function HomePage() {
   const liveBrands = await activeBrands();
   const storefrontBrands = brandsForStorefront(
     liveBrands,
-    branchContext?.state === "ok" && branchContext.branch ? branchContext.branch.brands : null,
+    branchContext?.state === "ok" && branchContext.branch ? branchContext.branch.brands : (guestBranch?.brands ?? null),
   );
   const servedBrands: Brand[] = storefrontBrands.map((b) => b.slug);
   const initialBrand: Brand =
@@ -201,7 +208,7 @@ export default async function HomePage() {
   // last-order deadlines — computed HERE, on the server's Asia/Dhaka clock,
   // from each brand's own schedule, never from the visitor's device clock. The
   // menu greys a closed brand with its opening time; checkout re-checks.
-  const scopeBranchId = branchContext?.state === "ok" ? branchContext.branchId : null;
+  const scopeBranchId = branchContext?.state === "ok" ? branchContext.branchId : (guestBranch?.id ?? null);
   const brandAvailability = storefrontAvailability(branches, scopeBranchId);
   const cutoffs = storefrontCutoffs(branches, scopeBranchId);
   const pickerBranches = branches.map((b) => ({
@@ -252,8 +259,8 @@ export default async function HomePage() {
         servedBrands={servedBrands}
         brandList={liveBrands}
         brandAvailability={brandAvailability}
-        activeBranchId={branchContext?.branchId ?? null}
-        activeBranchName={branchContext?.branch?.name ?? null}
+        activeBranchId={branchContext?.branchId ?? guestBranch?.id ?? null}
+        activeBranchName={branchContext?.branch?.name ?? guestBranch?.name ?? null}
       >
         <Header user={user} logoUrl={logoUrl} searchIndex={menu.search} />
         <main>
@@ -267,6 +274,9 @@ export default async function HomePage() {
               a signed-in customer without a new dashboard section. */}
           {branchBar ? (
             <BranchBar context={branchBar} addresses={pickerAddresses} branches={pickerBranches} />
+          ) : null}
+          {!user ? (
+            <GuestBranchBar branchId={guestBranch?.id ?? null} branchName={guestBranch?.name ?? null} branches={pickerBranches} />
           ) : null}
           <MenuSection
             branchCount={branches.length}
