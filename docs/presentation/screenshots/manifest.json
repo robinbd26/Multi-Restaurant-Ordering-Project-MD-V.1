@@ -1,0 +1,427 @@
+[
+  {
+    "role": "accounts",
+    "file": "01-dashboard.png",
+    "description": "Accounts dashboard: sales, platform fees, rider commissions"
+  },
+  {
+    "role": "accounts",
+    "file": "02-reports.png",
+    "description": "Financial reports for the last two weeks"
+  },
+  {
+    "role": "accounts",
+    "file": "03-invoices.png",
+    "description": "Invoices list"
+  },
+  {
+    "role": "accounts",
+    "file": "04-invoice.png",
+    "description": "One invoice: items, MADCHEF30 discount, delivery charge, platform fee and total"
+  },
+  {
+    "role": "accounts",
+    "file": "05-rider-earnings.png",
+    "description": "Rider earnings: commission per delivered order"
+  },
+  {
+    "role": "blocked_customer",
+    "file": "01-order-refused.png",
+    "description": "A blocked account can browse but not order: confirming shows 'your account is blocked, contact the helpline'"
+  },
+  {
+    "role": "branch_manager",
+    "file": "01-dashboard.png",
+    "description": "Uttara branch dashboard: today's orders, open orders and riders on duty"
+  },
+  {
+    "role": "branch_manager",
+    "file": "02-orders.png",
+    "description": "Uttara orders: pending, preparing, delivered, collected and cancelled"
+  },
+  {
+    "role": "branch_manager",
+    "file": "03-order-detail.png",
+    "description": "Order detail: items, customer, rider and the status timeline from Pending to Delivered"
+  },
+  {
+    "role": "branch_manager",
+    "file": "04-order-chat.png",
+    "description": "Order chat on the same order: customer, branch and rider in one thread"
+  },
+  {
+    "role": "branch_manager",
+    "file": "05-delivery-area.png",
+    "description": "Uttara delivery area: a 5 km circle around the branch, ৳60, 45 minutes"
+  },
+  {
+    "role": "branch_manager",
+    "file": "06-branch-hours.png",
+    "description": "Uttara ordering hours for Cheez and Madchef"
+  },
+  {
+    "role": "branch_manager",
+    "file": "07-branch-hours-dine-in.png",
+    "description": "Dine-in hours with last guest entry 10:30 PM"
+  },
+  {
+    "role": "branch_manager",
+    "file": "08-branch-settings.png",
+    "description": "Branch settings: delivery radius, fee, prep time and pickup point"
+  },
+  {
+    "role": "branch_manager",
+    "file": "09-complaints.png",
+    "description": "Complaints routed to Uttara, with status"
+  },
+  {
+    "role": "branch_manager",
+    "file": "10-reviews.png",
+    "description": "Reviews of Uttara's dishes with ratings"
+  },
+  {
+    "role": "branch_manager",
+    "file": "11-riders.png",
+    "description": "Riders on duty at Uttara, on the live map"
+  },
+  {
+    "role": "customer",
+    "file": "01-home-desktop.png",
+    "description": "Customer homepage (desktop): both brands, nearest branch Uttara, delivery fee and time"
+  },
+  {
+    "role": "customer",
+    "file": "02-cheez-menu.png",
+    "description": "Cheez menu at Uttara: crust and size guide, then the pizzas with photos and prices"
+  },
+  {
+    "role": "customer",
+    "file": "03-cheez-combos.png",
+    "description": "Cheez combos: Classic Combo ৳449 and Premium Combo ৳549, 8 inch, thick or thin"
+  },
+  {
+    "role": "customer",
+    "file": "04-madchef-menu.png",
+    "description": "Madchef menu at Uttara: burgers, wraps, rice meals and more"
+  },
+  {
+    "role": "customer",
+    "file": "05-product-popup.png",
+    "description": "Product popup (Bolognese): photo, description, sizes and price"
+  },
+  {
+    "role": "customer",
+    "file": "06-product-popup-reviews.png",
+    "description": "The same popup scrolled to its customer reviews and star rating"
+  },
+  {
+    "role": "customer",
+    "file": "07-cart.png",
+    "description": "Cart: a Cheez pizza and a Madchef burger from Uttara, with delivery and pickup buttons"
+  },
+  {
+    "role": "customer",
+    "file": "08-checkout-delivery-address.png",
+    "description": "Checkout for delivery: choose the saved Uttara address (inside the delivery area)"
+  },
+  {
+    "role": "customer",
+    "file": "09-add-address-map.png",
+    "description": "Add a new address by picking the spot on the map (with address search)"
+  },
+  {
+    "role": "customer",
+    "file": "10-checkout-payment-coupon.png",
+    "description": "Payment step: cash on delivery or bKash, with coupon MADCHEF30 entered"
+  },
+  {
+    "role": "customer",
+    "file": "11-checkout-overview-madchef30.png",
+    "description": "Order overview before confirming: MADCHEF30 takes 30% off, plus delivery charge and platform fee"
+  },
+  {
+    "role": "customer",
+    "file": "12-checkout-pickup.png",
+    "description": "Checkout for pickup: collect from Uttara, with the address, hours and a pickup time"
+  },
+  {
+    "role": "customer",
+    "file": "13-home-mobile.png",
+    "description": "Customer homepage on a phone (mobile)"
+  },
+  {
+    "role": "customer",
+    "file": "14-cheez-menu-mobile.png",
+    "description": "Cheez menu on a phone (mobile)"
+  },
+  {
+    "role": "customer",
+    "file": "15-home-desktop-english.png",
+    "description": "Customer homepage in English"
+  },
+  {
+    "role": "customer",
+    "file": "16-product-popup-english.png",
+    "description": "Product popup in English (Bolognese)"
+  },
+  {
+    "role": "customer",
+    "file": "17-complaint-form.png",
+    "description": "Complaint form: pick the order and category; it goes to that order's branch"
+  },
+  {
+    "role": "customer",
+    "file": "18-reviews.png",
+    "description": "My reviews: dishes from delivered orders, with star ratings"
+  },
+  {
+    "role": "customer",
+    "file": "19-order-placed-madchef30.png",
+    "description": "Order placed with MADCHEF30 applied: the 30% discount on the receipt"
+  },
+  {
+    "role": "customer",
+    "file": "20-order-tracking.png",
+    "description": "Order tracking: status timeline, rider, and delivery estimate"
+  },
+  {
+    "role": "customer",
+    "file": "21-order-chat.png",
+    "description": "Order chat from the customer's side, with the rider's message"
+  },
+  {
+    "role": "journey",
+    "file": "01-customer-confirms-order.png",
+    "description": "1. Customer (Uttara) reviews the order: Classic Combo + Mad Chicken Sandwich, coupon MADCHEF30, cash on delivery"
+  },
+  {
+    "role": "journey",
+    "file": "02-customer-order-placed.png",
+    "description": "2. Order placed: the receipt shows the MADCHEF30 discount (30% off), delivery charge and platform fee"
+  },
+  {
+    "role": "journey",
+    "file": "03-customer-tracking-pending.png",
+    "description": "3. Customer's order page: waiting for the branch to accept"
+  },
+  {
+    "role": "journey",
+    "file": "04-branch-new-order.png",
+    "description": "4. Uttara branch manager: the new order arrives at the top of the list as Pending"
+  },
+  {
+    "role": "journey",
+    "file": "05-branch-order-pending.png",
+    "description": "5. Order detail at the branch: items, customer note, and the Accept button"
+  },
+  {
+    "role": "journey",
+    "file": "06-branch-accepted.png",
+    "description": "6. Branch accepted the order"
+  },
+  {
+    "role": "journey",
+    "file": "07-branch-preparing-rider-assigned.png",
+    "description": "7. Preparing, and the Uttara rider is assigned (the rider gets a job offer)"
+  },
+  {
+    "role": "journey",
+    "file": "08-branch-ready-for-rider.png",
+    "description": "8. Marked Ready for rider"
+  },
+  {
+    "role": "journey",
+    "file": "09-rider-job-offer.png",
+    "description": "9. Rider's phone: the job offer pops up with the pickup, drop-off and distance"
+  },
+  {
+    "role": "journey",
+    "file": "10-rider-accepted.png",
+    "description": "10. Rider accepted: the active delivery with the Picked up button"
+  },
+  {
+    "role": "journey",
+    "file": "11-rider-picked-up.png",
+    "description": "11. Rider picked the order up at the branch"
+  },
+  {
+    "role": "journey",
+    "file": "12-rider-on-the-way.png",
+    "description": "12. On the way to the customer"
+  },
+  {
+    "role": "journey",
+    "file": "13-customer-tracking-on-the-way.png",
+    "description": "13. Customer's tracking: On the way, with the rider's name and the timeline"
+  },
+  {
+    "role": "journey",
+    "file": "14-customer-chat.png",
+    "description": "14. Customer and rider chat on the order"
+  },
+  {
+    "role": "journey",
+    "file": "15-rider-delivered.png",
+    "description": "15. Rider marks it Delivered"
+  },
+  {
+    "role": "journey",
+    "file": "16-customer-tracking-delivered.png",
+    "description": "16. Customer's tracking at the end: Delivered, every step with its time"
+  },
+  {
+    "role": "journey",
+    "file": "17-branch-order-delivered.png",
+    "description": "17. The branch sees the finished order, with the full status history"
+  },
+  {
+    "role": "management",
+    "file": "01-dashboard.png",
+    "description": "Management dashboard: today's orders, sales and branch status"
+  },
+  {
+    "role": "management",
+    "file": "02-branches.png",
+    "description": "Branches: live status of all 16 branches"
+  },
+  {
+    "role": "management",
+    "file": "03-orders.png",
+    "description": "All orders across branches, filterable by status and branch"
+  },
+  {
+    "role": "management",
+    "file": "04-performance.png",
+    "description": "Branch performance comparison"
+  },
+  {
+    "role": "management",
+    "file": "05-sales-report.png",
+    "description": "Sales report for the last two weeks"
+  },
+  {
+    "role": "management",
+    "file": "06-complaints.png",
+    "description": "Complaints from all branches with their status"
+  },
+  {
+    "role": "marketing",
+    "file": "01-dashboard.png",
+    "description": "Marketing dashboard: campaigns, coupon use and customer reach"
+  },
+  {
+    "role": "marketing",
+    "file": "02-coupons.png",
+    "description": "Coupons: MADCHEF30 (30% off everything, every branch) with its use count"
+  },
+  {
+    "role": "marketing",
+    "file": "03-campaigns.png",
+    "description": "Campaigns: the MADCHEF30 campaign sent to customers, with its reach"
+  },
+  {
+    "role": "marketing",
+    "file": "04-review-moderation.png",
+    "description": "Review moderation: product reviews with ratings, one flagged by a branch manager"
+  },
+  {
+    "role": "rider",
+    "file": "01-job-offer.png",
+    "description": "Job offer: accept or reject a new delivery (Uttara)"
+  },
+  {
+    "role": "rider",
+    "file": "02-dashboard-active.png",
+    "description": "Rider home: on duty at Uttara, with the current delivery"
+  },
+  {
+    "role": "rider",
+    "file": "03-active-delivery.png",
+    "description": "Active delivery: customer, address, items and the Picked up / On the way / Delivered buttons"
+  },
+  {
+    "role": "rider",
+    "file": "04-delivery-map.png",
+    "description": "Delivery map: the branch and the customer's pin"
+  },
+  {
+    "role": "rider",
+    "file": "05-order-chat.png",
+    "description": "Order chat from the rider's phone: rider, customer and branch in one thread"
+  },
+  {
+    "role": "rider",
+    "file": "06-earnings.png",
+    "description": "Earnings: commission for each delivered order, including this one"
+  },
+  {
+    "role": "rider",
+    "file": "07-delivery-history.png",
+    "description": "Delivery history with each order's steps"
+  },
+  {
+    "role": "super_admin",
+    "file": "01-dashboard.png",
+    "description": "Super admin dashboard: users, branches, today's orders and total sales across all 16 branches"
+  },
+  {
+    "role": "super_admin",
+    "file": "02-brands.png",
+    "description": "Brands: Cheez! Pizza and Madchef, with how many branches and products each has"
+  },
+  {
+    "role": "super_admin",
+    "file": "03-branches.png",
+    "description": "Branch list: the 16 real branches with their brands, phone, manager and 5 km radius"
+  },
+  {
+    "role": "super_admin",
+    "file": "04-add-branch.png",
+    "description": "Add new branch form: name, phone, brands served, zone, dining or cloud kitchen, address"
+  },
+  {
+    "role": "super_admin",
+    "file": "05-branch-hours.png",
+    "description": "Uttara hours editor: ordering hours per brand with Delivery and Pickup per time slot"
+  },
+  {
+    "role": "super_admin",
+    "file": "06-branch-hours-dine-in.png",
+    "description": "Uttara dine-in hours 11:00 AM–11:00 PM with the new last guest entry time (10:30 PM)"
+  },
+  {
+    "role": "super_admin",
+    "file": "07-delivery-areas-map.png",
+    "description": "Delivery areas overview: all 16 branches and their 5 km delivery areas on one map"
+  },
+  {
+    "role": "super_admin",
+    "file": "08-delivery-area-editor.png",
+    "description": "Delivery area editor (Uttara): the 5 km circle around the branch pin, with its radius slider"
+  },
+  {
+    "role": "super_admin",
+    "file": "09-users.png",
+    "description": "Users: demo staff, riders and customers with role and status"
+  },
+  {
+    "role": "super_admin",
+    "file": "10-platform-fee.png",
+    "description": "Platform fee settings: one fee for every order, with per-branch overrides"
+  },
+  {
+    "role": "super_admin",
+    "file": "11-coupons.png",
+    "description": "Coupons: MADCHEF30, 30% off at every branch, no end date and no usage limits"
+  },
+  {
+    "role": "super_admin",
+    "file": "12-activity-log.png",
+    "description": "Activity log: manager assignments, review flags and other actions, with who did them"
+  },
+  {
+    "role": "super_admin",
+    "file": "13-reports.png",
+    "description": "Reports: orders, sales and branch performance for the last two weeks"
+  }
+]
