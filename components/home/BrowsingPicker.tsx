@@ -30,6 +30,7 @@ export function BrowsingPicker({
   activeBranchId = null,
   branches,
   value,
+  guest = false,
 }: {
   /** The branch the customer explicitly chose; null = "my nearest". */
   branchId: number | null;
@@ -37,6 +38,8 @@ export function BrowsingPicker({
   activeBranchId?: number | null;
   branches: BrowseBranchOption[];
   value: string;
+  /** Signed out: "nearest" becomes "all branches" (one deduped menu per brand). */
+  guest?: boolean;
 }) {
   const brandNames = useBrandNames();
   const { t } = useTranslation();
@@ -62,7 +65,7 @@ export function BrowsingPicker({
           <RadioRow
             checked={branchId == null}
             testId="browse-branch-nearest"
-            title={t("nearestHome.nearestBranchOption")}
+            title={guest ? t("nearestHome.allBranches") : t("nearestHome.nearestBranchOption")}
             onSelect={() => choose(null, close)}
           />
           <MenuHeading>{t("nearestHome.otherBranchesGroup")}</MenuHeading>
