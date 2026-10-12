@@ -109,7 +109,7 @@ const scenes = {
       const thin = page.getByTestId("home-crust-THIN");
       if (await thin.count()) await thin.click();
       await page.getByTestId("modal-add-to-cart").click();
-      await page.waitForTimeout(600);
+      await page.waitForTimeout(3500); // let the "added to cart" toast go
       await page.getByTestId("home-cart-button").click();
       await page.getByTestId("self-pickup").click();
       await page.getByTestId("drawer-pickup-confirm-step").waitFor();

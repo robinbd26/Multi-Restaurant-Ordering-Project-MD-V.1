@@ -150,8 +150,11 @@ try {
 } catch {
   previous = [];
 }
-const ranRoles = new Set(manifest.map((m) => m.role));
-const merged = [...previous.filter((m) => !ranRoles.has(m.role)), ...manifest];
+// A partial re-run replaces only the files it rewrote; everything else stays listed.
+const rewritten = new Set(manifest.map((m) => `${m.role}/${m.file}`));
+const merged = [...previous.filter((m) => !rewritten.has(`${m.role}/${m.file}`)), ...manifest].sort(
+  (a, b) => a.role.localeCompare(b.role) || a.file.localeCompare(b.file),
+);
 await writeFile(manifestPath, JSON.stringify(merged, null, 2) + "\n");
 
 const ROLE_TITLES = {

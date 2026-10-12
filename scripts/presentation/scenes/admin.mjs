@@ -8,8 +8,8 @@ const scenes = {
     await go(page, "/admin/brands");
     await shot(page, R, "brands", "Brands: Cheez! Pizza and Madchef, with how many branches and products each has");
     await go(page, "/admin/branches");
-    await page.mouse.move(850, 500);
-    await page.mouse.wheel(0, 380);
+    await page.locator("table").first().waitFor();
+    await page.locator("table").first().evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 90));
     await shot(page, R, "branches", "Branch list: the 16 real branches with their brands, phone, manager and 5 km radius");
     await go(page, "/admin/branches/create");
     await shot(page, R, "add-branch", "Add new branch form: name, phone, brands served, zone, dining or cloud kitchen, address");
