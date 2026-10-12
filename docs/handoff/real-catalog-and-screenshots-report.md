@@ -14,6 +14,8 @@ If this session is resumed, read the **Status** section first and continue from 
 - [ ] Part 6: the real capture on dev.db right after the 11:30 re-seed + manifest, commit.
 - [ ] Finishing: checks, push, tag, merge, push main
 
+**PAUSED (06:35 Dhaka, 00:35 UTC):** the background timer that was to start the 11:30 run was stopped by Claude Code because the machine was critically low on memory. Nothing was run on dev.db. Not restarted automatically; waiting for the developer. To resume: type "continue" (or restart the timer) and the 11:30 steps above run as described.
+
 ## Decisions log
 
 - The tree had one untracked file, `docs/handoff/platform-readiness-report.md` (a read-only inspection report from the previous session, no secrets). I committed it on this branch as its own commit (`0104432`) instead of deleting it.
