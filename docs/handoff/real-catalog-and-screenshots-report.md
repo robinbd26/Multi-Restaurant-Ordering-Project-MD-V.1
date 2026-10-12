@@ -8,13 +8,10 @@ If this session is resumed, read the **Status** section first and continue from 
 
 - [x] Setup: tree clean, on main, pulled (already up to date), branch `real-catalog-seed` created.
 - [x] Last-entry field: `Branch.dineInLastEntry` + migration `20261012100000` + editor + homepage display (commit `07d1d4b`).
-- [x] Parts 1–5 built as `npm run seed:real` (commits `8c7cc1a` menu content, `a34ea13` seed, `409559b` zone spelling, `c3bc4c7` README). Verified twice on a scratch copy of dev.db (`prisma/scratch-seed.db`, gitignored).
-- [ ] Run `npm run seed:real` on the real dev.db at **11:30 Dhaka (05:30 UTC)**, per the developer's instruction (replaces the earlier 14:00 plan; that timer was cancelled). Before starting: `scripts/_opencheck.tmp.ts --planned` must show all 38 brand×channel combinations open (else wait until they open); after seeding, the same check against dev.db with the app's own `channelStatus`. Seed timestamps follow the real hours (commit `2500c74`): open orders after 11:00, today's finished orders in Cheez's overnight window (until 04:00), so today's sales are not ৳0.
-- [x] Part 6 tooling: `scripts/presentation/capture.mjs` (commit `15961c9`), dry-run end to end on the scratch DB (63 shots incl. the full journey).
-- [ ] Part 6: the real capture on dev.db right after the 11:30 re-seed + manifest, commit.
-- [ ] Finishing: checks, push, tag, merge, push main
-
-**PAUSED (06:35 Dhaka, 00:35 UTC):** the background timer that was to start the 11:30 run was stopped by Claude Code because the machine was critically low on memory. Nothing was run on dev.db. Not restarted automatically; waiting for the developer. To resume: type "continue" (or restart the timer) and the 11:30 steps above run as described.
+- [x] Parts 1–5 built as `npm run seed:real` (menu `8c7cc1a`, seed `a34ea13`, fixes `fde7eec` and `2500c74`, zone spelling `409559b`, README `c3bc4c7`).
+- [x] Ran `npm run seed:real` on the real dev.db at 17:45 Dhaka. (The 11:30 timer was killed by Claude Code for low memory; resumed on "continue" when it was already past 11:30.) Before: 38/38 brand × channel combinations open by the planned hours. After: 38/38 open on dev.db by the app's own `channelStatus`. Today: 5 finished orders between 12:08 and 14:59, open orders between 16:08 and 17:30.
+- [x] Part 6: 85 screenshots + manifest (commits `15961c9`, `8577b3f`, `54d3859`).
+- [ ] Finishing: push branch, tag `pre-real-catalog-seed`, merge `--no-ff`, build on main, push main.
 
 ## Decisions log
 
@@ -64,3 +61,49 @@ Every branch was searched on Barikoi (server side, `lib/services/geocoding.ts`, 
 - `npx tsc --noEmit`: passes. `npx eslint` on every touched file: passes. `npm run test:unit`: 83/83 pass (incl. the new last-entry test). `npm run check:i18n`: passes. `npm run build`: passes.
 - Related e2e specs (`74-brand-hours`, `full-page-audit/branch-manager-delivery`, `62-delivery-zones`, `55-nearest-branch-homepage`): 20 pass, 26 fail. **The same 26 fail on `main`** (I built main and ran the same specs as a baseline: identical list). They are pre-existing: spec 62 tests the retired locality list, spec 55 and the delivery audit expect older behaviour. Not caused by this branch; not fixed here.
 - seed:real ran 3 times on a scratch copy of dev.db: identical results, no leftover upload files (3648 = 1216 photos × 3 sizes).
+
+## Summary
+
+### Wiped and kept
+- **Wiped** (dev.db, and on any machine that runs `npm run seed:real`): every branch, zone, delivery area and exclusion, category, product and variation, saved address, order (items, status events, assignments, receive confirmations, commissions, refunds), product and rider review, complaint and message, coupon, redemption, campaign and event, segment, notification and notice, order and duty chat, rider duty session/log/route trail/withdrawal, financial audit/adjustment/expense/settlement, staff and attendance record, branch employee and team, table and reservation, Ramadan setup and booking, push subscription, password-reset token, branch-scoped reward rule, the orphaned `platform_fee:branch:2` setting, and the uploaded photos of the removed rows. Accounts deleted: `qa_upload_1`, `qa_upload_2`, `courier2` (e2e fixtures) and the hand-made test accounts `ash.md`, `ash123`, `john.wick`, `siam.sabith`, `afiya.jannat`.
+- **Kept**: `super_admin`, `management`, `marketing`, `branch_manager`, `accounts`, `rider`, `customer`, `blocked_customer` exactly as they were (password untouched), the owner `admin` (ADMIN_USERNAME), the brands Cheez! Pizza and Madchef, system settings (platform fee ৳9, rider commission, reward value) and reward rules.
+
+### Hours
+- Madchef 11:00 AM–10:30 PM, Cheez 11:00 AM–4:00 AM, delivery and pickup, every day. Uttara, Bailey Road and Gulshan carry both.
+- Dining branches (9): dine-in 11:00 AM–11:00 PM with **last guest entry 10:30 PM**. Cloud kitchens (Gulshan, Cheez Mirpur, Cheez Mohammadpur, Cheez/Madchef Banasree): no dine-in.
+- Last entry: a new optional `Branch.dineInLastEntry` ("HH:MM" or ""), migration `20261012100000` adds it with '' and backfills existing rows to '' (nothing changes until someone sets it). Edited under the dine-in hours in the hours editor (admin and branch manager); shown to customers on the homepage hours card as "11:00 AM – 11:00 PM · last entry 10:30 PM". Display only.
+
+### MADCHEF30
+Existing coupon system: percent 30, every branch (branchId null, so both brands), no start or end date, maxUses 0 (unlimited), perCustomerLimit null, created by `marketing`; editable or endable at /admin/coupons and /marketing/coupons. Used on 7 sample orders. The discount is computed when the order is confirmed (the checkout overview says so), and shows on the receipt and invoice. A demo campaign links to it.
+
+### Not imported from the prototype
+- Its design and behaviour (by instruction).
+- Burger sauce choice and wing flavour choice as selectable options (the app has one size/option list per product): named in the description instead.
+- Burger add-ons as toggles inside the burger popup: imported as separate "Burger Extras" products; the dips as "Sauces" products. Neither has a photo (the prototype has none).
+- The pizza "Spicy" badge and meat-type tags (Beef/Chicken/Sea Food): no product field; the ingredient line ("Inside: …") is kept in the description.
+- The 8" pizza size is imported but disabled (dine-in only in the prototype).
+- The Madchef can photos are inline images in the prototype; the identical Cheez can photos are used.
+- Nothing else was skipped: 24 pizzas (each as thick and thin), 8 pastas, 4 boats, 2 garlic breads, 3 soups, 4 Cheez drinks, 2 cans per brand, 10 burgers, 8 extras, 5 wraps, 4 poutines, 9 rice meals, 4 teasers, 4 fries, 2 crispy chicken, 5 mocktails, 6 shakes, 8 sauces, 3 desserts, plus the 2 combos you specified.
+
+### README
+The "Demo / seed accounts" table now has a Notes column for all 59 accounts (the original 8 + 15 managers + 30 riders + 6 customers), a warning above it that every demo password must be changed or the account removed before launch, and a section on `npm run seed:real`.
+
+### Screenshots
+`docs/presentation/screenshots/` (85 PNGs, 21 MB) with `manifest.md`. Captured from `npm run build` + `npm start` on dev.db at 17:50 Dhaka with every brand open. Re-capture with `node scripts/presentation/capture.mjs` against a running production server (the journey scene places one real order).
+
+### For Robin (same data on his machine)
+1. Stop your dev server (Windows: `prisma generate` fails while it runs).
+2. `git checkout main && git pull`
+3. `npm install` (runs `prisma generate`)
+4. `npx prisma migrate deploy` (adds `Branch.dineInLastEntry`)
+5. `npm run seed:real` (about 2–3 minutes; **wipes all test data** in your dev.db except the 8 demo logins and your `ADMIN_USERNAME` account)
+6. Start the server again. Log in with any account from the README table (password `Admin12345@##`).
+No new env vars. It needs Node 20.12+ (`process.loadEnvFile`). Barikoi is only used at runtime, not by the seed (the pins are in `prisma/seed-real/branches.ts`).
+
+### Loose ends for the developer
+- Check the pins of Cheez Mohammadpur (low confidence) and both Mirpur branches.
+- Correct the floors of the five identical-address pairs in admin.
+- The product form's "Not applicable" crust option makes a product invisible to customers (`VALID_VARIATION_TYPE` in `lib/services/product-eligibility.ts`). Unrelated, not fixed.
+- 26 pre-existing e2e failures in specs 55, 62 and the branch-manager delivery audit (same on main).
+- A stray copy of an early dry run is on the E: drive at `E:UsersashraAppDataLocalTempclaude…scratchpadshots` (a mis-resolved output path; I was not allowed to delete `E:Users`). Safe to delete.
+- Delete or edit the demo MADCHEF30 campaign if not wanted; change or remove every demo account before launch.
