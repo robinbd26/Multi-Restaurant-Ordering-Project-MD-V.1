@@ -9,6 +9,7 @@ import {
   productSaleBrands,
   type CustomerProduct,
 } from "@/lib/services/product-eligibility";
+import { dedupeShowcase } from "@/lib/home/showcase-dedupe";
 import { ratingSummaries } from "@/lib/services/product-reviews";
 import { mediaUrl } from "@/lib/utils";
 
@@ -212,7 +213,11 @@ export function branchMenu(branchId: number): Promise<PublicMenu> {
   return buildMenu(branchId);
 }
 
-/** The guest / all-branches showcase. Unchanged public behaviour. */
-export function publicMenu(): Promise<PublicMenu> {
-  return buildMenu();
+/** The guest / all-branches showcase: one menu per brand, not one per branch. */
+export async function publicMenu(): Promise<PublicMenu> {
+  const menu = await buildMenu();
+  // Every branch owns a copy of the same menu; without a chosen branch, show it once.
+  const { items, categories } = dedupeShowcase(menu);
+  const kept = new Set(items.map((i) => i.id));
+  return { categories, items, search: menu.search.filter((s) => kept.has(s.id)) };
 }
