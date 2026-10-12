@@ -11,7 +11,7 @@ If this session is resumed, read the **Status** section first and continue from 
 - [x] Parts 1–5 built as `npm run seed:real` (menu `8c7cc1a`, seed `a34ea13`, fixes `fde7eec` and `2500c74`, zone spelling `409559b`, README `c3bc4c7`).
 - [x] Ran `npm run seed:real` on the real dev.db at 17:45 Dhaka. (The 11:30 timer was killed by Claude Code for low memory; resumed on "continue" when it was already past 11:30.) Before: 38/38 brand × channel combinations open by the planned hours. After: 38/38 open on dev.db by the app's own `channelStatus`. Today: 5 finished orders between 12:08 and 14:59, open orders between 16:08 and 17:30.
 - [x] Part 6: 85 screenshots + manifest (commits `15961c9`, `8577b3f`, `54d3859`).
-- [ ] Finishing: push branch, tag `pre-real-catalog-seed`, merge `--no-ff`, build on main, push main.
+- [x] Finishing: pushed `real-catalog-seed`; tagged main (`ee05581`) as `pre-real-catalog-seed` and pushed the tag; merged with `--no-ff` as **`b038e4b`** (no conflicts); `npx tsc --noEmit` and `npm run build` pass on main; main pushed.
 
 ## Decisions log
 
@@ -107,3 +107,8 @@ No new env vars. It needs Node 20.12+ (`process.loadEnvFile`). Barikoi is only u
 - 26 pre-existing e2e failures in specs 55, 62 and the branch-manager delivery audit (same on main).
 - A stray copy of an early dry run is on the E: drive at `E:UsersashraAppDataLocalTempclaude…scratchpadshots` (a mis-resolved output path; I was not allowed to delete `E:Users`). Safe to delete.
 - Delete or edit the demo MADCHEF30 campaign if not wanted; change or remove every demo account before launch.
+
+### Merge
+- Merge commit: **`b038e4b`** (`Merge branch 'real-catalog-seed'`), on top of `ee05581`.
+- Before merging: type check, lint, unit tests (83/83), i18n check and the build passed on the branch. The related e2e spec `74-brand-hours` passes; the 26 failing e2e tests are the same on main before the merge (see Verification), so they did not block it.
+- Roll back the code: `git revert -m 1 b038e4b`, or compare with the tag `pre-real-catalog-seed`. The migration only adds a column, so rolling back the code needs no database change; to undo the data, restore a dev.db backup (`seed:real` wipes test data by design).
