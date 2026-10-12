@@ -7,6 +7,7 @@ import {
   minutesUntilClose,
   nextOpening,
   normaliseBrandHours,
+  normaliseLastEntry,
   openSlotAt,
   type BrandHours,
 } from "@/lib/hours/schedule";
@@ -96,4 +97,13 @@ test("validation refuses bad times and overlapping slots, and needs explicit cha
 test("the Dhaka clock ignores the machine's own zone", () => {
   // 2026-10-07T22:30Z is Thursday 04:30 in Dhaka (UTC+6).
   assert.deepEqual(dhakaMoment(new Date("2026-10-07T22:30:00Z")), { day: 4, minutes: 270 });
+});
+
+test("dine-in last entry is an optional HH:MM, display only", () => {
+  assert.deepEqual(normaliseLastEntry("22:30"), { value: "22:30", problem: null });
+  assert.deepEqual(normaliseLastEntry(" 22:30 "), { value: "22:30", problem: null });
+  assert.deepEqual(normaliseLastEntry(""), { value: "", problem: null }, "empty = not shown");
+  assert.deepEqual(normaliseLastEntry(undefined), { value: "", problem: null });
+  assert.equal(normaliseLastEntry("10:30 PM").problem?.key, "errors.hours.badTime");
+  assert.equal(normaliseLastEntry("24:00").problem?.key, "errors.hours.badTime");
 });

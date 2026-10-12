@@ -14,6 +14,7 @@ import { BRANCH_HOURS_INCLUDE, brandsWithoutHours } from "@/lib/hours/availabili
 import {
   normaliseBrandHours,
   normaliseDineInHours,
+  normaliseLastEntry,
   parseBrandHours,
   parseDineInHours,
   type BrandHours,
@@ -35,6 +36,8 @@ export interface BranchScheduleView {
   branch: { id: number; name: string; business_type: string };
   brands: { brand: BrandInfo; hours: BrandHours | null }[];
   dine_in: DineInHours | null;
+  /** Dine-in last guest entry, "HH:MM" or "" (display only). */
+  dine_in_last_entry: string;
 }
 
 async function loadBranch(branchId: number) {
@@ -64,6 +67,7 @@ export async function branchSchedule(user: User, branchId: number): Promise<Bran
       .sort((a, b) => a.brand.sortOrder - b.brand.sortOrder || a.brand.id - b.brand.id)
       .map((b) => ({ brand: serializeBrand(b.brand), hours: parseBrandHours(b.hours) })),
     dine_in: parseDineInHours(branch.dineInHours),
+    dine_in_last_entry: branch.dineInLastEntry,
   };
 }
 
@@ -90,6 +94,8 @@ export interface ScheduleInput {
   /** Brand slug → schedule (null clears it back to "not set"). */
   brands?: Record<string, unknown>;
   dine_in?: unknown;
+  /** "HH:MM" or "" — only read when dine_in is sent; hiding dine-in clears it. */
+  dine_in_last_entry?: unknown;
 }
 
 export async function saveBranchSchedule(user: User, branchId: number, input: ScheduleInput): Promise<BranchScheduleView> {
@@ -117,10 +123,18 @@ export async function saveBranchSchedule(user: User, branchId: number, input: Sc
     if (problems.length) errors[problems[0].at] = sk(problems[0].key);
     else dineIn = { changed: JSON.stringify(hours) !== JSON.stringify(parseDineInHours(branch.dineInHours)), value: hours };
   }
+  // The last-entry time travels with the dine-in hours: no dine-in, no entry time.
+  let lastEntry = { changed: false, value: branch.dineInLastEntry };
+  if (input.dine_in !== undefined) {
+    // dineIn.value is the dine-in hours as they will be saved (null = hidden).
+    const { value, problem } = normaliseLastEntry(dineIn.value ? input.dine_in_last_entry : "");
+    if (problem) errors[problem.at] = sk(problem.key);
+    else lastEntry = { changed: value !== branch.dineInLastEntry, value };
+  }
   if (Object.keys(errors).length) throw validationError(errors);
 
   const changed = updates.filter((u) => JSON.stringify(u.before) !== JSON.stringify(u.after));
-  if (changed.length || dineIn.changed) {
+  if (changed.length || dineIn.changed || lastEntry.changed) {
     await prisma.$transaction(async (tx) => {
       for (const u of changed) {
         await tx.branchBrand.update({ where: { id: u.id }, data: { hours: u.after ? JSON.stringify(u.after) : "" } });
@@ -141,6 +155,15 @@ export async function saveBranchSchedule(user: User, branchId: number, input: Sc
               ? dineIn.value.everyDay.map((s) => `${formatClock(s.start)}–${formatClock(s.end)}`).join(", ") || "closed"
               : "hidden"
           }`,
+          { tx, branchId: branch.id },
+        );
+      }
+      if (lastEntry.changed) {
+        await tx.branch.update({ where: { id: branch.id }, data: { dineInLastEntry: lastEntry.value } });
+        await logAdminAction(
+          user.id,
+          "action",
+          `Changed dine-in last entry at "${branch.name}": ${lastEntry.value ? formatClock(lastEntry.value) : "not shown"}`,
           { tx, branchId: branch.id },
         );
       }

@@ -80,6 +80,14 @@ export async function OperatingHours({ branches, brands }: { branches: PublicHom
       .map((b) => brandName(b, locale))
       .join(" & ");
 
+  // Dine-in hours, plus the last guest entry when the branches give one: the
+  // latest across them, like the widest window it sits beside.
+  const dineInDetail = (span: Span | null, entries: (string | null)[]) => {
+    const last = entries.filter((e): e is string => Boolean(e)).sort((a, z) => lateness(z) - lateness(a))[0];
+    if (!span || !last) return range(span);
+    return t("home.hours.rangeLastEntry", { from: fmt.clock(span.start), to: fmt.clock(span.end), last: fmt.clock(last) });
+  };
+
   // One card per live brand: its dine-in, delivery and pickup windows today,
   // widest across the branches that serve it.
   const schedule = brands.map((brand) => {
@@ -88,7 +96,10 @@ export async function OperatingHours({ branches, brands }: { branches: PublicHom
     return {
       brand,
       branchCount: serving.length,
-      dineIn: widest(serving.map((b) => b.today.dineIn)),
+      dineIn: dineInDetail(
+        widest(serving.map((b) => b.today.dineIn)),
+        serving.map((b) => b.today.dineInLastEntry),
+      ),
       delivery: widest(perBranch.map((x) => x?.delivery ?? null)),
       pickup: widest(perBranch.map((x) => x?.pickup ?? null)),
     };
@@ -185,7 +196,7 @@ export async function OperatingHours({ branches, brands }: { branches: PublicHom
                   </span>
                 </div>
                 <div className="px-4.5 pb-1.5 pt-3">
-                  <ScheduleRow icon="🍽️" label={t("home.hours.dineIn")} detail={range(dineIn)} color={brand.accent_color} />
+                  <ScheduleRow icon="🍽️" label={t("home.hours.dineIn")} detail={dineIn} color={brand.accent_color} />
                   <div className="my-2 h-px bg-white/5" />
                   <ScheduleRow icon="🛵" label={t("home.hours.delivery")} detail={range(delivery)} color={brand.accent_color} />
                   <div className="my-2 h-px bg-white/5" />

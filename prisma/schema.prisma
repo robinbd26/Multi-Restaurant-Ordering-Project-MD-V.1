@@ -837,6 +837,11 @@ model Branch {
   // live per brand on BranchBrand.hours. The old single openingTime/closingTime
   // pair was converted into those schedules and dropped (20261007130000).
   dineInHours       String    @default("")
+  // The last time a dine-in guest is let in ("HH:MM", Asia/Dhaka), DISPLAY ONLY:
+  // "Dine-in until 11:00 PM, last entry 10:30 PM". "" = not shown. Lives beside
+  // dineInHours rather than inside its JSON so older readers of that JSON never
+  // see an unexpected key (20261012100000).
+  dineInLastEntry   String    @default("")
   logo              String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

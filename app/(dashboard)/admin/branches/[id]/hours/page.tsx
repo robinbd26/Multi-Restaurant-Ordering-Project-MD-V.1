@@ -43,6 +43,7 @@ export default async function AdminBranchHoursPage({ params }: { params: Promise
         businessType={view.branch.business_type}
         brands={view.brands}
         dineIn={view.dine_in}
+        dineInLastEntry={view.dine_in_last_entry}
       />
     </>
   );

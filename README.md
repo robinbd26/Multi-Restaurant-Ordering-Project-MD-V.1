@@ -160,6 +160,7 @@ cp .env.example .env.local    # Next.js runtime reads .env.local  — you need B
 npm install                   # postinstall runs `prisma generate`
 npx prisma migrate deploy     # creates prisma/dev.db and applies 26 migrations
 npm run seed                  # demo accounts, branch, catalogue, orders (idempotent)
+# or: npm run seed:real       # the real 16-branch catalogue instead (wipes test data first)
 TZ=Asia/Dhaka npm run dev     # http://localhost:3000
 ```
 
@@ -187,30 +188,129 @@ npm run test:e2e        # after: npm run test:e2e:prepare
 
 ## Demo / seed accounts
 
-Run `npm run seed`. **Password for every account: `Admin12345@##`**
+> ⚠️ **Before real launch, change the password of every demo account below or delete the
+> account.** They all use the password published in this repository (`Admin12345@##`), so
+> anyone who reads the repo can sign in as them, including as super admin.
 
-| Username | Email | Phone | Role |
-| --- | --- | --- | --- |
-| `super_admin` | superadmin@example.com | 01700000001 | super_admin |
-| `management` | management@example.com | 01700000002 | management |
-| `marketing` | marketing@example.com | 01700000003 | marketing |
-| `branch_manager` | branchmanager@example.com | 01700000004 | branch_manager |
-| `accounts` | accounts@example.com | 01700000005 | accounts |
-| `rider` | rider@example.com | 01700000006 | rider |
-| `customer` | customer@example.com | 01711111111 | customer |
-| `blocked_customer` | — | — | customer (blocked demo — shows block enforcement) |
+There are two seeds. Both keep these accounts and use the same password for all of them.
 
-Plus a default Super Admin from `ADMIN_*` (`admin` / `Admin12345@##`).
+- `npm run seed`: the development and e2e test world (a "Main Branch" with a small sample
+  catalogue). Idempotent. The e2e suite seeds `prisma/test.db` with it.
+- `npm run seed:real`: the **real catalogue**: the 16 real branches, the full Cheez and Madchef
+  menus with photos, the `MADCHEF30` coupon, the demo staff and customers below, and two weeks
+  of sample orders, reviews, complaints and chats. It **wipes all other test data first**
+  (see [Real catalogue data](#real-catalogue-data-npm-run-seedreal)). Safe to run again.
 
-**The sign-in field accepts any of three identifiers** — username, email, or a Bangladeshi
+**Password for every account: `Admin12345@##`**. The Notes column describes the
+`seed:real` data; with `npm run seed` the branch manager and rider run "Main Branch" instead
+of Uttara, and the accounts from `farhana.rahman` down do not exist.
+
+| Username | Email | Phone | Role | Notes |
+| --- | --- | --- | --- | --- |
+| `super_admin` | superadmin@example.com | 01700000001 | super_admin | Super admin (demo) |
+| `management` | management@example.com | 01700000002 | management | Management, all branches |
+| `marketing` | marketing@example.com | 01700000003 | marketing | Marketing: coupons, campaigns, review moderation |
+| `branch_manager` | branchmanager@example.com | 01700000004 | branch_manager | Branch manager, Uttara |
+| `accounts` | accounts@example.com | 01700000005 | accounts | Accounts, all branches |
+| `rider` | rider@example.com | 01700000006 | rider | Rider, Uttara |
+| `customer` | customer@example.com | 01711111111 | customer | Demo customer, saved address in Uttara |
+| `blocked_customer` | blocked@example.com | — | customer | Blocked demo customer (shows block enforcement) |
+| `farhana.rahman` | farhana.rahman@example.com | 01811000101 | branch_manager | Branch manager, Bailey Road (Farhana Rahman) |
+| `tanvir.ahmed` | tanvir.ahmed@example.com | 01811000102 | branch_manager | Branch manager, Gulshan (Tanvir Ahmed) |
+| `nusrat.jahan` | nusrat.jahan@example.com | 01811000103 | branch_manager | Branch manager, Cheez Dhanmondi (Nusrat Jahan) |
+| `sabbir.hossain` | sabbir.hossain@example.com | 01811000104 | branch_manager | Branch manager, Madchef Dhanmondi (Sabbir Hossain) |
+| `mehjabin.chowdhury` | mehjabin.chowdhury@example.com | 01811000105 | branch_manager | Branch manager, Cheez Banani (Mehjabin Chowdhury) |
+| `rakibul.islam` | rakibul.islam@example.com | 01811000106 | branch_manager | Branch manager, Madchef Banani (Rakibul Islam) |
+| `sharmin.akter` | sharmin.akter@example.com | 01811000107 | branch_manager | Branch manager, Cheez Bashundhara (Sharmin Akter) |
+| `imran.kabir` | imran.kabir@example.com | 01811000108 | branch_manager | Branch manager, Madchef Bashundhara (Imran Kabir) |
+| `shafiqul.alam` | shafiqul.alam@example.com | 01811000109 | branch_manager | Branch manager, Cheez Khilgaon (Shafiqul Alam) |
+| `tasnim.ferdous` | tasnim.ferdous@example.com | 01811000110 | branch_manager | Branch manager, Madchef Khilgaon (Tasnim Ferdous) |
+| `arif.mahmud` | arif.mahmud@example.com | 01811000111 | branch_manager | Branch manager, Cheez Mirpur (Arif Mahmud) |
+| `sumaiya.haque` | sumaiya.haque@example.com | 01811000112 | branch_manager | Branch manager, Madchef Mirpur (Sumaiya Haque) |
+| `mahmudul.hasan` | mahmudul.hasan@example.com | 01811000113 | branch_manager | Branch manager, Cheez Mohammadpur (Mahmudul Hasan) |
+| `rumana.sultana` | rumana.sultana@example.com | 01811000114 | branch_manager | Branch manager, Cheez Banasree (Rumana Sultana) |
+| `kamrul.hasan` | kamrul.hasan@example.com | 01811000115 | branch_manager | Branch manager, Madchef Banasree (Kamrul Hasan) |
+| `jahid.hasan` | jahid.hasan@example.com | 01822000101 | rider | Rider 1, Bailey Road (Jahid Hasan) |
+| `shohel.rana` | shohel.rana@example.com | 01822000102 | rider | Rider 2, Bailey Road (Shohel Rana) |
+| `mizanur.rahman` | mizanur.rahman@example.com | 01822000103 | rider | Rider 1, Gulshan (Mizanur Rahman) |
+| `rasel.mia` | rasel.mia@example.com | 01822000104 | rider | Rider 2, Gulshan (Rasel Mia) |
+| `alamgir.hossain` | alamgir.hossain@example.com | 01822000105 | rider | Rider 1, Cheez Dhanmondi (Alamgir Hossain) |
+| `nayeem.islam` | nayeem.islam@example.com | 01822000106 | rider | Rider 2, Cheez Dhanmondi (Nayeem Islam) |
+| `faruk.ahmed` | faruk.ahmed@example.com | 01822000107 | rider | Rider 1, Madchef Dhanmondi (Faruk Ahmed) |
+| `sakib.alamin` | sakib.alamin@example.com | 01822000108 | rider | Rider 2, Madchef Dhanmondi (Sakib Alamin) |
+| `habibur.rahman` | habibur.rahman@example.com | 01822000109 | rider | Rider 1, Cheez Banani (Habibur Rahman) |
+| `monir.hossain` | monir.hossain@example.com | 01822000110 | rider | Rider 2, Cheez Banani (Monir Hossain) |
+| `ripon.sarker` | ripon.sarker@example.com | 01822000111 | rider | Rider 1, Madchef Banani (Ripon Sarker) |
+| `shamim.reza` | shamim.reza@example.com | 01822000112 | rider | Rider 2, Madchef Banani (Shamim Reza) |
+| `babul.mia` | babul.mia@example.com | 01822000113 | rider | Rider 1, Cheez Bashundhara (Babul Mia) |
+| `selim.uddin` | selim.uddin@example.com | 01822000114 | rider | Rider 2, Cheez Bashundhara (Selim Uddin) |
+| `arafat.hossain` | arafat.hossain@example.com | 01822000115 | rider | Rider 1, Madchef Bashundhara (Arafat Hossain) |
+| `sujon.ali` | sujon.ali@example.com | 01822000116 | rider | Rider 2, Madchef Bashundhara (Sujon Ali) |
+| `robiul.islam` | robiul.islam@example.com | 01822000117 | rider | Rider 1, Cheez Khilgaon (Robiul Islam) |
+| `masud.parvez` | masud.parvez@example.com | 01822000118 | rider | Rider 2, Cheez Khilgaon (Masud Parvez) |
+| `shakil.ahmed` | shakil.ahmed@example.com | 01822000119 | rider | Rider 1, Madchef Khilgaon (Shakil Ahmed) |
+| `polash.mia` | polash.mia@example.com | 01822000120 | rider | Rider 2, Madchef Khilgaon (Polash Mia) |
+| `jewel.rana` | jewel.rana@example.com | 01822000121 | rider | Rider 1, Cheez Mirpur (Jewel Rana) |
+| `liton.das` | liton.das@example.com | 01822000122 | rider | Rider 2, Cheez Mirpur (Liton Das) |
+| `anwar.hossain` | anwar.hossain@example.com | 01822000123 | rider | Rider 1, Madchef Mirpur (Anwar Hossain) |
+| `rubel.hossain` | rubel.hossain@example.com | 01822000124 | rider | Rider 2, Madchef Mirpur (Rubel Hossain) |
+| `hasibul.islam` | hasibul.islam@example.com | 01822000125 | rider | Rider 1, Cheez Mohammadpur (Hasibul Islam) |
+| `nazmul.huda` | nazmul.huda@example.com | 01822000126 | rider | Rider 2, Cheez Mohammadpur (Nazmul Huda) |
+| `rafiqul.islam` | rafiqul.islam@example.com | 01822000127 | rider | Rider 1, Cheez Banasree (Rafiqul Islam) |
+| `tarek.aziz` | tarek.aziz@example.com | 01822000128 | rider | Rider 2, Cheez Banasree (Tarek Aziz) |
+| `mamun.khan` | mamun.khan@example.com | 01822000129 | rider | Rider 1, Madchef Banasree (Mamun Khan) |
+| `biplob.roy` | biplob.roy@example.com | 01822000130 | rider | Rider 2, Madchef Banasree (Biplob Roy) |
+| `anika.tabassum` | anika.tabassum@example.com | 01833000101 | customer | Demo customer, Banani (Anika Tabassum) |
+| `rifat.chowdhury` | rifat.chowdhury@example.com | 01833000102 | customer | Demo customer, Dhanmondi (Rifat Chowdhury) |
+| `sadia.islam` | sadia.islam@example.com | 01833000103 | customer | Demo customer, Mirpur (Sadia Islam) |
+| `fahim.ahmed` | fahim.ahmed@example.com | 01833000104 | customer | Demo customer, Malibagh (Fahim Ahmed) |
+| `lamia.rahman` | lamia.rahman@example.com | 01833000105 | customer | Demo customer, Bashundhara (Lamia Rahman) |
+| `zubair.hossain` | zubair.hossain@example.com | 01833000106 | customer | Demo customer, Uttara (Zubair Hossain) |
+
+Plus the owner super admin from `ADMIN_*` (`admin` / `Admin12345@##` unless you set your own);
+`seed:real` keeps it untouched.
+
+**The sign-in field accepts any of three identifiers**: username, email, or a Bangladeshi
 mobile number in any written form (`01711111111`, `8801711111111`, `+880 1711-111111`, or
 bare `1711111111`).
 
-The seed also creates a **Main Branch** (manager + rider assigned), categories and products,
-orders across the lifecycle, rider commissions and withdrawals, reward rules and ledger
-rows, reviews, complaints, a notice and notifications, delivery time slots, a table
-reservation, Ramadan tables and a booking, a rider route trail and login history — so every
-dashboard shows real data. **The seed is idempotent.**
+`npm run seed` also creates a **Main Branch** (manager + rider assigned), categories and
+products, orders across the lifecycle, rider commissions and withdrawals, reward rules and
+ledger rows, reviews, complaints, a notice and notifications, a table reservation, Ramadan
+tables and a booking, a rider route trail and login history, so every dashboard shows real
+data. **The seed is idempotent.**
+
+### Real catalogue data (`npm run seed:real`)
+
+Gives every machine (Ash, Robin, the VPS) the same data with one command:
+
+```bash
+git pull                      # get the branch that has the seed
+npm install                   # runs prisma generate (stop the dev server first on Windows)
+npx prisma migrate deploy     # applies new migrations (e.g. the dine-in last-entry column)
+npm run seed:real             # wipes test data, builds the real catalogue (about 2–3 minutes)
+```
+
+What it **wipes**: every branch, category, product, delivery area and zone, saved address,
+order, review, complaint, coupon, campaign, segment, chat, notification, notice, staff and
+attendance record, reservation, Ramadan setup, rider duty/withdrawal/commission history, and
+every user account except the 8 demo accounts above and the `ADMIN_USERNAME` owner (default
+`admin`). Uploaded photos of the removed rows are deleted from `UPLOAD_DIR` too.
+
+What it **keeps**: those accounts exactly as they are (password untouched), the two brands,
+system settings (platform fee, commission, reward value) and reward rules.
+
+What it **creates**: 16 branches with Barikoi-checked map pins and a 5 km delivery area each;
+ordering hours (Madchef 11:00 AM–10:30 PM, Cheez 11:00 AM–4:00 AM, delivery and pickup);
+dine-in 11:00 AM–11:00 PM with last entry 10:30 PM at dining branches; the full menus of each
+brand a branch serves, with photos stored through the app's upload pipeline; the `MADCHEF30`
+coupon (30 % off, every branch, no end date, no limits) and a campaign for it; the demo
+accounts in the table; and about 50 orders over the last two weeks with reviews, complaints
+and order chats. Content lives in `prisma/seed-real/`; see
+`docs/handoff/real-catalog-and-screenshots-report.md` for where every value came from.
+
+It refuses to run with `NODE_ENV=production` unless you add `-- --allow-demo-passwords`
+(only for a demo/staging server: see the warning above).
 
 ---
 
