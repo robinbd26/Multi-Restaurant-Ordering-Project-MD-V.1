@@ -80,6 +80,9 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
     ...(has("preparation_time") ? { preparationTime: Number(fields.preparation_time) } : {}),
     ...(has("is_popular") ? { isPopular: fields.is_popular === "true" } : {}),
     ...(has("is_recommended") ? { isRecommended: fields.is_recommended === "true" } : {}),
+    ...(has("is_spicy") ? { isSpicy: fields.is_spicy === "true" } : {}),
+    ...(has("is_vegetarian") ? { isVegetarian: fields.is_vegetarian === "true" } : {}),
+    ...(has("ingredients") ? { ingredients: fields.ingredients ?? "" } : {}),
     // req #4 — preserved on edit; absent field never erases the stored policy.
     ...(has("variation_type") ? { variationType: fields.variation_type } : {}),
     ...(image ? { image: await saveUpload(image, "products", "image") } : {}),
