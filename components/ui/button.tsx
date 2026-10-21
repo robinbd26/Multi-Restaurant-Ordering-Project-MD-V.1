@@ -24,7 +24,7 @@ const SIZES: Record<Size, string> = {
 const BASE =
   "inline-flex items-center justify-center font-medium transition-colors " +
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 " +
-  "disabled:pointer-events-none disabled:opacity-50 cursor-pointer";
+  "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;

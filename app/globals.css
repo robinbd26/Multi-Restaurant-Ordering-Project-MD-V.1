@@ -626,3 +626,42 @@ body {
 .range-fill:focus-visible::-moz-range-thumb {
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-brand-500) 30%, transparent);
 }
+
+/* Pointer cursor on everything clickable. Tailwind v4's preflight resets
+   buttons to the default arrow, so only components that remembered
+   `cursor-pointer` (the dashboard Button) showed the hand: the language toggle,
+   Cart, the profile menu, category chips, radio cards and close buttons did
+   not. In the base layer, so a component's own cursor utility still wins.
+   Disabled controls show not-allowed. */
+@layer base {
+  button,
+  [role="button"],
+  [role="tab"],
+  [role="radio"],
+  [role="checkbox"],
+  [role="switch"],
+  [role="option"],
+  [role="menuitem"],
+  [role="menuitemradio"],
+  [role="menuitemcheckbox"],
+  a[href],
+  summary,
+  select,
+  label[for],
+  label:has(> input[type="checkbox"], > input[type="radio"]),
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="submit"],
+  input[type="button"],
+  input[type="reset"],
+  input[type="file"],
+  input[type="color"] {
+    cursor: pointer;
+  }
+
+  :disabled,
+  [aria-disabled="true"],
+  fieldset:disabled * {
+    cursor: not-allowed;
+  }
+}
