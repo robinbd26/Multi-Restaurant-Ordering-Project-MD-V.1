@@ -378,6 +378,9 @@
       "branchesLower": "{n}টি শাখা",
       "noItems": "কোনো আইটেম পাওয়া যায়নি — অন্য কিছু খুঁজে দেখুন।",
       "itemsCount": "{n}টি আইটেম",
+      "allCategories": "সব ক্যাটাগরি",
+      "scrollCategoriesLeft": "ক্যাটাগরি বামে সরান",
+      "scrollCategoriesRight": "ক্যাটাগরি ডানে সরান",
       "clearSearch": "সার্চ মুছুন",
       "categories": {
         "pizza": "পিৎজা",

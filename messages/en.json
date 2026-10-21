@@ -378,6 +378,9 @@
       "branchesLower": "{n} branches",
       "noItems": "No items found — try searching for something else.",
       "itemsCount": "{n} items",
+      "allCategories": "All categories",
+      "scrollCategoriesLeft": "Scroll categories left",
+      "scrollCategoriesRight": "Scroll categories right",
       "clearSearch": "Clear search",
       "categories": {
         "pizza": "Pizza",
