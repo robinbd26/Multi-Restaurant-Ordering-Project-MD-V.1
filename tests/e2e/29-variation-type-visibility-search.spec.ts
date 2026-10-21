@@ -155,7 +155,7 @@ test.describe("#4 product variation type", () => {
     await expect(card.getByTestId("crust-error")).toBeVisible();
     // The one shared cart (see home-cart-context): an array of lines.
     const readLines = async (): Promise<{ variationType?: string }[]> => {
-      const raw = await customer.page.evaluate(() => localStorage.getItem("mad-delivery-cart-v2"));
+      const raw = await customer.page.evaluate(() => localStorage.getItem("mad-delivery-cart-v3"));
       return raw ? JSON.parse(raw) : [];
     };
     expect(await readLines()).toHaveLength(0);
@@ -189,7 +189,7 @@ test.describe("#4 product variation type", () => {
     ).json();
 
     const readLines = async (): Promise<{ variationType?: string }[]> => {
-      const raw = await customer.page.evaluate(() => localStorage.getItem("mad-delivery-cart-v2"));
+      const raw = await customer.page.evaluate(() => localStorage.getItem("mad-delivery-cart-v3"));
       return raw ? JSON.parse(raw) : [];
     };
 

@@ -80,8 +80,13 @@ function discounted(price: unknown, discountPct: unknown): number {
  */
 function toMenuItem(product: CustomerProduct, brand: Brand, categoryLabel: string): MenuItem {
   const enabled = product.variations.filter((v) => v.isEnabled);
-  const prices = enabled.map((v) => discounted(v.price, product.discount));
+  // Dine-in-only sizes are LISTED (greyed out) but never priced as "from" or
+  // added: the card price and the default come from the orderable ones.
+  const orderable = enabled.filter((v) => !v.dineInOnly);
+  const priced = orderable.length ? orderable : enabled;
+  const prices = priced.map((v) => discounted(v.price, product.discount));
   const base = prices.length ? Math.min(...prices) : discounted(product.price, product.discount);
+  const dineInOnly = enabled.length > 0 && orderable.length === 0;
 
   // Sizes drive the "choose a size" modal. One variation is not a choice, so it
   // is priced inline and the card adds straight to the cart — the behaviour the
@@ -93,15 +98,22 @@ function toMenuItem(product: CustomerProduct, brand: Brand, categoryLabel: strin
           label: v.name,
           sub: v.servingInfo || v.sizeLabel || undefined,
           price: discounted(v.price, product.discount),
+          crust: v.variantType === "THICK" || v.variantType === "THIN" ? v.variantType : undefined,
+          dineInOnly: v.dineInOnly || undefined,
         }))
       : undefined;
+  const defaultSize = orderable.find((v) => v.isDefault) ?? orderable[0];
+  const ingredients = product.ingredients
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   return {
     id: String(product.id),
     name: product.name,
     description: product.description,
     price: base,
-    fromPrice: enabled.length > 1,
+    fromPrice: orderable.length > 1,
     // Versioned by updatedAt so a replaced photo can never render from the
     // browser's cached copy. Stored keys are uuids, so the URL changes anyway;
     // the version also covers legacy rooted paths that were overwritten in place.
@@ -113,7 +125,13 @@ function toMenuItem(product: CustomerProduct, brand: Brand, categoryLabel: strin
     // Translation KEY, not a display string — the card looks up
     // home.product.badge.<key>, so no raw key or untranslated English leaks.
     badgeKey: product.isPopular ? "popular" : product.isRecommended ? "recommended" : undefined,
+    spicy: product.isSpicy || undefined,
+    vegetarian: product.isVegetarian || undefined,
+    dineInOnly: dineInOnly || undefined,
     sizes,
+    defaultSizeKey: defaultSize ? String(defaultSize.id) : undefined,
+    variationId: orderable.length === 1 ? orderable[0].id : undefined,
+    ingredients: ingredients.length ? ingredients : undefined,
     about: product.description || undefined,
     preparationTime: product.preparationTime,
     variationType: product.variationType,

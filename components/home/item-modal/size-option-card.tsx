@@ -3,7 +3,8 @@
 /**
  * Selectable option row from the reference design: radio dot, label,
  * optional sub-label (crust / slices) and right-aligned price.
- * Used for sizes, bun/sauce choices and flavours.
+ * Used for sizes, bun/sauce choices and flavours. A `disabled` row (a
+ * dine-in-only size) stays listed, greyed out and unselectable.
  */
 export function SizeOptionCard({
   label,
@@ -13,6 +14,7 @@ export function SizeOptionCard({
   accent,
   onSelect,
   testId,
+  disabled = false,
 }: {
   label: string;
   sub?: string;
@@ -21,15 +23,18 @@ export function SizeOptionCard({
   accent: string;
   onSelect: () => void;
   testId?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       role="radio"
       aria-checked={active}
+      aria-disabled={disabled || undefined}
+      disabled={disabled}
       onClick={onSelect}
       data-testid={testId}
-      className="flex w-full items-center justify-between gap-3 rounded-[10px] border px-3 py-2.75 text-left transition-colors"
+      className="flex w-full items-center justify-between gap-3 rounded-[10px] border px-3 py-2.75 text-left transition-colors disabled:opacity-45"
       style={{
         borderColor: active ? accent : "rgba(255,255,255,0.07)",
         background: active ? `${accent}14` : "#1c1c24",

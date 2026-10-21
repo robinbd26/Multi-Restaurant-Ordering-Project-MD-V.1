@@ -439,6 +439,8 @@
       "addToCart": "Add {name} to cart",
       "viewDetails": "View details for {name}",
       "badge": {
+        "veg": "Veg",
+        "dineInOnly": "Dine-in only",
         "popular": "Popular",
         "recommended": "Recommended"
       }

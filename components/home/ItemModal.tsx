@@ -7,17 +7,12 @@ import { ModalActionBar } from "@/components/home/item-modal/modal-action-bar";
 import { OptionGroup } from "@/components/home/item-modal/option-group";
 import { ProductImagePanel } from "@/components/home/item-modal/product-image-panel";
 import { SizeOptionCard } from "@/components/home/item-modal/size-option-card";
+import { ProductBadges, productBadges } from "@/components/home/product-badges";
 import { ProductReviewsSection } from "@/components/reviews/product-reviews-section";
 import type { MenuItem } from "@/lib/home/types";
 import { useTranslation } from "@/lib/i18n/use-translation";
 
 import { brandName } from "@/lib/brands/shared";
-/** Badge tint per menu group (mirrors ProductCard / reference design). */
-/** Badge tint. Keyed by the product's DATABASE flags, so there are exactly two. */
-const CLASS_TONE: Record<string, { bg: string; color: string; border: string }> = {
-  popular: { bg: "rgba(245,166,35,0.15)", color: "#F5A623", border: "rgba(245,166,35,0.3)" },
-  recommended: { bg: "rgba(74,222,128,0.12)", color: "#4ade80", border: "rgba(74,222,128,0.25)" },
-};
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -33,8 +28,12 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
   const info = brandInfo(item.brand);
   const accent = info?.accent_color ?? "#e8192c";
 
-  const defaultSize = item.sizes?.some((s) => s.key === "14in") ? "14in" : (item.sizes?.[0]?.key ?? "");
+  // Start on the product's default orderable size; a dine-in-only size can be
+  // seen but never selected, so it is never the starting point either.
+  const defaultSize = item.defaultSizeKey ?? item.sizes?.find((s) => !s.dineInOnly)?.key ?? "";
   const [sizeKey, setSizeKey] = useState(defaultSize);
+  // The header reads "from ৳X" until the customer picks a size, then that size's price.
+  const [sizePicked, setSizePicked] = useState(false);
   const [option, setOption] = useState(item.options?.[0] ?? "");
   const [choices, setChoices] = useState<Record<string, string>>(
     Object.fromEntries((item.choiceGroups ?? []).map((g) => [g.key, g.options[0]])),
@@ -43,8 +42,11 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
   // Crust, the same rule as the dashboard menu card: a THICK/THIN product has
   // its one fixed crust, a BOTH product must be chosen before adding (the
   // server refuses the order otherwise), anything else has no crust at all.
+  // When the sizes carry their own crust (a 12" is thin, a 14" thick) the size
+  // IS the crust choice, so there is no separate crust picker.
   const crustPolicy = item.variationType ?? "";
-  const mustChooseCrust = crustPolicy === "BOTH";
+  const sizesCarryCrust = Boolean(item.sizes?.some((s) => s.crust));
+  const mustChooseCrust = crustPolicy === "BOTH" && !sizesCarryCrust;
   const [crust, setCrust] = useState<string>(crustPolicy === "THICK" || crustPolicy === "THIN" ? crustPolicy : "");
   const crustGroupRef = useRef<HTMLDivElement>(null);
   const [qty, setQty] = useState(1);
@@ -91,7 +93,8 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
     };
   }, [onClose]);
 
-  const size = item.sizes?.find((s) => s.key === sizeKey);
+  const size = item.sizes?.find((s) => s.key === sizeKey && !s.dineInOnly);
+  const lineCrust = size?.crust ?? crust;
 
   const unitPrice = useMemo(() => {
     const base = size?.price ?? item.price;
@@ -116,8 +119,10 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
       return;
     }
 
+    if (item.dineInOnly) return;
     const parts: string[] = [];
-    if (size) parts.push(size.label.split(" –")[0]);
+    // The full size label ("12 inch – Thin Crust") also says the crust.
+    if (size) parts.push(size.label);
     if (mustChooseCrust && crust) parts.push(t(`variationType.${crust}`));
     for (const group of item.choiceGroups ?? []) {
       const picked = choices[group.key];
@@ -140,10 +145,10 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
       variant: parts.join(" · ") || undefined,
       // Size keys ARE the variation ids (lib/services/public-catalog.ts), so
       // the order is priced at the size picked here, not the default one.
-      variationId: size ? Number(size.key) : null,
+      variationId: size ? Number(size.key) : (item.variationId ?? null),
       // Part of the line's identity (a Thick and a Thin are separate lines)
       // and sent with the order; the server re-validates it.
-      variationType: crust || undefined,
+      variationType: lineCrust || undefined,
     });
     onClose();
   };
@@ -152,12 +157,9 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
   // against a fixed key set — an admin-created category has no translation key.
   const categoryLabel = (item.group ?? "").toUpperCase();
   const eyebrow = `${item.emoji ?? "🍽️"} ${info ? brandName(info, locale).toUpperCase() : ""} ${categoryLabel}`.trim();
-  const badgeLabel = item.badgeKey ? t(`home.product.badge.${item.badgeKey}`) : null;
-  const tone = item.badgeKey ? CLASS_TONE[item.badgeKey] : undefined;
-  // Reference design: ingredient chips = about parts + the class chip.
-  const ingredientChips = item.about
-    ? [...item.about.split("+").map((p) => p.trim()).filter(Boolean), ...(badgeLabel ? [badgeLabel] : [])]
-    : [];
+  const badges = productBadges(item, t);
+  // Short chips from the product's own ingredients list, never the About sentence.
+  const ingredientChips = item.ingredients ?? [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -201,28 +203,18 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
                 <h2 id={titleId} className="font-display text-[1.7rem] font-black leading-tight text-white">
                   {item.name}
                 </h2>
-                <p className="mt-1 font-display text-[1.3rem] font-extrabold" style={{ color: accent }}>
-                  {item.fromPrice || item.sizes?.length ? `${t("home.product.from")} ` : ""}
-                  {fmt.money(item.sizes?.length ? Math.min(...item.sizes.map((s) => s.price)) : item.price)}
+                <p className="mt-1 font-display text-[1.3rem] font-extrabold" style={{ color: accent }} data-testid="modal-price">
+                  {sizePicked && size ? (
+                    fmt.money(size.price)
+                  ) : (
+                    <>
+                      {item.fromPrice ? `${t("home.product.from")} ` : ""}
+                      {fmt.money(item.price)}
+                    </>
+                  )}
                 </p>
 
-                {(badgeLabel && tone) || item.spicy ? (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {badgeLabel && tone ? (
-                      <span
-                        className="rounded-full border px-2.5 py-0.75 text-[0.68rem] font-bold uppercase tracking-wide"
-                        style={{ background: tone.bg, color: tone.color, borderColor: tone.border }}
-                      >
-                        {badgeLabel}
-                      </span>
-                    ) : null}
-                    {item.spicy ? (
-                      <span className="rounded-[5px] bg-[#E8192C] px-2.5 py-0.75 text-[0.65rem] font-extrabold uppercase tracking-wide text-white">
-                        {t("home.product.spicy")}
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
+                <ProductBadges badges={badges} className="mt-3" />
 
                 <p className="mt-3 text-[0.82rem] italic leading-6 text-[#a0a0b0] sm:hidden">{item.description}</p>
 
@@ -259,12 +251,20 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
                       <SizeOptionCard
                         key={s.key}
                         label={s.label}
-                        sub={s.sub}
+                        // A dine-in-only size always says so, whatever its note.
+                        sub={
+                          s.dineInOnly && !/dine/i.test(s.sub ?? "")
+                            ? [s.sub, t("home.product.badge.dineInOnly")].filter(Boolean).join(" · ")
+                            : s.sub
+                        }
                         price={fmt.money(s.price)}
-                        active={s.key === sizeKey}
+                        active={!s.dineInOnly && s.key === sizeKey}
+                        disabled={s.dineInOnly}
                         accent={accent}
+                        testId={`modal-size-${s.key}`}
                         onSelect={() => {
                           setSizeKey(s.key);
+                          setSizePicked(true);
                           setErrors((prev) => ({ ...prev, size: "" }));
                         }}
                       />
@@ -386,7 +386,14 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
           <ProductReviewsSection productId={item.id} />
         </div>
 
-        <ModalActionBar qty={qty} onQtyChange={setQty} total={unitPrice * qty} accent={accent} onAdd={handleAdd} />
+        <ModalActionBar
+          qty={qty}
+          onQtyChange={setQty}
+          total={unitPrice * qty}
+          accent={accent}
+          onAdd={handleAdd}
+          disabled={Boolean(item.dineInOnly)}
+        />
       </div>
     </div>
   );

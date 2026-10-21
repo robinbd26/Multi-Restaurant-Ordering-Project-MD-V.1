@@ -439,6 +439,8 @@
       "addToCart": "{name} কার্টে যোগ করুন",
       "viewDetails": "{name} এর বিস্তারিত দেখুন",
       "badge": {
+        "veg": "নিরামিষ",
+        "dineInOnly": "শুধু ডাইন-ইন",
         "popular": "জনপ্রিয়",
         "recommended": "প্রস্তাবিত"
       }
