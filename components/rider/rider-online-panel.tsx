@@ -127,7 +127,7 @@ export function RiderOnlinePanel({ initialOnline }: { initialOnline: boolean }) 
         type="button" role="switch" aria-checked={online} aria-label={t("rider.onlineOffline")}
         onClick={toggle} disabled={pending} data-testid="rider-online-toggle"
         className={cn(
-          "flex h-10 w-14 shrink-0 cursor-pointer items-center rounded-full px-1 transition-colors",
+          "flex h-10 w-14 shrink-0 cursor-pointer items-center rounded-full px-1 transition-colors disabled:cursor-not-allowed",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rider-600",
           online ? "justify-end bg-rider-500" : "justify-start bg-slate-400 dark:bg-slate-600",
         )}
@@ -140,7 +140,7 @@ export function RiderOnlinePanel({ initialOnline }: { initialOnline: boolean }) 
         className={cn(
           "inline-flex h-12 w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl px-5 text-sm font-extrabold text-white shadow-sm transition-opacity sm:w-auto",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rider-600",
-          "disabled:pointer-events-none disabled:opacity-60",
+          "disabled:cursor-not-allowed disabled:opacity-60",
           online ? "bg-red-600 hover:bg-red-700" : "bg-rider-600 hover:bg-rider-700",
         )}
       >

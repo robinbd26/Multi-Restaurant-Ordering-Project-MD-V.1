@@ -224,6 +224,7 @@ export function serializeVariation(v: ProductVariation) {
     sort_order: v.sortOrder,
     is_default: v.isDefault,
     is_enabled: v.isEnabled,
+    dine_in_only: v.dineInOnly,
   };
 }
 
@@ -236,7 +237,9 @@ type ProductRel = Product & {
 export function serializeProduct(p: ProductRel) {
   const variations = (p.variations ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
   const enabled = variations.filter((v) => v.isEnabled);
-  const active = enabled.find((v) => v.isDefault) ?? enabled[0] ?? variations[0];
+  // The default an order would use: an orderable size, never a dine-in-only one.
+  const orderable = enabled.filter((v) => !v.dineInOnly);
+  const active = orderable.find((v) => v.isDefault) ?? orderable[0] ?? enabled[0] ?? variations[0];
   // Effective base price = default variation price when present, else legacy price.
   const basePrice = active ? (active.price instanceof Prisma.Decimal ? active.price : new Prisma.Decimal(active.price)) : p.price;
   return {
@@ -258,6 +261,9 @@ export function serializeProduct(p: ProductRel) {
     preparation_time: p.preparationTime,
     is_popular: p.isPopular,
     is_recommended: p.isRecommended,
+    is_spicy: p.isSpicy,
+    is_vegetarian: p.isVegetarian,
+    ingredients: p.ingredients,
     // req #4 — product crust policy ("" = not applicable | THICK | THIN | BOTH).
     variation_type: p.variationType,
     default_variation_id: active?.id ?? null,

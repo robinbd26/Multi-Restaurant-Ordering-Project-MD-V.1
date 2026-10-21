@@ -40,6 +40,7 @@ const RULES: FieldRules = {
   category: [selectRequired], // req #10 — category selection is mandatory
   variation_type: [oneOf(VARIATION_TYPES)],
   description: [maxLength(LIMITS.longTextMax)],
+  ingredients: [maxLength(LIMITS.longTextMax)],
   discount: [number, min(LIMITS.percentMin), max(LIMITS.percentMax)],
   preparation_time: [required, integer, min(LIMITS.minutesMin), max(LIMITS.minutesMax)],
 };
@@ -63,6 +64,7 @@ interface VariationRow {
   variant_type: string;
   is_enabled: boolean;
   is_default: boolean;
+  dine_in_only: boolean;
 }
 
 let rowKeySeq = 0;
@@ -77,6 +79,7 @@ function blankVariation(isDefault = false): VariationRow {
     variant_type: "",
     is_enabled: true,
     is_default: isDefault,
+    dine_in_only: false,
   };
 }
 
@@ -91,6 +94,7 @@ function rowsFromProduct(product?: Product): VariationRow[] {
       variant_type: v.variant_type,
       is_enabled: v.is_enabled,
       is_default: v.is_default,
+      dine_in_only: v.dine_in_only ?? false,
     }));
   }
   // Variations are optional: a product without any starts with no rows and is
@@ -213,15 +217,23 @@ export function ProductForm({
   const makeDefault = (i: number) =>
     setRows((prev) => prev.map((r, idx) => ({ ...r, is_default: idx === i })));
 
+  // The default is what the card adds, so it must be enabled AND orderable.
+  const isOrderable = (r: VariationRow) => r.is_enabled && !r.dine_in_only;
+  const ensureDefault = (list: VariationRow[]) => {
+    if (!list.some((r) => r.is_default && isOrderable(r))) {
+      const first = list.findIndex(isOrderable);
+      list = list.map((r, idx) => ({ ...r, is_default: idx === first }));
+    }
+    return list;
+  };
+
   const toggleEnabled = (i: number, on: boolean) =>
-    setRows((prev) => {
-      const next = prev.map((r, idx) => (idx === i ? { ...r, is_enabled: on, is_default: on && r.is_default } : r));
-      if (!next.some((r) => r.is_default && r.is_enabled)) {
-        const firstEnabled = next.findIndex((r) => r.is_enabled);
-        if (firstEnabled >= 0) next[firstEnabled] = { ...next[firstEnabled], is_default: true };
-      }
-      return next;
-    });
+    setRows((prev) =>
+      ensureDefault(prev.map((r, idx) => (idx === i ? { ...r, is_enabled: on, is_default: on && r.is_default } : r))),
+    );
+
+  const toggleDineInOnly = (i: number, on: boolean) =>
+    setRows((prev) => ensureDefault(prev.map((r, idx) => (idx === i ? { ...r, dine_in_only: on } : r))));
 
   // Serialized payload sent to the API (validated again server-side).
   const variationsJson = JSON.stringify(
@@ -234,6 +246,7 @@ export function ProductForm({
       sortOrder: i,
       isDefault: r.is_default,
       isEnabled: r.is_enabled,
+      dineInOnly: r.dine_in_only,
     })),
   );
 
@@ -275,6 +288,8 @@ export function ProductForm({
     });
     if (!rows.some((r) => r.is_enabled)) {
       found.variations = t("catalog.variationOneEnabledRequired");
+    } else if (!rows.some((r) => r.is_enabled && !r.dine_in_only)) {
+      found.variations = t("catalog.variationOneOrderableRequired");
     }
     return found;
   }, [rows, basePrice, t]);
@@ -297,9 +312,9 @@ export function ProductForm({
   // server derives Product.price from the variations, so editing here edits the
   // row that owns the base price (one source of truth, two doors).
   const defaultIdx = (() => {
-    const preferred = rows.findIndex((r) => r.is_default && r.is_enabled);
+    const preferred = rows.findIndex((r) => r.is_default && isOrderable(r));
     if (preferred >= 0) return preferred;
-    return rows.findIndex((r) => r.is_enabled);
+    return rows.findIndex(isOrderable);
   })();
   const defaultRow = defaultIdx >= 0 ? rows[defaultIdx] : undefined;
 
@@ -337,6 +352,14 @@ export function ProductForm({
             </div>
             <Field label={t("catalog.description")} name="description" error={errors.description}>
               <Textarea name="description" defaultValue={product?.description} rows={4} />
+            </Field>
+            <Field
+              label={t("catalog.ingredients")}
+              name="ingredients"
+              hint={t("catalog.ingredientsHint")}
+              error={errors.ingredients}
+            >
+              <Input name="ingredients" defaultValue={product?.ingredients ?? ""} />
             </Field>
           </FormSection>
 
@@ -460,7 +483,7 @@ export function ProductForm({
                       type="radio"
                       name="__default"
                       checked={r.is_default}
-                      disabled={!r.is_enabled}
+                      disabled={!isOrderable(r)}
                       onChange={() => makeDefault(i)}
                     />
                     {t("catalog.variationDefault")}
@@ -473,6 +496,15 @@ export function ProductForm({
                       onChange={(e) => toggleEnabled(i, e.target.checked)}
                     />
                     {t("catalog.variationEnabled")}
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={r.dine_in_only}
+                      data-testid="variation-dine-in-only"
+                      onChange={(e) => toggleDineInOnly(i, e.target.checked)}
+                    />
+                    {t("catalog.variationDineInOnly")}
                   </label>
                   {/* Destructive, but not louder than the fields it removes —
                       and it stays inside its own variation card. */}
@@ -706,6 +738,16 @@ export function ProductForm({
               name="is_recommended"
               label={t("catalog.recommended")}
               defaultChecked={product?.is_recommended ?? false}
+            />
+            <Checkbox
+              name="is_spicy"
+              label={t("catalog.spicy")}
+              defaultChecked={product?.is_spicy ?? false}
+            />
+            <Checkbox
+              name="is_vegetarian"
+              label={t("catalog.vegetarian")}
+              defaultChecked={product?.is_vegetarian ?? false}
             />
           </FormSection>
 

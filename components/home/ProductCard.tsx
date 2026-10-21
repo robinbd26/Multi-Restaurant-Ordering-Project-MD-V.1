@@ -5,30 +5,29 @@ import { useState, type CSSProperties } from "react";
 import { FoodImage } from "@/components/home/food-image";
 import { useHomeCart } from "@/components/home/home-cart-context";
 import { QuantityControl } from "@/components/home/item-modal/quantity-control";
+import { ProductBadges, productBadges } from "@/components/home/product-badges";
 import type { MenuItem } from "@/lib/home/types";
 import { useTranslation } from "@/lib/i18n/use-translation";
 import { cn } from "@/lib/utils";
 
 import { withAlpha } from "@/lib/brands/shared";
-/**
- * Badge tint. Badges are now the product's own DATABASE flags (isPopular /
- * isRecommended) rather than a hardcoded menu group, so there are exactly two.
- */
-const BADGE_TONE: Record<string, string> = {
-  popular: "text-[#F5A623]",
-  recommended: "text-[#4ade80]",
-};
 
 /** True when the item needs a configuration modal before adding. */
 export function itemHasOptions(item: MenuItem): boolean {
+  const orderableSizes = (item.sizes ?? []).filter((s) => !s.dineInOnly);
   return Boolean(
-    item.sizes?.length ||
+    // More than one size the customer can actually order: they pick one. A
+    // single orderable size (the rest dine-in only) is no choice at all.
+    orderableSizes.length > 1 ||
       item.options?.length ||
       item.addOns?.length ||
       item.choiceGroups?.length ||
+      // Nothing orderable online: the modal shows it greyed out, never adds.
+      item.dineInOnly ||
       // A pizza offered in both crusts needs the customer to pick one; the
-      // server refuses the order without it, so it opens the modal too.
-      item.variationType === "BOTH",
+      // server refuses the order without it, so it opens the modal too —
+      // unless its sizes carry the crust, which the size choice settles.
+      (item.variationType === "BOTH" && !item.sizes?.some((s) => s.crust)),
   );
 }
 
@@ -72,18 +71,23 @@ export function ProductCard({
       onConfigure(item);
       return;
     }
+    // The one orderable size, when the product has sizes at all.
+    const only = item.sizes?.find((s) => !s.dineInOnly);
     add({
       id: item.id,
       name: item.name,
       brand: item.brand,
       branchId: item.branchId,
       branchName: item.branchName,
-      unitPrice: item.price,
+      unitPrice: only?.price ?? item.price,
       image: item.image,
       emoji: item.emoji,
+      variant: only?.label,
+      variationId: only ? Number(only.key) : (item.variationId ?? null),
       // A single-crust pizza carries its one crust, so the line says what is
       // being ordered (the server would apply the same crust anyway).
-      variationType: item.variationType === "THICK" || item.variationType === "THIN" ? item.variationType : undefined,
+      variationType:
+        only?.crust ?? (item.variationType === "THICK" || item.variationType === "THIN" ? item.variationType : undefined),
       qty,
     });
     openCart();
@@ -118,21 +122,9 @@ export function ProductCard({
           sizes="(max-width: 640px) 100vw, 288px"
           className="transition-transform duration-500 group-hover:scale-105"
         />
-        {item.badgeKey ? (
-          <span
-            className={cn(
-              "absolute left-2.5 top-2.5 rounded-md bg-black/65 px-2 py-1 text-[0.68rem] font-bold uppercase tracking-wide backdrop-blur",
-              BADGE_TONE[item.badgeKey] ?? accentText,
-            )}
-          >
-            {t(`home.product.badge.${item.badgeKey}`)}
-          </span>
-        ) : null}
-        {item.spicy ? (
-          <span className="absolute right-2.5 top-2.5 rounded-[5px] bg-[#E8192C] px-2 py-1 text-[0.65rem] font-extrabold uppercase tracking-wide text-white">
-            {t("home.product.spicy")}
-          </span>
-        ) : null}
+        {/* Only badges that add information (Spicy, Veg, Dine-in only, Popular);
+            never the category, which the section heading already says. */}
+        <ProductBadges badges={productBadges(item, t)} className="absolute left-2.5 right-2.5 top-2.5" />
       </div>
 
       <div className="flex flex-1 flex-col gap-1.5 p-3.5">

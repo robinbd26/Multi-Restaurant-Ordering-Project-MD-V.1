@@ -63,9 +63,22 @@ export interface OrderItemInput {
  * product is REJECTED server-side, never silently coerced); a BOTH product
  * requires an explicit choice. Returns the value snapshotted onto the order item.
  */
-function resolveCrustChoice(policy: string, submitted: string | undefined): string {
+function resolveCrustChoice(
+  policy: string,
+  submitted: string | undefined,
+  variation: { variantType: string } | null,
+): string {
   const allowed = allowedCrustChoices(policy);
   const chosen = String(submitted ?? "").trim().toUpperCase();
+  // A size baked in one crust (a 12" is thin, a 14" thick) IS the crust: no
+  // separate choice, and a contradicting one is refused like any forged crust.
+  const sizeCrust = variation?.variantType ?? "";
+  if (sizeCrust === "THICK" || sizeCrust === "THIN") {
+    if (!allowed.includes(sizeCrust) || (chosen && chosen !== sizeCrust)) {
+      throw validationError({ items: sk("errors.orders.variationTypeNotAvailable") });
+    }
+    return sizeCrust;
+  }
   if (allowed.length === 0) return ""; // unknown/legacy policy → nothing to enforce
   if (policy === "BOTH") {
     if (!chosen) throw validationError({ items: sk("errors.orders.variationTypeRequired") });
@@ -139,17 +152,23 @@ function lineBrand(product: PricedProduct, hint: string | undefined): string {
 
 /**
  * Resolve the purchasable variation for a line (shared by createOrder + quote).
- * A disabled/foreign variation is rejected; when none is specified fall back to
- * the product's default (then any enabled one).
+ * A disabled, dine-in-only or foreign variation is rejected. With none
+ * specified, a product with ONE orderable size uses it; a product with several
+ * is refused rather than silently charged at its default size.
  */
 function resolveVariationFor(product: PricedProduct, variationId?: number) {
-  const enabled = product.variations.filter((v) => v.isEnabled);
+  const orderable = product.variations.filter((v) => v.isEnabled && !v.dineInOnly);
   if (variationId != null) {
-    const chosen = enabled.find((v) => v.id === variationId);
+    const chosen = orderable.find((v) => v.id === variationId);
     if (!chosen) throw validationError({ items: sk("errors.orders.variationUnavailable") });
     return chosen;
   }
-  return enabled.find((v) => v.isDefault) ?? enabled[0] ?? null;
+  if (orderable.length > 1) throw validationError({ items: sk("errors.orders.variationRequired") });
+  // Every size dine-in only: nothing to sell online (never the legacy base price).
+  if (orderable.length === 0 && product.variations.length > 0) {
+    throw validationError({ items: sk("errors.orders.variationUnavailable") });
+  }
+  return orderable[0] ?? null;
 }
 
 /**
@@ -249,7 +268,7 @@ function priceLines(items: OrderItemInput[], byId: Map<number, PricedProduct>): 
   return items.map((item) => {
     const product = byId.get(item.product_id)!;
     const variation = resolveVariationFor(product, item.variation_id);
-    const crust = resolveCrustChoice(product.variationType, item.variation_type);
+    const crust = resolveCrustChoice(product.variationType, item.variation_type, variation);
     const quantity = resolveQuantity(item.quantity);
     // Price basis = selected variation price (current), else legacy product price.
     const unitPrice = discountedUnit(variation ? variation.price : product.price, product.discount);

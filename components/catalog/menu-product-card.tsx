@@ -29,23 +29,30 @@ export function MenuProductCard({
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
-  // Only enabled variations are purchasable.
+  // Enabled variations are listed; a dine-in-only one is shown but never
+  // selectable, so only the orderable ones can be picked or defaulted to.
   const variations = product.variations.filter((v) => v.is_enabled);
+  const orderable = variations.filter((v) => !v.dine_in_only);
+  const dineInOnly = variations.length > 0 && orderable.length === 0;
   const defaultVariationId =
-    product.default_variation_id && variations.some((v) => v.id === product.default_variation_id)
+    product.default_variation_id && orderable.some((v) => v.id === product.default_variation_id)
       ? product.default_variation_id
-      : variations[0]?.id ?? null;
+      : orderable[0]?.id ?? null;
   const [variationId, setVariationId] = useState<number | null>(defaultVariationId);
-  const selected = variations.find((v) => v.id === variationId) ?? variations[0];
+  const selected = orderable.find((v) => v.id === variationId) ?? orderable[0];
+  // A size baked in one crust (12" thin, 14" thick) settles the crust itself.
+  const sizeCrust = selected?.variant_type === "THICK" || selected?.variant_type === "THIN" ? selected.variant_type : "";
 
   // req #4 — crust policy. "" (not applicable) means the product offers no
   // crust at all → no crust UI is rendered and the cart line carries "".
   // THICK/THIN products have a single fixed crust (no choice to make); BOTH
   // requires the customer to pick before adding to cart.
   const policy = product.variation_type ?? "";
-  const mustChoose = policy === "BOTH";
+  const sizesCarryCrust = variations.some((v) => v.variant_type === "THICK" || v.variant_type === "THIN");
+  const mustChoose = policy === "BOTH" && !sizesCarryCrust;
   const hasFixedCrust = policy === "THICK" || policy === "THIN";
-  const [crust, setCrust] = useState<string>(hasFixedCrust ? policy : "");
+  const [chosenCrust, setCrust] = useState<string>(hasFixedCrust ? policy : "");
+  const crust = sizeCrust || chosenCrust;
   const [crustError, setCrustError] = useState(false);
 
   const discountPct = Number(product.discount);
@@ -57,6 +64,7 @@ export function MenuProductCard({
   const unitPrice = hasDiscount ? baseUnit - (baseUnit * discountPct) / 100 : baseUnit;
 
   function add() {
+    if (dineInOnly) return;
     if (mustChoose && !crust) {
       setCrustError(true);
       return;
@@ -64,7 +72,8 @@ export function MenuProductCard({
     setCrustError(false);
     // The size name only when there was a size to choose, plus the crust, as
     // the line's readable label; the ids travel separately for the server.
-    const variant = [variations.length > 1 ? selected?.name : "", crust ? t(`variationType.${crust}`) : ""]
+    // A size that carries its crust already names it ("12 inch – Thin Crust").
+    const variant = [orderable.length > 1 ? selected?.name : "", crust && !sizeCrust ? t(`variationType.${crust}`) : ""]
       .filter(Boolean)
       .join(" · ");
     const result = addToCart({
@@ -96,6 +105,9 @@ export function MenuProductCard({
           <div className="flex h-full items-center justify-center text-4xl">🍛</div>
         )}
         <div className="absolute left-3 top-3 flex gap-1.5">
+          {product.is_spicy ? <Badge tone="red">{t("home.product.spicy")}</Badge> : null}
+          {product.is_vegetarian ? <Badge tone="green">{t("home.product.badge.veg")}</Badge> : null}
+          {dineInOnly ? <Badge tone="violet">{t("home.product.badge.dineInOnly")}</Badge> : null}
           {product.is_popular ? <Badge tone="brand">{t("catalog.popular")}</Badge> : null}
           {hasDiscount ? <Badge tone="green">-{fmt.num(Math.round(Number(product.discount)))}%</Badge> : null}
         </div>
@@ -115,15 +127,18 @@ export function MenuProductCard({
                 key={v.id}
                 type="button"
                 data-testid="menu-variation"
+                disabled={v.dine_in_only}
+                title={v.dine_in_only ? t("home.product.badge.dineInOnly") : undefined}
                 onClick={() => setVariationId(v.id)}
                 className={
-                  "rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors " +
+                  "rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 " +
                   (v.id === selected?.id
                     ? "border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
                     : "border-border-base text-fg-muted hover:border-brand-300")
                 }
               >
                 {v.name} · {fmt.money(v.price)}
+                {v.dine_in_only ? ` · ${t("home.product.badge.dineInOnly")}` : ""}
               </button>
             ))}
           </div>
@@ -199,7 +214,7 @@ export function MenuProductCard({
               +
             </button>
           </div>
-          <Button size="sm" className="flex-1" onClick={add} data-testid="menu-add">
+          <Button size="sm" className="flex-1" onClick={add} disabled={dineInOnly} data-testid="menu-add">
             {added ? `✓ ${t("catalog.added")}` : t("catalog.addToCart")}
           </Button>
         </div>

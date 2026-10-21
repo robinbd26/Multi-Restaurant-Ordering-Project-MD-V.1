@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 
 import { CategoryTabs } from "@/components/home/CategoryTabs";
 import { useHomeCart } from "@/components/home/home-cart-context";
 import { ItemModal } from "@/components/home/ItemModal";
 import { ProductCard } from "@/components/home/ProductCard";
+import { StickyCategoryBar, scrollToElement } from "@/components/home/StickyCategoryBar";
 import { brandDescription, brandName, brandTagline, withAlpha, type BrandInfo } from "@/lib/brands/shared";
 import type { Brand, CategoryKey, MenuItem, PublicCategory } from "@/lib/home/types";
 import { useTranslation } from "@/lib/i18n/use-translation";
@@ -203,7 +204,7 @@ export function MenuSection({
 
   // Group results by category → optional sub-group, preserving menu order.
   const grouped = useMemo(() => {
-    const out: { key: string; label: string; items: MenuItem[] }[] = [];
+    const out: { key: string; catKey: CategoryKey; label: string; items: MenuItem[] }[] = [];
     for (const cat of categories) {
       const catItems = filtered.filter((i) => i.category === cat.key);
       if (catItems.length === 0) continue;
@@ -214,16 +215,63 @@ export function MenuSection({
         groups.get(g)!.push(item);
       }
       for (const [label, items] of groups) {
-        out.push({ key: `${cat.key}-${label}`, label, items });
+        out.push({ key: `${cat.key}-${label}`, catKey: cat.key, label, items });
       }
     }
     return out;
   }, [filtered, categories]);
 
+  // The sticky bar lists every category the brand has (the search still
+  // narrows it), whatever single-category filter the chip block is on.
+  const barCategories = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return categories
+      .map((c) => ({
+        key: c.key,
+        label: c.label,
+        emoji: c.emoji,
+        count: items.filter(
+          (i) =>
+            i.brand === brand &&
+            i.category === c.key &&
+            (!q || i.name.toLowerCase().includes(q) || i.description.toLowerCase().includes(q)),
+        ).length,
+      }))
+      .filter((c) => c.count > 0);
+  }, [categories, items, brand, query]);
+
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const chipsRef = useRef<HTMLDivElement>(null);
+  // A chip tapped while the grid was filtered to another category: show every
+  // section first, then scroll once they are rendered.
+  const pendingScroll = useRef<CategoryKey | "top" | null>(null);
+
+  const scrollToCategory = (key: CategoryKey | "top") => {
+    const el =
+      key === "top"
+        ? chipsRef.current
+        : document.querySelector(`#menu-section [data-cat-key="${CSS.escape(key)}"]`);
+    if (el) scrollToElement(el, tabsRef.current);
+  };
+  const selectFromBar = (key: CategoryKey | "top") => {
+    if (active !== "all" && key !== active) {
+      pendingScroll.current = key;
+      setActive("all");
+    } else {
+      scrollToCategory(key);
+    }
+  };
+  useEffect(() => {
+    const key = pendingScroll.current;
+    if (!key) return;
+    pendingScroll.current = null;
+    requestAnimationFrame(() => scrollToCategory(key));
+  }, [grouped]);
+
   return (
     <section id="menu-section" className="scroll-mt-14 bg-[#0c0c0e] md:scroll-mt-18">
       {/* Brand toggle — sticky full-width underline tab bar (below the sticky nav) */}
-      <div className="sticky top-14 z-30 border-y border-white/10 bg-[#111115] md:top-18">
+      <div ref={tabsRef} className="sticky top-14 z-30 border-y border-white/10 bg-[#111115] md:top-18">
         {/* overflow-x-auto makes overflow-y compute to auto too, and each tab's
             -mb-px underline stuck out one pixel below this box, which drew a
             tiny vertical scrollbar at the right. pb-px gives that pixel room
@@ -254,6 +302,15 @@ export function MenuSection({
           })}
         </div>
       </div>
+
+      <StickyCategoryBar
+        categories={barCategories}
+        accent={accent}
+        anchorRef={chipsRef}
+        tabsRef={tabsRef}
+        onSelect={selectFromBar}
+        onSelectAll={() => selectFromBar("top")}
+      />
 
       {/* Brand header band */}
       <div className="border-b border-white/8 bg-[#111115] px-4 pt-8">
@@ -357,7 +414,7 @@ export function MenuSection({
         ) : null}
 
         {/* Category tabs */}
-        <div className="mt-4">
+        <div ref={chipsRef} className="mt-4">
           <CategoryTabs categories={categories} accent={accent} active={active} onChange={setActive} />
         </div>
 
@@ -406,7 +463,7 @@ export function MenuSection({
           </p>
         ) : (
           grouped.map((group) => (
-            <div key={group.key} className="mt-7">
+            <div key={group.key} data-cat-key={group.catKey} className="mt-7">
               <div className="mb-4 flex items-center gap-2.5 border-b border-white/8 pb-2.5">
                 <span className="text-base" style={{ color: accent }}>★</span>
                 {/* The category's own name from the database, rendered as-is.
@@ -435,7 +492,15 @@ export function MenuSection({
         )}
       </div>
 
-      {configItem ? <ItemModal item={configItem} onClose={() => setConfigItem(null)} /> : null}
+      {configItem ? (
+        <ItemModal
+          key={configItem.id}
+          item={configItem}
+          items={items}
+          onOpenItem={setConfigItem}
+          onClose={() => setConfigItem(null)}
+        />
+      ) : null}
     </section>
   );
 }

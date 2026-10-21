@@ -80,8 +80,13 @@ function discounted(price: unknown, discountPct: unknown): number {
  */
 function toMenuItem(product: CustomerProduct, brand: Brand, categoryLabel: string): MenuItem {
   const enabled = product.variations.filter((v) => v.isEnabled);
-  const prices = enabled.map((v) => discounted(v.price, product.discount));
+  // Dine-in-only sizes are LISTED (greyed out) but never priced as "from" or
+  // added: the card price and the default come from the orderable ones.
+  const orderable = enabled.filter((v) => !v.dineInOnly);
+  const priced = orderable.length ? orderable : enabled;
+  const prices = priced.map((v) => discounted(v.price, product.discount));
   const base = prices.length ? Math.min(...prices) : discounted(product.price, product.discount);
+  const dineInOnly = enabled.length > 0 && orderable.length === 0;
 
   // Sizes drive the "choose a size" modal. One variation is not a choice, so it
   // is priced inline and the card adds straight to the cart — the behaviour the
@@ -93,15 +98,22 @@ function toMenuItem(product: CustomerProduct, brand: Brand, categoryLabel: strin
           label: v.name,
           sub: v.servingInfo || v.sizeLabel || undefined,
           price: discounted(v.price, product.discount),
+          crust: v.variantType === "THICK" || v.variantType === "THIN" ? v.variantType : undefined,
+          dineInOnly: v.dineInOnly || undefined,
         }))
       : undefined;
+  const defaultSize = orderable.find((v) => v.isDefault) ?? orderable[0];
+  const ingredients = product.ingredients
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   return {
     id: String(product.id),
     name: product.name,
     description: product.description,
     price: base,
-    fromPrice: enabled.length > 1,
+    fromPrice: orderable.length > 1,
     // Versioned by updatedAt so a replaced photo can never render from the
     // browser's cached copy. Stored keys are uuids, so the URL changes anyway;
     // the version also covers legacy rooted paths that were overwritten in place.
@@ -113,9 +125,17 @@ function toMenuItem(product: CustomerProduct, brand: Brand, categoryLabel: strin
     // Translation KEY, not a display string — the card looks up
     // home.product.badge.<key>, so no raw key or untranslated English leaks.
     badgeKey: product.isPopular ? "popular" : product.isRecommended ? "recommended" : undefined,
+    spicy: product.isSpicy || undefined,
+    vegetarian: product.isVegetarian || undefined,
+    dineInOnly: dineInOnly || undefined,
     sizes,
+    defaultSizeKey: defaultSize ? String(defaultSize.id) : undefined,
+    variationId: orderable.length === 1 ? orderable[0].id : undefined,
+    ingredients: ingredients.length ? ingredients : undefined,
     about: product.description || undefined,
     preparationTime: product.preparationTime,
+    servingInfo:
+      orderable.length === 1 ? orderable[0].servingInfo || orderable[0].sizeLabel || undefined : undefined,
     variationType: product.variationType,
     branchId: product.branchId,
     branchName: product.branch.name,
@@ -158,6 +178,7 @@ async function buildMenu(branchId?: number): Promise<PublicMenu> {
   const items: MenuItem[] = [];
   const categories: PublicCategory[] = [];
   const seenCategory = new Set<string>();
+  const sortRank = new Map<string, number>();
   // One grouped query for every product's visible-review average.
   const ratings = await ratingSummaries(products.map((p) => p.id));
 
@@ -175,13 +196,16 @@ async function buildMenu(branchId?: number): Promise<PublicMenu> {
       if (product.categoryId != null && !seenCategory.has(dedupe)) {
         seenCategory.add(dedupe);
         categories.push({ key, label, emoji: categoryEmoji(label), brand });
+        sortRank.set(dedupe, product.category?.sortOrder ?? 100);
       }
     }
   }
 
   // A category tab is only offered when it has products for that brand, so the
   // storefront never shows a tab that leads to an empty grid.
-  categories.sort((a, b) => a.label.localeCompare(b.label));
+  // Order: the admin-set rank (mains first, sides and drinks last), then name.
+  const rank = (c: PublicCategory) => sortRank.get(`${c.brand}:${c.key}`) ?? 100;
+  categories.sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label));
 
   const search: SearchEntry[] = items.map((item) => ({
     id: item.id,

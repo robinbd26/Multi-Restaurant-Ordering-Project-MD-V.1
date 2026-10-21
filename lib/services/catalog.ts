@@ -437,6 +437,7 @@ export interface VariationInput {
   sortOrder?: number;
   isDefault?: boolean;
   isEnabled?: boolean;
+  dineInOnly?: boolean;
 }
 
 interface NormalizedVariation {
@@ -450,6 +451,7 @@ interface NormalizedVariation {
   sortOrder: number;
   isDefault: boolean;
   isEnabled: boolean;
+  dineInOnly: boolean;
 }
 
 function money(value: unknown, field: string): Prisma.Decimal {
@@ -517,6 +519,7 @@ export function normalizeVariations(raw: unknown): NormalizedVariation[] {
       sortOrder: typeof v.sortOrder === "number" ? v.sortOrder : i,
       isDefault: Boolean(v.isDefault),
       isEnabled: v.isEnabled === undefined ? true : Boolean(v.isEnabled),
+      dineInOnly: Boolean(v.dineInOnly),
     };
   });
 
@@ -524,10 +527,16 @@ export function normalizeVariations(raw: unknown): NormalizedVariation[] {
   if (enabled.length === 0) {
     throw validationError({ variations: sk("errors.catalog.variationOneEnabledRequired") });
   }
-  // Exactly one default, and it must be enabled.
-  const enabledDefaults = enabled.filter((v) => v.isDefault);
+  // A product whose every size is dine-in only could never be ordered online.
+  const orderable = enabled.filter((v) => !v.dineInOnly);
+  if (orderable.length === 0) {
+    throw validationError({ variations: sk("errors.catalog.variationOneOrderableRequired") });
+  }
+  // Exactly one default, and it must be enabled and orderable (the default is
+  // what the card adds and what Product.price mirrors).
+  const enabledDefaults = orderable.filter((v) => v.isDefault);
   normalized.forEach((v) => (v.isDefault = false));
-  const chosen = enabledDefaults[0] ?? enabled[0];
+  const chosen = enabledDefaults[0] ?? orderable[0];
   chosen.isDefault = true;
   return normalized;
 }
@@ -545,6 +554,10 @@ export interface ProductWriteInput {
   preparationTime?: number;
   isPopular?: boolean;
   isRecommended?: boolean;
+  isSpicy?: boolean;
+  isVegetarian?: boolean;
+  /** Comma-separated chips; normalised by cleanIngredients. */
+  ingredients?: string;
   /** req #4 — crust policy: "THICK" | "THIN" | "BOTH" (stable internal values). */
   variationType?: string;
   /** Optional. Empty/absent = the product is sold at `price` directly. */
@@ -579,6 +592,35 @@ function resolveVariationType(value: unknown, fallback = PRODUCT_VARIATION_TYPE_
     throw validationError({ variation_type: sk("errors.catalog.variationTypeInvalid") });
   }
   return raw;
+}
+
+/** "Green Chili,  Pesto ,green chili" → "Green Chili, Pesto" (trimmed, de-duplicated). */
+function cleanIngredients(value: string): string {
+  const seen = new Set<string>();
+  const chips: string[] = [];
+  for (const part of value.split(/[,\n]/)) {
+    const chip = part.trim().replace(/\s+/g, " ");
+    if (chip && !seen.has(chip.toLowerCase())) {
+      seen.add(chip.toLowerCase());
+      chips.push(chip);
+    }
+  }
+  return chips.join(", ");
+}
+
+/**
+ * Sizes that carry their own crust (a 12" is thin, a 14" thick) only order
+ * under a BOTH policy: resolveCrustChoice rejects a size crust the product
+ * policy does not allow. So any crust-carrying size forces BOTH, which is what
+ * the seeded pizzas have.
+ */
+function policyFor(
+  variations: NormalizedVariation[],
+  chosen: string | undefined,
+  fallback: string | undefined,
+): string | undefined {
+  if (variations.some((v) => v.variantType === "THICK" || v.variantType === "THIN")) return "BOTH";
+  return chosen ?? fallback;
 }
 
 /** The base price of a product that has no variations — required, non-negative. */
@@ -619,7 +661,10 @@ export async function createProduct(user: User, input: ProductWriteInput): Promi
         preparationTime: input.preparationTime ?? 20,
         isPopular: input.isPopular ?? false,
         isRecommended: input.isRecommended ?? false,
-        variationType: resolveVariationType(input.variationType),
+        isSpicy: input.isSpicy ?? false,
+        isVegetarian: input.isVegetarian ?? false,
+        ingredients: cleanIngredients(input.ingredients ?? ""),
+        variationType: resolveVariationType(policyFor(variations, input.variationType, undefined)),
         ...(input.categoryId != null ? { category: { connect: { id: input.categoryId } } } : {}),
         ...(input.image ? { image: input.image } : {}),
         variations: {
@@ -633,6 +678,7 @@ export async function createProduct(user: User, input: ProductWriteInput): Promi
             sortOrder: v.sortOrder,
             isDefault: v.isDefault,
             isEnabled: v.isEnabled,
+            dineInOnly: v.dineInOnly,
           })),
         },
       },
@@ -681,11 +727,9 @@ export async function updateProduct(
   if (input.preparationTime !== undefined) data.preparationTime = input.preparationTime;
   if (input.isPopular !== undefined) data.isPopular = input.isPopular;
   if (input.isRecommended !== undefined) data.isRecommended = input.isRecommended;
-  // req #4 — only overwrite when explicitly supplied, so a form that omits the
-  // field (e.g. the Super Admin form) can never erase the product's policy.
-  if (input.variationType !== undefined) {
-    data.variationType = resolveVariationType(input.variationType, existing.variationType);
-  }
+  if (input.isSpicy !== undefined) data.isSpicy = input.isSpicy;
+  if (input.isVegetarian !== undefined) data.isVegetarian = input.isVegetarian;
+  if (input.ingredients !== undefined) data.ingredients = cleanIngredients(input.ingredients);
   if (input.image) data.image = input.image;
   if (input.categoryId !== undefined) {
     if (input.categoryId === null) data.category = { disconnect: true };
@@ -696,6 +740,14 @@ export async function updateProduct(
   }
 
   const variations = input.variations !== undefined ? normalizeVariations(input.variations) : null;
+
+  // req #4 — only overwrite when explicitly supplied, so a form that omits the
+  // field can never erase the product's policy; sizes that carry a crust force
+  // BOTH (see policyFor).
+  const policy = policyFor(variations ?? [], input.variationType, undefined);
+  if (policy !== undefined) {
+    data.variationType = resolveVariationType(policy, existing.variationType);
+  }
 
   return prisma.$transaction(async (tx) => {
     if (variations && variations.length === 0) {
@@ -722,6 +774,7 @@ export async function updateProduct(
           sortOrder: v.sortOrder,
           isDefault: v.isDefault,
           isEnabled: v.isEnabled,
+          dineInOnly: v.dineInOnly,
         };
         if (v.id && current.some((c) => c.id === v.id)) {
           await tx.productVariation.update({ where: { id: v.id }, data: payload });

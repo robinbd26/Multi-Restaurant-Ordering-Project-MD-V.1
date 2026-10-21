@@ -378,6 +378,9 @@
       "branchesLower": "{n} branches",
       "noItems": "No items found — try searching for something else.",
       "itemsCount": "{n} items",
+      "allCategories": "All categories",
+      "scrollCategoriesLeft": "Scroll categories left",
+      "scrollCategoriesRight": "Scroll categories right",
       "clearSearch": "Clear search",
       "categories": {
         "pizza": "Pizza",
@@ -439,6 +442,8 @@
       "addToCart": "Add {name} to cart",
       "viewDetails": "View details for {name}",
       "badge": {
+        "veg": "Veg",
+        "dineInOnly": "Dine-in only",
         "popular": "Popular",
         "recommended": "Recommended"
       }
@@ -550,7 +555,14 @@
       "about": "About",
       "quantity": "Quantity",
       "selectSize": "Please select a size",
-      "selectionRequired": "Please select an option"
+      "selectionRequired": "Please select an option",
+      "facts": {
+        "ready": "Ready in {n} min"
+      },
+      "goesWith": "Goes well with",
+      "goesWithChoose": "Choose",
+      "goesWithAdd": "Add {name} to cart",
+      "goesWithAddShort": "Add"
     },
     "toast": {
       "addedToCart": "Added to cart"
@@ -1122,6 +1134,12 @@
     "variationNameDuplicate": "Variation names must be unique.",
     "variationPriceInvalid": "Enter a valid price for each variation.",
     "variationOneEnabledRequired": "At least one enabled variation is required.",
+    "variationOneOrderableRequired": "At least one enabled size must be orderable (not dine-in only).",
+    "variationDineInOnly": "Dine-in only",
+    "spicy": "Spicy",
+    "vegetarian": "Vegetarian",
+    "ingredients": "Ingredients",
+    "ingredientsHint": "Short items separated by commas, e.g. Green Chili, Pesto. Shown as chips on the menu.",
     "noCategoriesYet": "No categories for this branch yet.",
     "createCategoryLink": "Create a category",
     "noBranchesYet": "No active branches yet.",
@@ -1755,6 +1773,7 @@
       "riderNotFoundOrNotApproved": "Rider not found or not approved.",
       "riderOffline": "This rider is offline and cannot receive new orders.",
       "variationUnavailable": "A selected option is unavailable.",
+      "variationRequired": "Please choose a size for this item.",
       "outOfCoverage": "This address is outside the delivery coverage area.",
       "pickupUnavailable": "Pickup is not available at this branch.",
       "pickupTimeRequired": "Please choose a pickup time.",
@@ -1823,6 +1842,7 @@
       "variationNameRequired": "Each variation needs a name.",
       "variationNameDuplicate": "Duplicate variation name: {name}.",
       "variationOneEnabledRequired": "At least one enabled variation is required.",
+      "variationOneOrderableRequired": "At least one enabled size must be orderable (not dine-in only).",
       "variationLastCannotDelete": "Cannot delete the only variation.",
       "variationDefaultMustBeEnabled": "The default variation must be enabled.",
       "variationNotFound": "Variation not found.",

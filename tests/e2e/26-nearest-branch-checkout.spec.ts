@@ -335,10 +335,10 @@ test.describe("nearest-branch + GPS ownership", () => {
 
 // ── req #6/#9 — full customer checkout journey through the browser ─────────
 // ONE cart and ONE checkout: the dashboard menu, the dashboard Cart page and
-// the homepage drawer all share one cart (localStorage "mad-delivery-cart-v2"),
+// the homepage drawer all share one cart (localStorage "mad-delivery-cart-v3"),
 // and checkout is the drawer's flow wherever it is opened from. The old
 // /customer/checkout page (with its area dropdown) is retired.
-const CART_KEY = "mad-delivery-cart-v2";
+const CART_KEY = "mad-delivery-cart-v3";
 
 async function readCart(page: import("@playwright/test").Page): Promise<{ qty: number }[]> {
   const raw = await page.evaluate((key) => localStorage.getItem(key), CART_KEY);

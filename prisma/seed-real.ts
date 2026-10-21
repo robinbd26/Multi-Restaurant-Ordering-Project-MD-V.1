@@ -52,6 +52,7 @@ import type { OrderStatus } from "@/types";
 
 import { BRAND_HOURS, DELIVERY_AREA, DINE_IN, REAL_BRANCHES, REAL_ZONES, type RealBranch } from "./seed-real/branches";
 import { PROTOTYPE_MENU, type MenuProduct } from "./seed-real/menu-data";
+import { DEMO_PRODUCTS } from "./seed-real/demo-products";
 import { BRANCH_STAFF, DEMO_CUSTOMER_ADDRESS, DEMO_CUSTOMERS, type DemoAddress, type DemoPerson } from "./seed-real/people";
 
 // The app's services use the shared client from lib/db; the seed uses the same
@@ -107,7 +108,13 @@ const CHEEZ_COMBOS: MenuProduct[] = [
   },
 ];
 
-const MENU: MenuProduct[] = [...PROTOTYPE_MENU, ...CHEEZ_COMBOS];
+/** Storefront order of the category chips and sections: mains first, sides and drinks last. */
+const CATEGORY_ORDER: Record<string, string[]> = {
+  cheez: ["Classic Pizzas", "Gourmet Pizzas", "More For Less Pizzas", "Pizza Boats", "Pizza Combos", "Pasta", "Appetizers", "Soups", "Drinks", "Carbonated Beverages"],
+  madchef: ["Classic Burgers", "Gourmet Burgers", "Crispy Chicken", "Wraps", "Rice Meals", "Poutines", "Teasers", "Burger Extras", "Fries", "Sauces", "Desserts", "Shakes", "Mocktails", "Carbonated Beverages"],
+};
+
+const MENU: MenuProduct[] = [...PROTOTYPE_MENU, ...CHEEZ_COMBOS, ...DEMO_PRODUCTS];
 const ASSET_DIR = path.join(process.cwd(), "prisma", "seed-real", "assets", "menu");
 
 const log = (msg: string) => console.log(msg);
@@ -445,24 +452,34 @@ async function seedMenus(branches: Map<string, { id: number; def: RealBranch }>)
       const categories = new Map<string, number>();
       for (const name of [...new Set(items.map((i) => i.category))]) {
         const c = await prisma.category.create({
-          data: { branchId, name, normalizedName: name.trim().toLowerCase(), brand, description: "" },
+          data: {
+            branchId,
+            name,
+            normalizedName: name.trim().toLowerCase(),
+            brand,
+            description: "",
+            sortOrder: (CATEGORY_ORDER[brand] ?? []).indexOf(name) + 1 || 100,
+          },
         });
         categories.set(name, c.id);
       }
       for (const item of items) {
-        const enabled = item.variations.filter((v) => v.enabled);
-        const def0 = enabled.find((v) => v.isDefault) ?? enabled[0];
+        const orderable = item.variations.filter((v) => v.enabled && !v.dineInOnly);
+        const def0 = orderable.find((v) => v.isDefault) ?? orderable[0];
         const product = await prisma.product.create({
           data: {
             branchId,
             categoryId: categories.get(item.category)!,
             name: item.name,
             description: item.description,
+            ingredients: item.ingredients ?? "",
+            isSpicy: item.spicy ?? false,
+            isVegetarian: item.vegetarian ?? false,
             price: new Prisma.Decimal(def0.price),
             brand,
             image: item.image ? await uploadMenuImage(item.image) : null,
             isAvailable: true,
-            preparationTime: item.category.includes("Pizza") ? 25 : 15,
+            preparationTime: item.preparationTime ?? (item.category.includes("Pizza") ? 25 : 15),
             variationType: item.variationType,
           },
         });
@@ -472,9 +489,11 @@ async function seedMenus(branches: Map<string, { id: number; def: RealBranch }>)
             name: v.name,
             price: new Prisma.Decimal(v.price),
             servingInfo: v.servingInfo,
+            variantType: v.crust ?? "",
             sortOrder: i,
             isDefault: v === def0,
             isEnabled: v.enabled,
+            dineInOnly: v.dineInOnly ?? false,
           })),
         });
         products += 1;
@@ -529,8 +548,8 @@ const DRINK_CATEGORIES = /^(Drinks|Mocktails|Shakes|Carbonated Beverages)$/;
 /** A couple of dishes from what the branch sells, deterministic per order. */
 async function cartFor(branchId: number, brands: string[], n: number): Promise<OrderItemInput[]> {
   const products = await prisma.product.findMany({
-    where: { branchId, brand: { in: brands }, variations: { some: { isEnabled: true } } },
-    include: { category: true, variations: { where: { isEnabled: true }, orderBy: { sortOrder: "asc" } } },
+    where: { branchId, brand: { in: brands }, variations: { some: { isEnabled: true, dineInOnly: false } } },
+    include: { category: true, variations: { where: { isEnabled: true, dineInOnly: false }, orderBy: { sortOrder: "asc" } } },
     orderBy: { id: "asc" },
   });
   const mains = products.filter((p) => MAIN_CATEGORIES.test(p.category?.name ?? ""));
@@ -546,7 +565,12 @@ async function cartFor(branchId: number, brands: string[], n: number): Promise<O
       product_id: p.id,
       variation_id: variation.id,
       quantity: rand() < 0.75 ? 1 : 2,
-      ...(p.variationType === "BOTH" ? { variation_type: rand() < 0.5 ? "THICK" : "THIN" } : {}),
+      // A size baked in one crust sets it; only a crust-free size (combos) picks.
+      ...(variation.variantType
+        ? { variation_type: variation.variantType }
+        : p.variationType === "BOTH"
+          ? { variation_type: rand() < 0.5 ? "THICK" : "THIN" }
+          : {}),
     });
   }
   // A drink with most orders.

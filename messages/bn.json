@@ -378,6 +378,9 @@
       "branchesLower": "{n}টি শাখা",
       "noItems": "কোনো আইটেম পাওয়া যায়নি — অন্য কিছু খুঁজে দেখুন।",
       "itemsCount": "{n}টি আইটেম",
+      "allCategories": "সব ক্যাটাগরি",
+      "scrollCategoriesLeft": "ক্যাটাগরি বামে সরান",
+      "scrollCategoriesRight": "ক্যাটাগরি ডানে সরান",
       "clearSearch": "সার্চ মুছুন",
       "categories": {
         "pizza": "পিৎজা",
@@ -439,6 +442,8 @@
       "addToCart": "{name} কার্টে যোগ করুন",
       "viewDetails": "{name} এর বিস্তারিত দেখুন",
       "badge": {
+        "veg": "নিরামিষ",
+        "dineInOnly": "শুধু ডাইন-ইন",
         "popular": "জনপ্রিয়",
         "recommended": "প্রস্তাবিত"
       }
@@ -550,7 +555,14 @@
       "about": "সম্পর্কে",
       "quantity": "পরিমাণ",
       "selectSize": "অনুগ্রহ করে একটি সাইজ বাছাই করুন",
-      "selectionRequired": "অনুগ্রহ করে একটি অপশন বাছাই করুন"
+      "selectionRequired": "অনুগ্রহ করে একটি অপশন বাছাই করুন",
+      "facts": {
+        "ready": "{n} মিনিটে তৈরি"
+      },
+      "goesWith": "এর সাথে ভালো যায়",
+      "goesWithChoose": "বাছাই করুন",
+      "goesWithAdd": "{name} কার্টে যোগ করুন",
+      "goesWithAddShort": "যোগ"
     },
     "toast": {
       "addedToCart": "কার্টে যোগ হয়েছে"
@@ -1122,6 +1134,12 @@
     "variationNameDuplicate": "ভ্যারিয়েশনের নাম অনন্য হতে হবে।",
     "variationPriceInvalid": "প্রতিটি ভ্যারিয়েশনের জন্য সঠিক মূল্য দিন।",
     "variationOneEnabledRequired": "অন্তত একটি সক্রিয় ভ্যারিয়েশন প্রয়োজন।",
+    "variationOneOrderableRequired": "অন্তত একটি সক্রিয় সাইজ অর্ডারযোগ্য হতে হবে (শুধু ডাইন-ইন নয়)।",
+    "variationDineInOnly": "শুধু ডাইন-ইন",
+    "spicy": "ঝাল",
+    "vegetarian": "নিরামিষ",
+    "ingredients": "উপকরণ",
+    "ingredientsHint": "কমা দিয়ে ছোট ছোট আইটেম, যেমন: Green Chili, Pesto। মেনুতে চিপ হিসেবে দেখায়।",
     "noCategoriesYet": "এই ব্রাঞ্চে এখনো কোনো ক্যাটাগরি নেই।",
     "createCategoryLink": "ক্যাটাগরি তৈরি করুন",
     "noBranchesYet": "এখনো কোনো সক্রিয় ব্রাঞ্চ নেই।",
@@ -1755,6 +1773,7 @@
       "riderNotFoundOrNotApproved": "রাইডার পাওয়া যায়নি বা অনুমোদিত নন।",
       "riderOffline": "এই রাইডার অফলাইনে আছেন এবং নতুন অর্ডার নিতে পারবেন না।",
       "variationUnavailable": "নির্বাচিত একটি অপশন উপলব্ধ নয়।",
+      "variationRequired": "এই আইটেমের জন্য একটি সাইজ বেছে নিন।",
       "outOfCoverage": "এই ঠিকানা ডেলিভারি কভারেজের বাইরে।",
       "pickupUnavailable": "এই ব্রাঞ্চে পিকআপ উপলব্ধ নয়।",
       "pickupTimeRequired": "অনুগ্রহ করে একটি পিকআপ সময় নির্বাচন করুন।",
@@ -1823,6 +1842,7 @@
       "variationNameRequired": "প্রতিটি ভ্যারিয়েশনের নাম প্রয়োজন।",
       "variationNameDuplicate": "ডুপ্লিকেট ভ্যারিয়েশন নাম: {name}।",
       "variationOneEnabledRequired": "অন্তত একটি সক্রিয় ভ্যারিয়েশন প্রয়োজন।",
+      "variationOneOrderableRequired": "অন্তত একটি সক্রিয় সাইজ অর্ডারযোগ্য হতে হবে (শুধু ডাইন-ইন নয়)।",
       "variationLastCannotDelete": "একমাত্র ভ্যারিয়েশন মুছে ফেলা যাবে না।",
       "variationDefaultMustBeEnabled": "ডিফল্ট ভ্যারিয়েশন সক্রিয় হতে হবে।",
       "variationNotFound": "ভ্যারিয়েশন পাওয়া যায়নি।",

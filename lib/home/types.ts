@@ -25,6 +25,10 @@ export interface SizeOption {
   label: string;
   sub?: string;
   price: number;
+  /** The crust this size is baked in ("THICK" | "THIN"); it is the line's crust. */
+  crust?: string;
+  /** Listed but not orderable online: shown greyed out, never selectable. */
+  dineInOnly?: boolean;
 }
 
 /** An optional paid add-on / topping shown in the size modal. */
@@ -74,8 +78,21 @@ export interface MenuItem {
    */
   rating?: { average: number; count: number };
   spicy?: boolean;
+  /** Prototype "Veg" tag. */
+  vegetarian?: boolean;
+  /**
+   * Nothing on it can be ordered online: the product itself, or every one of its
+   * sizes, is dine-in only. The card and modal show it but cannot add it.
+   */
+  dineInOnly?: boolean;
   /** When present, the card opens a "Choose Size" modal instead of adding directly. */
   sizes?: SizeOption[];
+  /** The size the modal starts on: the default orderable one, else the first orderable. */
+  defaultSizeKey?: string;
+  /** The single orderable variation of a product the card adds directly. */
+  variationId?: number;
+  /** Short "what's inside" chips (Green Chili, Pesto). */
+  ingredients?: string[];
   /** Non-price choices (flavours / sauces) shown as chips in the modal. */
   options?: string[];
   optionLabel?: string;
@@ -83,10 +100,12 @@ export interface MenuItem {
   addOns?: AddOn[];
   /** Single-choice option groups (burger bun / sauce). */
   choiceGroups?: ChoiceGroup[];
-  /** "What's inside" summary shown in the pizza modal (ABOUT / INGREDIENTS). */
+  /** The About sentence in the modal. */
   about?: string;
   /** Minutes, straight from the product row. */
   preparationTime?: number;
+  /** "250ml", "Serves 1": the serving note of a single-size product. */
+  servingInfo?: string;
   /** Crust policy: "THICK" | "THIN" | "BOTH". */
   variationType?: string;
   /** Owning branch — the storefront cart is branch-scoped like the order API. */

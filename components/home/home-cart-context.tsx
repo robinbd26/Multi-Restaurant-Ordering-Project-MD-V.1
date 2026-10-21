@@ -17,12 +17,13 @@ import type { StorefrontBrandAvailability } from "@/lib/home/brand-availability"
 
 /**
  * localStorage key for THE cart (cart preservation, req #13). v2 = lines that
- * carry size / crust / note. The keys it replaces (the homepage cart's and the
- * retired dashboard cart's) are simply dropped on load: their lines were keyed
+ * carry size / crust / note; v3 = after split "(Thin)" pizzas were merged into
+ * one product with sizes, so a v2 line can name a product that no longer exists.
+ * The keys it replaces are simply dropped on load: their lines were keyed
  * differently and could never merge with new ones.
  */
-const HOME_CART_STORAGE_KEY = "mad-delivery-cart-v2";
-const RETIRED_CART_KEYS = ["mad-delivery-home-cart", "mad-delivery-cart"];
+const HOME_CART_STORAGE_KEY = "mad-delivery-cart-v3";
+const RETIRED_CART_KEYS = ["mad-delivery-home-cart", "mad-delivery-cart", "mad-delivery-cart-v2"];
 
 /** Normalised payload sent to the cart when a product (or a configured size) is added. */
 export interface CartAddInput {

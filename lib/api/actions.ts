@@ -329,7 +329,7 @@ export async function saveProductAction(
   try {
     const body = cleanForm(formData);
     // checkboxes: send explicit true/false
-    for (const flag of ["is_available", "is_popular", "is_recommended"]) {
+    for (const flag of ["is_available", "is_popular", "is_recommended", "is_spicy", "is_vegetarian"]) {
       body.set(flag, formData.get(flag) === "on" ? "true" : "false");
     }
     if (!body.get("category")) body.delete("category");

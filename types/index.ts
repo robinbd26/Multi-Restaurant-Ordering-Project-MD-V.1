@@ -134,6 +134,8 @@ export interface ProductVariation {
   sort_order: number;
   is_default: boolean;
   is_enabled: boolean;
+  /** Listed but not orderable online. */
+  dine_in_only?: boolean;
 }
 
 export interface Product {
@@ -157,6 +159,9 @@ export interface Product {
   preparation_time: number;
   is_popular: boolean;
   is_recommended: boolean;
+  is_spicy?: boolean;
+  is_vegetarian?: boolean;
+  ingredients?: string;
   /** req #4 — crust policy: "" (not applicable) | "THICK" | "THIN" | "BOTH". */
   variation_type: string;
   default_variation_id: number | null;
@@ -173,6 +178,8 @@ export interface OrderItem {
   product_image: string | null;
   variation: number | null;
   variation_name: string;
+  /** Crust snapshot ("THICK" | "THIN" | ""). */
+  variation_type?: string;
   /** Brand slug the line was sold under ("" for legacy multi-brand lines). */
   brand?: string;
   quantity: number;

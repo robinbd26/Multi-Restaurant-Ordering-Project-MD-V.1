@@ -1,6 +1,7 @@
 import Image from "next/image";
 
 import { OrderLocationMap } from "@/components/maps/order-location-map";
+import { orderLineVariant } from "@/components/orders/order-line-variant";
 import { OrderStatusBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { getT } from "@/lib/i18n/server";
@@ -149,6 +150,11 @@ export async function OrderDetailCard({ order, children }: { order: Order; child
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-fg-base">{item.product_name}</p>
+                    {orderLineVariant(item, t) ? (
+                      <p className="text-xs text-fg-subtle" data-testid="order-line-variant">
+                        {orderLineVariant(item, t)}
+                      </p>
+                    ) : null}
                     <p className="text-xs text-fg-muted">
                       {fmt.money(item.unit_price)} × {fmt.num(item.quantity)}
                       {item.food_note ? ` • ${item.food_note}` : ""}
