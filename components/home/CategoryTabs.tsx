@@ -29,13 +29,17 @@ export function CategoryTabs({
   ];
 
   return (
-    <div className="scrollbar-thin -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+    // Wraps onto as many lines as it needs: a horizontal scroller hid the
+    // categories past the edge, and customers never saw them.
+    <div className="flex flex-wrap gap-1.5 sm:gap-2" data-testid="category-tabs">
       {tabs.map((tab) => (
         <button
           key={tab.key}
+          type="button"
           onClick={() => onChange(tab.key)}
+          aria-pressed={active === tab.key}
           className={cn(
-            "flex shrink-0 items-center gap-1.5 rounded-full border px-4 py-2 text-[0.82rem] font-semibold transition-colors",
+            "flex items-center gap-1 whitespace-nowrap rounded-full border px-3 py-1.5 text-[0.78rem] font-semibold transition-colors sm:gap-1.5 sm:px-3.5 sm:text-[0.82rem]",
             active === tab.key
               ? ""
               : "border-white/10 bg-transparent text-white/60 hover:border-white/25 hover:text-white",
