@@ -1382,6 +1382,13 @@ model Product {
   preparationTime    Int       @default(20)
   isPopular          Boolean   @default(false)
   isRecommended      Boolean   @default(false)
+  // Storefront badges that add information the section heading does not
+  // ("Spicy", "Veg"). Seeded from the prototype's taste / types fields.
+  isSpicy            Boolean   @default(false)
+  isVegetarian       Boolean   @default(false)
+  // What's inside, as short comma-separated chips ("Green Chili, Pesto"). Kept
+  // apart from `description` so the About text stays one clean sentence.
+  ingredients        String    @default("")
   // req #4 — PRODUCT-LEVEL crust/thickness policy: "THICK" | "THIN" | "BOTH".
   // Stable internal values (never translated labels). This governs which crust a
   // customer may pick; the per-size price variations in ProductVariation are
@@ -1418,10 +1425,16 @@ model ProductVariation {
   price          Decimal
   compareAtPrice Decimal? // optional strike-through price
   servingInfo    String   @default("") // e.g. "serves 2", "6 slices"
-  variantType    String   @default("") // optional crust/type descriptor
+  // Crust this size is baked in: "THICK" | "THIN", or "" = not tied to one.
+  // When set it IS the crust of the order line (a 12" is always thin), so the
+  // customer never picks crust separately from size.
+  variantType    String   @default("")
   sortOrder      Int      @default(0)
   isDefault      Boolean  @default(false)
   isEnabled      Boolean  @default(true)
+  // Listed on the menu (greyed out, "Dine-in only") but never orderable online:
+  // the order pipeline refuses it. Separate from isEnabled, which hides the row.
+  dineInOnly     Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

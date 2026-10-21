@@ -1755,6 +1755,7 @@
       "riderNotFoundOrNotApproved": "রাইডার পাওয়া যায়নি বা অনুমোদিত নন।",
       "riderOffline": "এই রাইডার অফলাইনে আছেন এবং নতুন অর্ডার নিতে পারবেন না।",
       "variationUnavailable": "নির্বাচিত একটি অপশন উপলব্ধ নয়।",
+      "variationRequired": "এই আইটেমের জন্য একটি সাইজ বেছে নিন।",
       "outOfCoverage": "এই ঠিকানা ডেলিভারি কভারেজের বাইরে।",
       "pickupUnavailable": "এই ব্রাঞ্চে পিকআপ উপলব্ধ নয়।",
       "pickupTimeRequired": "অনুগ্রহ করে একটি পিকআপ সময় নির্বাচন করুন।",

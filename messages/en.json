@@ -1755,6 +1755,7 @@
       "riderNotFoundOrNotApproved": "Rider not found or not approved.",
       "riderOffline": "This rider is offline and cannot receive new orders.",
       "variationUnavailable": "A selected option is unavailable.",
+      "variationRequired": "Please choose a size for this item.",
       "outOfCoverage": "This address is outside the delivery coverage area.",
       "pickupUnavailable": "Pickup is not available at this branch.",
       "pickupTimeRequired": "Please choose a pickup time.",

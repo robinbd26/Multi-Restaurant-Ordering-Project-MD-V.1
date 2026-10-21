@@ -24,8 +24,12 @@ export const POST = handle(async (_req: Request, ctx: Ctx) => {
   const order = await createOrder({
     customerId: me.id,
     branchId: source.branchId,
+    // Same size and crust as the original lines: without them a multi-size
+    // product would be refused (or a fixed one re-priced at another size).
     items: source.items.map((i) => ({
       product_id: i.productId,
+      ...(i.variationId != null ? { variation_id: i.variationId } : {}),
+      ...(i.variationType ? { variation_type: i.variationType } : {}),
       quantity: i.quantity,
       food_note: i.foodNote,
     })),
