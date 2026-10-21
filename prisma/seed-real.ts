@@ -52,6 +52,7 @@ import type { OrderStatus } from "@/types";
 
 import { BRAND_HOURS, DELIVERY_AREA, DINE_IN, REAL_BRANCHES, REAL_ZONES, type RealBranch } from "./seed-real/branches";
 import { PROTOTYPE_MENU, type MenuProduct } from "./seed-real/menu-data";
+import { DEMO_PRODUCTS } from "./seed-real/demo-products";
 import { BRANCH_STAFF, DEMO_CUSTOMER_ADDRESS, DEMO_CUSTOMERS, type DemoAddress, type DemoPerson } from "./seed-real/people";
 
 // The app's services use the shared client from lib/db; the seed uses the same
@@ -107,7 +108,13 @@ const CHEEZ_COMBOS: MenuProduct[] = [
   },
 ];
 
-const MENU: MenuProduct[] = [...PROTOTYPE_MENU, ...CHEEZ_COMBOS];
+/** Storefront order of the category chips and sections: mains first, sides and drinks last. */
+const CATEGORY_ORDER: Record<string, string[]> = {
+  cheez: ["Classic Pizzas", "Gourmet Pizzas", "More For Less Pizzas", "Pizza Boats", "Pizza Combos", "Pasta", "Appetizers", "Soups", "Drinks", "Carbonated Beverages"],
+  madchef: ["Classic Burgers", "Gourmet Burgers", "Crispy Chicken", "Wraps", "Rice Meals", "Poutines", "Teasers", "Burger Extras", "Fries", "Sauces", "Desserts", "Shakes", "Mocktails", "Carbonated Beverages"],
+};
+
+const MENU: MenuProduct[] = [...PROTOTYPE_MENU, ...CHEEZ_COMBOS, ...DEMO_PRODUCTS];
 const ASSET_DIR = path.join(process.cwd(), "prisma", "seed-real", "assets", "menu");
 
 const log = (msg: string) => console.log(msg);
@@ -445,7 +452,14 @@ async function seedMenus(branches: Map<string, { id: number; def: RealBranch }>)
       const categories = new Map<string, number>();
       for (const name of [...new Set(items.map((i) => i.category))]) {
         const c = await prisma.category.create({
-          data: { branchId, name, normalizedName: name.trim().toLowerCase(), brand, description: "" },
+          data: {
+            branchId,
+            name,
+            normalizedName: name.trim().toLowerCase(),
+            brand,
+            description: "",
+            sortOrder: (CATEGORY_ORDER[brand] ?? []).indexOf(name) + 1 || 100,
+          },
         });
         categories.set(name, c.id);
       }
@@ -465,7 +479,7 @@ async function seedMenus(branches: Map<string, { id: number; def: RealBranch }>)
             brand,
             image: item.image ? await uploadMenuImage(item.image) : null,
             isAvailable: true,
-            preparationTime: item.category.includes("Pizza") ? 25 : 15,
+            preparationTime: item.preparationTime ?? (item.category.includes("Pizza") ? 25 : 15),
             variationType: item.variationType,
           },
         });

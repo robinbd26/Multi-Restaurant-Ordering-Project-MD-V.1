@@ -40,6 +40,8 @@ export interface MenuProduct {
    */
   variationType: "THICK" | "THIN" | "BOTH";
   variations: MenuVariation[];
+  /** Minutes; the seed falls back to 25 for pizza and 15 for everything else. */
+  preparationTime?: number;
 }
 
 export const PROTOTYPE_MENU: MenuProduct[] = [
