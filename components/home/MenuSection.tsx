@@ -435,7 +435,15 @@ export function MenuSection({
         )}
       </div>
 
-      {configItem ? <ItemModal item={configItem} onClose={() => setConfigItem(null)} /> : null}
+      {configItem ? (
+        <ItemModal
+          key={configItem.id}
+          item={configItem}
+          items={items}
+          onOpenItem={setConfigItem}
+          onClose={() => setConfigItem(null)}
+        />
+      ) : null}
     </section>
   );
 }

@@ -552,7 +552,14 @@
       "about": "About",
       "quantity": "Quantity",
       "selectSize": "Please select a size",
-      "selectionRequired": "Please select an option"
+      "selectionRequired": "Please select an option",
+      "facts": {
+        "ready": "Ready in {n} min"
+      },
+      "goesWith": "Goes well with",
+      "goesWithChoose": "Choose",
+      "goesWithAdd": "Add {name} to cart",
+      "goesWithAddShort": "Add"
     },
     "toast": {
       "addedToCart": "Added to cart"

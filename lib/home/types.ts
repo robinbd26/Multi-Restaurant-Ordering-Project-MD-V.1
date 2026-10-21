@@ -104,6 +104,8 @@ export interface MenuItem {
   about?: string;
   /** Minutes, straight from the product row. */
   preparationTime?: number;
+  /** "250ml", "Serves 1": the serving note of a single-size product. */
+  servingInfo?: string;
   /** Crust policy: "THICK" | "THIN" | "BOTH". */
   variationType?: string;
   /** Owning branch — the storefront cart is branch-scoped like the order API. */

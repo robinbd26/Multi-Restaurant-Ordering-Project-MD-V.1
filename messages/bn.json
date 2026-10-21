@@ -552,7 +552,14 @@
       "about": "সম্পর্কে",
       "quantity": "পরিমাণ",
       "selectSize": "অনুগ্রহ করে একটি সাইজ বাছাই করুন",
-      "selectionRequired": "অনুগ্রহ করে একটি অপশন বাছাই করুন"
+      "selectionRequired": "অনুগ্রহ করে একটি অপশন বাছাই করুন",
+      "facts": {
+        "ready": "{n} মিনিটে তৈরি"
+      },
+      "goesWith": "এর সাথে ভালো যায়",
+      "goesWithChoose": "বাছাই করুন",
+      "goesWithAdd": "{name} কার্টে যোগ করুন",
+      "goesWithAddShort": "যোগ"
     },
     "toast": {
       "addedToCart": "কার্টে যোগ হয়েছে"

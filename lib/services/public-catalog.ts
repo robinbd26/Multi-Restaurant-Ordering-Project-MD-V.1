@@ -134,6 +134,8 @@ function toMenuItem(product: CustomerProduct, brand: Brand, categoryLabel: strin
     ingredients: ingredients.length ? ingredients : undefined,
     about: product.description || undefined,
     preparationTime: product.preparationTime,
+    servingInfo:
+      orderable.length === 1 ? orderable[0].servingInfo || orderable[0].sizeLabel || undefined : undefined,
     variationType: product.variationType,
     branchId: product.branchId,
     branchName: product.branch.name,

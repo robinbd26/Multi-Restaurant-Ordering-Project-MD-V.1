@@ -6,6 +6,8 @@ import { useHomeCart } from "@/components/home/home-cart-context";
 import { ModalActionBar } from "@/components/home/item-modal/modal-action-bar";
 import { OptionGroup } from "@/components/home/item-modal/option-group";
 import { ProductImagePanel } from "@/components/home/item-modal/product-image-panel";
+import { GoesWellWith } from "@/components/home/item-modal/goes-well-with";
+import { QuickFacts } from "@/components/home/item-modal/quick-facts";
 import { SizeOptionCard } from "@/components/home/item-modal/size-option-card";
 import { ProductBadges, productBadges } from "@/components/home/product-badges";
 import { ProductReviewsSection } from "@/components/reviews/product-reviews-section";
@@ -22,7 +24,18 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [ta
  * right, sticky action bar), mobile bottom sheet. Pizza: about + ingredient
  * chips + size cards; burgers: bun / sauce / add-ons; wings: size + flavour.
  */
-export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => void }) {
+export function ItemModal({
+  item,
+  items = [],
+  onOpenItem,
+  onClose,
+}: {
+  item: MenuItem;
+  /** The menu the item came from, for the "Goes well with" suggestions. */
+  items?: MenuItem[];
+  onOpenItem?: (item: MenuItem) => void;
+  onClose: () => void;
+}) {
   const { add, brandInfo } = useHomeCart();
   const { t, fmt, locale } = useTranslation();
   const info = brandInfo(item.brand);
@@ -215,6 +228,7 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
                 </p>
 
                 <ProductBadges badges={badges} className="mt-3" />
+                <QuickFacts item={item} />
 
                 <p className="mt-3 text-[0.82rem] italic leading-6 text-[#a0a0b0] sm:hidden">{item.description}</p>
 
@@ -380,6 +394,8 @@ export function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => vo
                     </div>
                   </div>
                 ) : null}
+
+                {onOpenItem ? <GoesWellWith item={item} items={items} onOpenItem={onOpenItem} /> : null}
               </div>
             </div>
           </div>
