@@ -8,6 +8,7 @@ import { RiderOrderPanel } from "@/components/rider/rider-order-panel";
 import { OrderStepTracker } from "@/components/rider/order-step-tracker";
 import { RoutePanel } from "@/components/rider/route-panel";
 import { OrderLocationMap } from "@/components/maps/order-location-map";
+import { orderLineVariant } from "@/components/orders/order-line-variant";
 import { PageHeader } from "@/components/layout/page-header";
 import { OrderChatPanel } from "@/components/orders/order-chat-panel";
 import { OrderStatusActions } from "@/components/orders/order-status-actions";
@@ -125,6 +126,11 @@ export default async function RiderOrderDetailPage({ params }: { params: Promise
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-fg-base">{item.product_name}</p>
+                      {orderLineVariant(item, t) ? (
+                        <p className="text-xs text-fg-subtle" data-testid="order-line-variant">
+                          {orderLineVariant(item, t)}
+                        </p>
+                      ) : null}
                       <p className="text-xs text-fg-muted">
                         {fmt.money(item.unit_price)} × {fmt.num(item.quantity)}
                         {item.food_note ? ` • ${item.food_note}` : ""}

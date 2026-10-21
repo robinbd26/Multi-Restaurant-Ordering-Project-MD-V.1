@@ -178,6 +178,8 @@ export interface OrderItem {
   product_image: string | null;
   variation: number | null;
   variation_name: string;
+  /** Crust snapshot ("THICK" | "THIN" | ""). */
+  variation_type?: string;
   /** Brand slug the line was sold under ("" for legacy multi-brand lines). */
   brand?: string;
   quantity: number;
