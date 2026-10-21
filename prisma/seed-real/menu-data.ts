@@ -12,18 +12,32 @@ export interface MenuVariation {
   /** Shown under the size name, e.g. "8 slices". */
   servingInfo: string;
   isDefault?: boolean;
-  /** false = kept for the record but not orderable (8" pizzas are dine-in only). */
+  /** false = kept for the record but hidden from the menu. */
   enabled: boolean;
+  /** Listed on the menu but never sold online (the prototype's 8" pizzas). */
+  dineInOnly?: boolean;
+  /** The crust this size is baked in, when it has exactly one (12"/16" thin, 14" thick). */
+  crust?: "THICK" | "THIN";
 }
 
 export interface MenuProduct {
   brand: "cheez" | "madchef";
   category: string;
   name: string;
+  /** The About sentence. "What's inside" lives in `ingredients`, not here. */
   description: string;
+  /** Comma-separated ingredient chips, e.g. "Green Chili, Pesto". */
+  ingredients?: string;
+  /** Prototype `taste: "Spicy"`. */
+  spicy?: boolean;
+  /** Prototype `types: "Vegetable"`. */
+  vegetarian?: boolean;
   /** Path under prisma/seed-real/assets/menu/, or null for items with no photo. */
   image: string | null;
-  /** Crust policy THICK | THIN | BOTH. Non-pizza items use THICK, the app default: the storefront hides "" (not applicable) products. */
+  /**
+   * Crust policy THICK | THIN | BOTH. Non-pizza items use THICK, the app default: the storefront hides "" (not applicable) products.
+   * A pizza is ONE product with BOTH: each size carries its own crust, so thick and thin are never separate products.
+   */
   variationType: "THICK" | "THIN" | "BOTH";
   variations: MenuVariation[];
 }
@@ -33,50 +47,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Classic Pizzas",
     "name": "Margherita",
-    "description": "Topped with original italian tomato sauce, mozzarella & cheddar cheese, roasted tomato, fragrant oregano & basil leave.\nInside: Cheez + Less Vegetable (Plain Pizza)",
+    "description": "Topped with original italian tomato sauce, mozzarella & cheddar cheese, roasted tomato, fragrant oregano & basil leave.",
+    "ingredients": "Cheez, Less Vegetable (Plain Pizza)",
     "image": "cheez/classic-margherita.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 299,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 849,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Classic Pizzas",
-    "name": "Margherita (Thin)",
-    "description": "Topped with original italian tomato sauce, mozzarella & cheddar cheese, roasted tomato, fragrant oregano & basil leave.\nInside: Cheez + Less Vegetable (Plain Pizza)",
-    "image": "cheez/classic-margherita.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 299,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 699,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 849,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 999,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -85,50 +87,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Classic Pizzas",
     "name": "The Pepperonia",
-    "description": "Spread of tomato sauce with smoky pepperoni, mozzarella, topped up with fragrant oregano.\nInside: Beef",
+    "description": "Spread of tomato sauce with smoky pepperoni, mozzarella, topped up with fragrant oregano.",
+    "ingredients": "Beef",
     "image": "cheez/the-pepperonia.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 349,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1049,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Classic Pizzas",
-    "name": "The Pepperonia (Thin)",
-    "description": "Spread of tomato sauce with smoky pepperoni, mozzarella, topped up with fragrant oregano.\nInside: Beef",
-    "image": "cheez/the-pepperonia.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 349,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 849,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1049,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1199,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -137,50 +127,39 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Classic Pizzas",
     "name": "All Bout the Shroom",
-    "description": "Topped with button & black mushroom fungi combo-based with white sauce, mozzarella, cheddar & feta, spicy onion, roasted tomato, green sauce & sea salt.\nInside: Mushrooms — Black & White (Vegetable)",
+    "description": "Topped with button & black mushroom fungi combo-based with white sauce, mozzarella, cheddar & feta, spicy onion, roasted tomato, green sauce & sea salt.",
+    "ingredients": "Mushrooms — Black & White (Vegetable)",
+    "vegetarian": true,
     "image": "cheez/all-bout-the-shrooms.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 349,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1049,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Classic Pizzas",
-    "name": "All Bout the Shroom (Thin)",
-    "description": "Topped with button & black mushroom fungi combo-based with white sauce, mozzarella, cheddar & feta, spicy onion, roasted tomato, green sauce & sea salt.\nInside: Mushrooms — Black & White (Vegetable)",
-    "image": "cheez/all-bout-the-shrooms.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 349,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 849,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1049,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1199,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -189,50 +168,39 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Classic Pizzas",
     "name": "Fiery Corned Beef",
-    "description": "Topped with salt-cured brisket of corned beef, based with red & white sauce, mozzarella, spicy onion, mashed sausage gravy & sriracha-mustard cream.\nInside: Beef (Normal Spicy)",
+    "description": "Topped with salt-cured brisket of corned beef, based with red & white sauce, mozzarella, spicy onion, mashed sausage gravy & sriracha-mustard cream.",
+    "ingredients": "Beef (Normal Spicy)",
+    "spicy": true,
     "image": "cheez/fiery-corned-beef.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 379,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1149,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Classic Pizzas",
-    "name": "Fiery Corned Beef (Thin)",
-    "description": "Topped with salt-cured brisket of corned beef, based with red & white sauce, mozzarella, spicy onion, mashed sausage gravy & sriracha-mustard cream.\nInside: Beef (Normal Spicy)",
-    "image": "cheez/fiery-corned-beef.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 379,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 899,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1149,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1299,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -241,50 +209,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Classic Pizzas",
     "name": "Bolognese",
-    "description": "Topped with minced beef caramelized in red sauce, delicately covered with a mixture of mozzarella & parmesan cheese.\nInside: Beef Kima",
+    "description": "Topped with minced beef caramelized in red sauce, delicately covered with a mixture of mozzarella & parmesan cheese.",
+    "ingredients": "Beef Kima",
     "image": "cheez/bolognese.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 379,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1149,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Classic Pizzas",
-    "name": "Bolognese (Thin)",
-    "description": "Topped with minced beef caramelized in red sauce, delicately covered with a mixture of mozzarella & parmesan cheese.\nInside: Beef Kima",
-    "image": "cheez/bolognese.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 379,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 899,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1149,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1299,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -293,50 +249,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Classic Pizzas",
     "name": "Chicken Alfredo",
-    "description": "Topped with alfredo chicken cubes & mushrooms, showered with a white sauce based on mozzarella, cheddar & parmesan cheese.\nInside: Chicken + Mushroom",
+    "description": "Topped with alfredo chicken cubes & mushrooms, showered with a white sauce based on mozzarella, cheddar & parmesan cheese.",
+    "ingredients": "Chicken, Mushroom",
     "image": "cheez/chicken-alfredo.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 379,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1149,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Classic Pizzas",
-    "name": "Chicken Alfredo (Thin)",
-    "description": "Topped with alfredo chicken cubes & mushrooms, showered with a white sauce based on mozzarella, cheddar & parmesan cheese.\nInside: Chicken + Mushroom",
-    "image": "cheez/chicken-alfredo.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 379,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 899,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1149,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1299,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -345,50 +289,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Classic Pizzas",
     "name": "Thai Pie",
-    "description": "Topped with savory thai chicken, mozzarella, cheddar, shrimp, tomato sauce, sriracha cream & sesame seed.\nInside: Chicken, (Optional: Shrimp), Vegetable",
+    "description": "Topped with savory thai chicken, mozzarella, cheddar, shrimp, tomato sauce, sriracha cream & sesame seed.",
+    "ingredients": "Chicken, (Optional: Shrimp), Vegetable",
     "image": "cheez/thai-pie.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 399,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1249,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Classic Pizzas",
-    "name": "Thai Pie (Thin)",
-    "description": "Topped with savory thai chicken, mozzarella, cheddar, shrimp, tomato sauce, sriracha cream & sesame seed.\nInside: Chicken, (Optional: Shrimp), Vegetable",
-    "image": "cheez/thai-pie.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 399,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 1049,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1249,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1399,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -397,50 +329,39 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Classic Pizzas",
     "name": "Spicy Shorisha",
-    "description": "Topped with red & white sauce, mozzarella, succulent shrimp with a twist of mashed mustard, chili-flakes & parsley.\nInside: Shrimp (Sea Food)",
+    "description": "Topped with red & white sauce, mozzarella, succulent shrimp with a twist of mashed mustard, chili-flakes & parsley.",
+    "ingredients": "Shrimp (Sea Food)",
+    "spicy": true,
     "image": "cheez/spicy-shorisha.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 399,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1249,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Classic Pizzas",
-    "name": "Spicy Shorisha (Thin)",
-    "description": "Topped with red & white sauce, mozzarella, succulent shrimp with a twist of mashed mustard, chili-flakes & parsley.\nInside: Shrimp (Sea Food)",
-    "image": "cheez/spicy-shorisha.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 399,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 1049,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1249,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1399,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -449,50 +370,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Classic Pizzas",
     "name": "Fajitas Chicken",
-    "description": "A fusion-style pizza topped with spiced grilled chicken, bell peppers, onions, and fajita-seasoned sauce for a Tex-Mex twist.\nInside: Fajitas Chicken",
+    "description": "A fusion-style pizza topped with spiced grilled chicken, bell peppers, onions, and fajita-seasoned sauce for a Tex-Mex twist.",
+    "ingredients": "Fajitas Chicken",
     "image": "cheez/fajitas-fiesta.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 379,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1149,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Classic Pizzas",
-    "name": "Fajitas Chicken (Thin)",
-    "description": "A fusion-style pizza topped with spiced grilled chicken, bell peppers, onions, and fajita-seasoned sauce for a Tex-Mex twist.\nInside: Fajitas Chicken",
-    "image": "cheez/fajitas-fiesta.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 379,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 899,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1149,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1299,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -501,50 +410,39 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Classic Pizzas",
     "name": "Lal Jhal Chicken",
-    "description": "A fiery pizza topped with fajita chicken, molten cheese & five sauces teaming up to choose violence.\nInside: Chicken (Spicy)",
+    "description": "A fiery pizza topped with fajita chicken, molten cheese & five sauces teaming up to choose violence.",
+    "ingredients": "Chicken (Spicy)",
+    "spicy": true,
     "image": "cheez/lal-jhal-chicken.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 349,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1049,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Classic Pizzas",
-    "name": "Lal Jhal Chicken (Thin)",
-    "description": "A fiery pizza topped with fajita chicken, molten cheese & five sauces teaming up to choose violence.\nInside: Chicken (Spicy)",
-    "image": "cheez/lal-jhal-chicken.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 349,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 849,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1049,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1199,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -553,50 +451,39 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Classic Pizzas",
     "name": "Green Chili Pesto",
-    "description": "A spicy pizza topped with green chili, pesto sauce, cheese & herbs.\nInside: Green Chili + Pesto",
+    "description": "A spicy pizza topped with green chili, pesto sauce, cheese & herbs.",
+    "ingredients": "Green Chili, Pesto",
+    "vegetarian": true,
     "image": "cheez/green-chilli-pesto.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 279,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 799,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Classic Pizzas",
-    "name": "Green Chili Pesto (Thin)",
-    "description": "A spicy pizza topped with green chili, pesto sauce, cheese & herbs.\nInside: Green Chili + Pesto",
-    "image": "cheez/green-chilli-pesto.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 279,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 599,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 799,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 899,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -605,50 +492,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Classic Pizzas",
     "name": "Smokewood BBQ Chicken",
-    "description": "A smokey pizza topped with bbq sauce, tender chicken & melty cheese in full comfort food mode.\nInside: Smokewood BBQ Chicken",
+    "description": "A smokey pizza topped with bbq sauce, tender chicken & melty cheese in full comfort food mode.",
+    "ingredients": "Smokewood BBQ Chicken",
     "image": "cheez/smokewood-bbq-chicken.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 379,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1149,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Classic Pizzas",
-    "name": "Smokewood BBQ Chicken (Thin)",
-    "description": "A smokey pizza topped with bbq sauce, tender chicken & melty cheese in full comfort food mode.\nInside: Smokewood BBQ Chicken",
-    "image": "cheez/smokewood-bbq-chicken.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 379,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 899,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1149,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1299,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -657,50 +532,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "More For Less Pizzas",
     "name": "Liquid Gold",
-    "description": "Cheez only — 3 types of cheese in one golden melt.\nInside: Cheez (3 Type Cheez)",
+    "description": "Cheez only — 3 types of cheese in one golden melt.",
+    "ingredients": "Cheez (3 Type Cheez)",
     "image": "cheez/liquid-gold.jpg",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 199,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 619,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "More For Less Pizzas",
-    "name": "Liquid Gold (Thin)",
-    "description": "Cheez only — 3 types of cheese in one golden melt.\nInside: Cheez (3 Type Cheez)",
-    "image": "cheez/liquid-gold.jpg",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 199,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 449,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 619,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 699,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -709,50 +572,39 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "More For Less Pizzas",
     "name": "Spicy Sausage",
-    "description": "Topped with soft chunks of spicy sausage surrounded by parmesan cheese infused with kisan cheese, topped with our special naga sauce.\nInside: Chicken Sausage (Spicy)",
+    "description": "Topped with soft chunks of spicy sausage surrounded by parmesan cheese infused with kisan cheese, topped with our special naga sauce.",
+    "ingredients": "Chicken Sausage (Spicy)",
+    "spicy": true,
     "image": "cheez/spicy-sausage.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 239,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 729,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "More For Less Pizzas",
-    "name": "Spicy Sausage (Thin)",
-    "description": "Topped with soft chunks of spicy sausage surrounded by parmesan cheese infused with kisan cheese, topped with our special naga sauce.\nInside: Chicken Sausage (Spicy)",
-    "image": "cheez/spicy-sausage.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 239,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 499,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 729,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 799,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -761,50 +613,39 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "More For Less Pizzas",
     "name": "Creamy Chicken & Sausage",
-    "description": "Topped with tender creamy chicken pieces, a pack of sausages which gets surrounded by an army of cheese.\nInside: Chicken Creamy + Sausage (Normal Spicy)",
+    "description": "Topped with tender creamy chicken pieces, a pack of sausages which gets surrounded by an army of cheese.",
+    "ingredients": "Chicken Creamy, Sausage (Normal Spicy)",
+    "spicy": true,
     "image": "cheez/creamy-chicken-and-sausage.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 279,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 829,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "More For Less Pizzas",
-    "name": "Creamy Chicken & Sausage (Thin)",
-    "description": "Topped with tender creamy chicken pieces, a pack of sausages which gets surrounded by an army of cheese.\nInside: Chicken Creamy + Sausage (Normal Spicy)",
-    "image": "cheez/creamy-chicken-and-sausage.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 279,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 649,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 829,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 949,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -813,50 +654,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Gourmet Pizzas",
     "name": "The 4 Cheez",
-    "description": "Topped with a delicious mix of mozzarella, cheddar, feta & parmesan cheese & crispy beef bacon bits.\nInside: Beef + Cheez (Beef Bacon Removeable)",
+    "description": "Topped with a delicious mix of mozzarella, cheddar, feta & parmesan cheese & crispy beef bacon bits.",
+    "ingredients": "Beef, Cheez (Beef Bacon Removeable)",
     "image": "cheez/the-4-cheez.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 399,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1249,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Gourmet Pizzas",
-    "name": "The 4 Cheez (Thin)",
-    "description": "Topped with a delicious mix of mozzarella, cheddar, feta & parmesan cheese & crispy beef bacon bits.\nInside: Beef + Cheez (Beef Bacon Removeable)",
-    "image": "cheez/the-4-cheez.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 399,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 1049,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1249,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1399,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -865,50 +694,39 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Gourmet Pizzas",
     "name": "Nagatastic BBQ",
-    "description": "Topped with barbequed chicken cubes mixed with white & spicy naga sauce, mozzarella, cheddar cheese & crispy bacon bits.\nInside: Chicken (Beef Removeable)",
+    "description": "Topped with barbequed chicken cubes mixed with white & spicy naga sauce, mozzarella, cheddar cheese & crispy bacon bits.",
+    "ingredients": "Chicken (Beef Removeable)",
+    "spicy": true,
     "image": "cheez/nagatastic-bbq.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 429,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1299,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Gourmet Pizzas",
-    "name": "Nagatastic BBQ (Thin)",
-    "description": "Topped with barbequed chicken cubes mixed with white & spicy naga sauce, mozzarella, cheddar cheese & crispy bacon bits.\nInside: Chicken (Beef Removeable)",
-    "image": "cheez/nagatastic-bbq.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 429,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 1099,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1299,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1449,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -917,50 +735,39 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Gourmet Pizzas",
     "name": "The Kala Bhuna",
-    "description": "Topped with chatgaiyya kala-bhuna beef pieces based with tomato & garlic sauce, cheddar cheese, capsicum, spicy onion, green sauce & sea salt.\nInside: Beef (Normal Spicy)",
+    "description": "Topped with chatgaiyya kala-bhuna beef pieces based with tomato & garlic sauce, cheddar cheese, capsicum, spicy onion, green sauce & sea salt.",
+    "ingredients": "Beef (Normal Spicy)",
+    "spicy": true,
     "image": "cheez/the-kala-bhuna.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 429,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1399,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Gourmet Pizzas",
-    "name": "The Kala Bhuna (Thin)",
-    "description": "Topped with chatgaiyya kala-bhuna beef pieces based with tomato & garlic sauce, cheddar cheese, capsicum, spicy onion, green sauce & sea salt.\nInside: Beef (Normal Spicy)",
-    "image": "cheez/the-kala-bhuna.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 429,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 1099,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1399,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1599,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -969,50 +776,39 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Gourmet Pizzas",
     "name": "Hot Crabby Prawnstar",
-    "description": "Topped with a tangy seafood affair between hot spicy cajun shrimp & crunchiest crab-sticks.\nInside: Crabby + Shrimp (Sea Food)",
+    "description": "Topped with a tangy seafood affair between hot spicy cajun shrimp & crunchiest crab-sticks.",
+    "ingredients": "Crabby, Shrimp (Sea Food)",
+    "spicy": true,
     "image": "cheez/hot-crabby-prawnstar.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 429,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1349,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Gourmet Pizzas",
-    "name": "Hot Crabby Prawnstar (Thin)",
-    "description": "Topped with a tangy seafood affair between hot spicy cajun shrimp & crunchiest crab-sticks.\nInside: Crabby + Shrimp (Sea Food)",
-    "image": "cheez/hot-crabby-prawnstar.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 429,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 1099,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1349,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1549,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -1021,50 +817,39 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Gourmet Pizzas",
     "name": "Kolongo The Disgrace",
-    "description": "Packs fiery hot naga chicken, thin and crisp slices of pepperoni, and delectably meaty sausage, layered with melted mozzarella & kishan cheese in every bite.\nInside: Chicken + Beef (Beef Removeable)",
+    "description": "Packs fiery hot naga chicken, thin and crisp slices of pepperoni, and delectably meaty sausage, layered with melted mozzarella & kishan cheese in every bite.",
+    "ingredients": "Chicken, Beef (Beef Removeable)",
+    "spicy": true,
     "image": "cheez/kolongko-the-disgrace.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 479,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1499,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Gourmet Pizzas",
-    "name": "Kolongo The Disgrace (Thin)",
-    "description": "Packs fiery hot naga chicken, thin and crisp slices of pepperoni, and delectably meaty sausage, layered with melted mozzarella & kishan cheese in every bite.\nInside: Chicken + Beef (Beef Removeable)",
-    "image": "cheez/kolongko-the-disgrace.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 479,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 1199,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1499,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1699,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -1073,50 +858,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Gourmet Pizzas",
     "name": "Smoked Cheddar Tikka",
-    "description": "A flavorful pizza topped with smoky cheddar cheese, juicy chicken tikka pieces, and a blend of aromatic spices.\nInside: Chicken + Mushroom, Dhoniya, Capsicum, Onion (Removeable)",
+    "description": "A flavorful pizza topped with smoky cheddar cheese, juicy chicken tikka pieces, and a blend of aromatic spices.",
+    "ingredients": "Chicken, Mushroom, Dhoniya, Capsicum, Onion (Removeable)",
     "image": "cheez/smoked-cheddar-tikka.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 429,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1299,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Gourmet Pizzas",
-    "name": "Smoked Cheddar Tikka (Thin)",
-    "description": "A flavorful pizza topped with smoky cheddar cheese, juicy chicken tikka pieces, and a blend of aromatic spices.\nInside: Chicken + Mushroom, Dhoniya, Capsicum, Onion (Removeable)",
-    "image": "cheez/smoked-cheddar-tikka.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 429,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 1099,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1299,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1499,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -1125,50 +898,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Gourmet Pizzas",
     "name": "Meat Lovers",
-    "description": "Topped with chicken, beef kala bhuna, chicken sausage, capsicum, mozzarella cheese & green chili.\nInside: Beef + Chicken + Sauces",
+    "description": "Topped with chicken, beef kala bhuna, chicken sausage, capsicum, mozzarella cheese & green chili.",
+    "ingredients": "Beef, Chicken, Sauces",
     "image": "cheez/meat-lovers-pizza.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 479,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1499,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Gourmet Pizzas",
-    "name": "Meat Lovers (Thin)",
-    "description": "Topped with chicken, beef kala bhuna, chicken sausage, capsicum, mozzarella cheese & green chili.\nInside: Beef + Chicken + Sauces",
-    "image": "cheez/meat-lovers-pizza.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 479,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 1249,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1499,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1699,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -1177,50 +938,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Gourmet Pizzas",
     "name": "SMG",
-    "description": "Topped with gorgeous mozzarella, cheddar, feta & parmesan cheese over alfredo chicken & pepperoni, topped with crispy bacon bits.\nInside: Beef + Chicken + Mushroom (Beef Removeable)",
+    "description": "Topped with gorgeous mozzarella, cheddar, feta & parmesan cheese over alfredo chicken & pepperoni, topped with crispy bacon bits.",
+    "ingredients": "Beef, Chicken, Mushroom (Beef Removeable)",
     "image": "cheez/smg.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 479,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1499,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Gourmet Pizzas",
-    "name": "SMG (Thin)",
-    "description": "Topped with gorgeous mozzarella, cheddar, feta & parmesan cheese over alfredo chicken & pepperoni, topped with crispy bacon bits.\nInside: Beef + Chicken + Mushroom (Beef Removeable)",
-    "image": "cheez/smg.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 479,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 1199,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1499,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1699,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]
@@ -1229,50 +978,38 @@ export const PROTOTYPE_MENU: MenuProduct[] = [
     "brand": "cheez",
     "category": "Gourmet Pizzas",
     "name": "Grand Garlic Shrimp",
-    "description": "A flavorful pizza topped with mozzarella & cheddar over juicy shrimp with serious garlic energy.\nInside: Garlic + Shrimp (Sea Food)",
+    "description": "A flavorful pizza topped with mozzarella & cheddar over juicy shrimp with serious garlic energy.",
+    "ingredients": "Garlic, Shrimp (Sea Food)",
     "image": "cheez/grand-garlic-shrimp.webp",
-    "variationType": "THICK",
+    "variationType": "BOTH",
     "variations": [
       {
-        "name": "8 inch",
+        "name": "8 inch – Thick & Thin",
         "price": 479,
         "servingInfo": "Dine-in only",
-        "enabled": false
+        "enabled": true,
+        "dineInOnly": true
       },
       {
-        "name": "14 inch",
-        "price": 1499,
-        "servingInfo": "8 slices",
-        "isDefault": true,
-        "enabled": true
-      }
-    ]
-  },
-  {
-    "brand": "cheez",
-    "category": "Gourmet Pizzas",
-    "name": "Grand Garlic Shrimp (Thin)",
-    "description": "A flavorful pizza topped with mozzarella & cheddar over juicy shrimp with serious garlic energy.\nInside: Garlic + Shrimp (Sea Food)",
-    "image": "cheez/grand-garlic-shrimp.webp",
-    "variationType": "THIN",
-    "variations": [
-      {
-        "name": "8 inch",
-        "price": 479,
-        "servingInfo": "Dine-in only",
-        "enabled": false
-      },
-      {
-        "name": "12 inch",
+        "name": "12 inch – Thin Crust",
         "price": 1199,
-        "servingInfo": "6 slices",
+        "servingInfo": "6 Slices",
+        "crust": "THIN",
+        "enabled": true
+      },
+      {
+        "name": "14 inch – Thick Crust",
+        "price": 1499,
+        "servingInfo": "8 Slices",
+        "crust": "THICK",
         "isDefault": true,
         "enabled": true
       },
       {
-        "name": "16 inch",
+        "name": "16 inch – Thin Crust",
         "price": 1699,
-        "servingInfo": "8 slices",
+        "servingInfo": "8 Slices",
+        "crust": "THIN",
         "enabled": true
       }
     ]

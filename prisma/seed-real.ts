@@ -450,14 +450,17 @@ async function seedMenus(branches: Map<string, { id: number; def: RealBranch }>)
         categories.set(name, c.id);
       }
       for (const item of items) {
-        const enabled = item.variations.filter((v) => v.enabled);
-        const def0 = enabled.find((v) => v.isDefault) ?? enabled[0];
+        const orderable = item.variations.filter((v) => v.enabled && !v.dineInOnly);
+        const def0 = orderable.find((v) => v.isDefault) ?? orderable[0];
         const product = await prisma.product.create({
           data: {
             branchId,
             categoryId: categories.get(item.category)!,
             name: item.name,
             description: item.description,
+            ingredients: item.ingredients ?? "",
+            isSpicy: item.spicy ?? false,
+            isVegetarian: item.vegetarian ?? false,
             price: new Prisma.Decimal(def0.price),
             brand,
             image: item.image ? await uploadMenuImage(item.image) : null,
@@ -472,9 +475,11 @@ async function seedMenus(branches: Map<string, { id: number; def: RealBranch }>)
             name: v.name,
             price: new Prisma.Decimal(v.price),
             servingInfo: v.servingInfo,
+            variantType: v.crust ?? "",
             sortOrder: i,
             isDefault: v === def0,
             isEnabled: v.enabled,
+            dineInOnly: v.dineInOnly ?? false,
           })),
         });
         products += 1;
@@ -529,8 +534,8 @@ const DRINK_CATEGORIES = /^(Drinks|Mocktails|Shakes|Carbonated Beverages)$/;
 /** A couple of dishes from what the branch sells, deterministic per order. */
 async function cartFor(branchId: number, brands: string[], n: number): Promise<OrderItemInput[]> {
   const products = await prisma.product.findMany({
-    where: { branchId, brand: { in: brands }, variations: { some: { isEnabled: true } } },
-    include: { category: true, variations: { where: { isEnabled: true }, orderBy: { sortOrder: "asc" } } },
+    where: { branchId, brand: { in: brands }, variations: { some: { isEnabled: true, dineInOnly: false } } },
+    include: { category: true, variations: { where: { isEnabled: true, dineInOnly: false }, orderBy: { sortOrder: "asc" } } },
     orderBy: { id: "asc" },
   });
   const mains = products.filter((p) => MAIN_CATEGORIES.test(p.category?.name ?? ""));
@@ -546,7 +551,12 @@ async function cartFor(branchId: number, brands: string[], n: number): Promise<O
       product_id: p.id,
       variation_id: variation.id,
       quantity: rand() < 0.75 ? 1 : 2,
-      ...(p.variationType === "BOTH" ? { variation_type: rand() < 0.5 ? "THICK" : "THIN" } : {}),
+      // A size baked in one crust sets it; only a crust-free size (combos) picks.
+      ...(variation.variantType
+        ? { variation_type: variation.variantType }
+        : p.variationType === "BOTH"
+          ? { variation_type: rand() < 0.5 ? "THICK" : "THIN" }
+          : {}),
     });
   }
   // A drink with most orders.
