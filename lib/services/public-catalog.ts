@@ -176,6 +176,7 @@ async function buildMenu(branchId?: number): Promise<PublicMenu> {
   const items: MenuItem[] = [];
   const categories: PublicCategory[] = [];
   const seenCategory = new Set<string>();
+  const sortRank = new Map<string, number>();
   // One grouped query for every product's visible-review average.
   const ratings = await ratingSummaries(products.map((p) => p.id));
 
@@ -193,13 +194,16 @@ async function buildMenu(branchId?: number): Promise<PublicMenu> {
       if (product.categoryId != null && !seenCategory.has(dedupe)) {
         seenCategory.add(dedupe);
         categories.push({ key, label, emoji: categoryEmoji(label), brand });
+        sortRank.set(dedupe, product.category?.sortOrder ?? 100);
       }
     }
   }
 
   // A category tab is only offered when it has products for that brand, so the
   // storefront never shows a tab that leads to an empty grid.
-  categories.sort((a, b) => a.label.localeCompare(b.label));
+  // Order: the admin-set rank (mains first, sides and drinks last), then name.
+  const rank = (c: PublicCategory) => sortRank.get(`${c.brand}:${c.key}`) ?? 100;
+  categories.sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label));
 
   const search: SearchEntry[] = items.map((item) => ({
     id: item.id,

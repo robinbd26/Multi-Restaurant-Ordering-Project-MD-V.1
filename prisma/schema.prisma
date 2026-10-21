@@ -1337,6 +1337,9 @@ model Category {
   normalizedName    String    @default("")
   description       String    @default("")
   isActive          Boolean   @default(true)
+  // Storefront order of the category chips and menu sections (ascending; ties
+  // fall back to the name). Mains first, sides and drinks last.
+  sortOrder         Int       @default(100)
   // req #3 — activation audit: who last flipped isActive and when (app-level
   // SetNull, matching BranchDeliveryArea.updatedById).
   statusChangedById Int?
