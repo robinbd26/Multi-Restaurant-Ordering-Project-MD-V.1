@@ -9,6 +9,7 @@
     "lint": "eslint",
     "check:i18n": "node scripts/check-i18n-params.mjs",
     "seed": "tsx prisma/seed.ts",
+    "demo:products": "node --require ./scripts/seed-real/server-only-shim.cjs --import tsx scripts/add-demo-products.ts",
     "seed:real": "node --require ./scripts/seed-real/server-only-shim.cjs --import tsx prisma/seed-real.ts",
     "images:convert": "node scripts/convert-images-to-webp.mjs",
     "postinstall": "prisma generate",
